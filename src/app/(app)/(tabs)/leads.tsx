@@ -58,12 +58,11 @@ const ACTIONS: {
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
 }[] = [
-  { field: 'rating', label: 'Rating', icon: 'star', color: '#F59E0B' },
+  { field: 'note', label: 'Note', icon: 'create', color: '#8B5CF6' },
   { field: 'stage', label: 'Stage', icon: 'flag', color: '#6366F1' },
   { field: 'tags', label: 'Tag', icon: 'pricetags', color: '#EC4899' },
   { field: 'assign', label: 'Assign', icon: 'person-add', color: '#0EA5E9' },
   { field: 'followup', label: 'Next call', icon: 'alarm', color: '#10B981' },
-  { field: 'note', label: 'Note', icon: 'create', color: '#8B5CF6' },
   { field: 'lost', label: 'Lost', icon: 'close-circle', color: '#EF4444' },
 ];
 
