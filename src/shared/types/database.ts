@@ -1536,6 +1536,10 @@ export type Database = {
           status: string
         }[]
       }
+      add_lead_note: {
+        Args: { p_lead_ids: string[]; p_note: string }
+        Returns: number
+      }
       admission_rule_allows: { Args: { p_rule: Json }; Returns: boolean }
       admission_setting: { Args: never; Returns: Json }
       assignment_setting: { Args: never; Returns: Json }

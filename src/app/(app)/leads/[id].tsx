@@ -354,6 +354,8 @@ export default function LeadDetailScreen() {
         return d.due_at ? `Next call set: ${formatDue(d.due_at)}` : 'Next call set';
       case 'follow_up_cancelled':
         return 'Next call removed';
+      case 'note_added':
+        return `📝 Note: ${d.note ?? ''}`;
       case 'paper_received':
         return `📄 ${d.paper ?? 'Paper'} received${d.copy_type ? ` (${d.copy_type})` : ''}`;
       case 'paper_not_needed':
