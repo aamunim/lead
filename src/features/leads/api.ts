@@ -39,6 +39,7 @@ export type LeadListItem = Pick<
   | 'phone'
   | 'rating'
   | 'next_follow_up_at'
+  | 'last_contacted_at'
   | 'created_at'
   | 'assigned_to'
   | 'stage_id'
@@ -172,7 +173,7 @@ function toError(error: { message: string }): Error {
 }
 
 const LIST_SELECT = `
-  id, name, phone, rating, next_follow_up_at, created_at, assigned_to, stage_id, closed_at, student_ref,
+  id, name, phone, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
   stage:pipeline_stages(id, key, name, color, kind),

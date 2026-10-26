@@ -60,6 +60,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/stages' as Href,
       },
       {
+        title: 'Pipeline board',
+        description: 'Board view on or off, Admitted / Lost columns, who can use it',
+        icon: '📋',
+        href: '/settings/board' as Href,
+      },
+      {
         title: 'Campus visit',
         description: 'On or off, what happens after a visit or a no-show',
         icon: '🏫',
