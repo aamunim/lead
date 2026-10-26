@@ -1735,6 +1735,10 @@ export type Database = {
       is_active_user: { Args: never; Returns: boolean }
       is_setup_complete: { Args: never; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      lead_report: {
+        Args: { p_course_id?: string; p_from: string; p_to: string; p_user_id?: string }
+        Returns: Json
+      }
       lead_missing_papers: {
         Args: { p_course_id?: string; p_lead_id: string }
         Returns: {

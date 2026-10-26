@@ -8,6 +8,7 @@ import { canImportContacts } from '@/features/contacts/api';
 import { TodayList } from '@/features/follow-ups/TodayList';
 import { getMyOpenNudge, markNudgeSeen, nudgeTitle, type Nudge } from '@/features/nudges/api';
 import { SyncSetupSheet } from '@/features/nudges/SyncSetupSheet';
+import { ReportHomeCard } from '@/features/reports/ReportHomeCard';
 import { TodayVisits } from '@/features/visits/TodayVisits';
 import { countPendingUsers } from '@/features/users/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -136,6 +137,9 @@ export default function HomeScreen() {
           <TodayVisits />
           <TodayList />
         </View>
+
+        {/* This month at a glance (Settings → Reports) */}
+        <ReportHomeCard />
 
         {/* Leads */}
         <View style={styles.section}>

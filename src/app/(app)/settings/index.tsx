@@ -60,6 +60,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/stages' as Href,
       },
       {
+        title: 'Reports',
+        description: 'Who sees reports, the Home card, which parts are shown',
+        icon: '📊',
+        href: '/settings/reports' as Href,
+      },
+      {
         title: 'Pipeline board',
         description: 'Board view on or off, Admitted / Lost columns, who can use it',
         icon: '📋',

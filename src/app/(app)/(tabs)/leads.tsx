@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -353,6 +353,15 @@ export default function LeadsScreen() {
   };
 
   // --- filters ------------------------------------------------------------
+  // Opened from Reports (a funnel bar): show the leads in that stage
+  const { stage: stageParam } = useLocalSearchParams<{ stage?: string }>();
+  useEffect(() => {
+    if (!stageParam) return;
+    applyFilters({ stageIds: [String(stageParam)] }, null);
+    router.setParams({ stage: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageParam]);
+
   const applyFilters = (next: LeadFilters, savedId: string | null = null) => {
     setLoading(true);
     setFilters(next);
