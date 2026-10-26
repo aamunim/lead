@@ -59,6 +59,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         icon: '🪜',
         href: '/settings/stages' as Href,
       },
+      {
+        title: 'Campus visit',
+        description: 'On or off, what happens after a visit or a no-show',
+        icon: '🏫',
+        href: '/settings/visits' as Href,
+      },
       ...listsInGroup('leads'),
       {
         title: 'Lead filters',

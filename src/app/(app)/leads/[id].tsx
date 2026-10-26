@@ -43,6 +43,8 @@ import {
 import { splitLeadNotes, type LeadNote } from '@/features/leads/notes';
 import { PapersCard } from '@/features/papers/PapersCard';
 import { PipelineCard } from '@/features/pipeline/PipelineCard';
+import { formatVisitTime } from '@/features/visits/api';
+import { VisitCard } from '@/features/visits/VisitCard';
 import { listHolidays, listItems, type Holiday } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -380,6 +382,16 @@ export default function LeadDetailScreen() {
         return `📄 ${d.paper ?? 'Paper'} (original) returned to the student`;
       case 'papers_moved':
         return d.kept_at ? `📁 Papers kept at: ${d.kept_at}` : '📁 Papers place removed';
+      case 'visit_planned':
+        return `🏫 Visit planned${d.at ? `: ${formatVisitTime(d.at)}` : ''}${d.note ? ` · ${d.note}` : ''}`;
+      case 'visit_moved':
+        return `🏫 Visit moved${d.at ? ` to ${formatVisitTime(d.at)}` : ''}`;
+      case 'visit_done':
+        return `🏫 Visited the campus${d.note ? ` · ${d.note}` : ''}`;
+      case 'visit_missed':
+        return `🏫 Didn’t come to the visit${d.note ? ` · ${d.note}` : ''}`;
+      case 'visit_cancelled':
+        return '🏫 Visit cancelled';
       case 'deleted':
         return 'Lead deleted';
       case 'restored':
@@ -565,6 +577,17 @@ export default function LeadDetailScreen() {
           lead={lead}
           reviveAt={reviveAt}
           nameOf={nameOf}
+          onChanged={(message) => {
+            if (message) showToast(message);
+            load();
+          }}
+        />
+
+        {/* Campus visit: separate from the pipeline */}
+        <VisitCard
+          leadId={lead.id}
+          stageKind={stageKind}
+          stateKey={`${lead.visit_status ?? ''}|${lead.visit_at ?? ''}`}
           onChanged={(message) => {
             if (message) showToast(message);
             load();

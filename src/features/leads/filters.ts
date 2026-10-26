@@ -20,6 +20,12 @@ export type AdmittedFilter = 'this_month' | 'last_month' | '30d' | 'this_year';
  *   no_place  = papers received but "kept at" not written
  */
 export type PapersFilter = 'complete' | 'missing' | 'none_yet' | 'originals' | 'no_place';
+/**
+ * 🏫 Campus visit (leads.visit_status / visit_at):
+ *   planned = a visit is planned · today = planned for today · overdue = planned time passed
+ *   visited = came at least once · missed = didn't come (no new plan) · none = never planned
+ */
+export type VisitFilter = 'planned' | 'today' | 'overdue' | 'visited' | 'missed' | 'none';
 
 export type LeadFilters = {
   ratings?: string[];        // 'hot' | 'warm' | 'cold' | 'none'
@@ -36,6 +42,7 @@ export type LeadFilters = {
   admitted?: AdmittedFilter; // admitted in this period (cancelled admissions left out)
   lostReasonIds?: string[];
   papers?: PapersFilter;     // open and admitted leads (lost / cancelled left out)
+  visit?: VisitFilter;
 };
 
 export type FilterKey =
@@ -52,7 +59,8 @@ export type FilterKey =
   | 'last_contacted'
   | 'admitted'
   | 'lost_reason'
-  | 'papers';
+  | 'papers'
+  | 'visit';
 
 export const NONE = 'none';
 
@@ -74,6 +82,7 @@ export const FILTER_FIELDS: Record<FilterKey, { label: string; icon: string }> =
   admitted: { label: 'Admitted', icon: 'ribbon' },
   lost_reason: { label: 'Lost reason', icon: 'close-circle' },
   papers: { label: 'Papers', icon: 'document-text' },
+  visit: { label: 'Campus visit', icon: 'business' },
 };
 
 export const FOLLOW_UP_OPTIONS: { value: FollowUpFilter; label: string }[] = [
@@ -114,6 +123,15 @@ export const PAPERS_OPTIONS: { value: PapersFilter; label: string }[] = [
   { value: 'no_place', label: 'Place not written' },
 ];
 
+export const VISIT_OPTIONS: { value: VisitFilter; label: string }[] = [
+  { value: 'planned', label: 'Planned' },
+  { value: 'today', label: 'Today' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'visited', label: '✓ Visited' },
+  { value: 'missed', label: 'Didn’t come' },
+  { value: 'none', label: 'Never planned' },
+];
+
 // =====================================================================
 // Small helpers
 // =====================================================================
@@ -136,6 +154,7 @@ export function countActiveFilters(f: LeadFilters): number {
     f.admitted,
     list(f.lostReasonIds),
     f.papers,
+    f.visit,
   ].filter(Boolean).length;
 }
 
@@ -327,6 +346,28 @@ export function applyLeadFilters<Q extends { [k: string]: any }>(query: Q, f: Le
     }
   }
 
+  // Campus visit
+  switch (f.visit) {
+    case 'planned':
+      q = q.eq('visit_status', 'planned');
+      break;
+    case 'today':
+      q = q.eq('visit_status', 'planned').gte('visit_at', iso(today)).lt('visit_at', iso(addDays(today, 1)));
+      break;
+    case 'overdue':
+      q = q.eq('visit_status', 'planned').lt('visit_at', iso(now));
+      break;
+    case 'visited':
+      q = q.eq('visit_status', 'visited');
+      break;
+    case 'missed':
+      q = q.eq('visit_status', 'missed');
+      break;
+    case 'none':
+      q = q.is('visit_status', null);
+      break;
+  }
+
   return q as Q;
 }
 
@@ -413,6 +454,7 @@ export const DEFAULT_FILTER_CONFIG: FilterConfig = {
     { key: 'last_contacted', enabled: true },
     { key: 'admitted', enabled: true },
     { key: 'papers', enabled: true },
+    { key: 'visit', enabled: true },
     { key: 'lost_reason', enabled: true },
   ],
 };

@@ -37,6 +37,7 @@ import {
   type SavedFilter,
 } from '@/features/leads/filters';
 import { papersBadge } from '@/features/papers/api';
+import { visitBadge } from '@/features/visits/api';
 import { LostSheet } from '@/features/pipeline/LostSheet';
 import { getAdmissionSettings } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -753,6 +754,11 @@ function LeadCard({
       ? papersBadge(lead.papers_required ?? 0, (lead.papers_required ?? 0) - (lead.papers_missing ?? 0))
       : null;
 
+  // 🏫 Today 11:00 AM / Visited: open leads only
+  const visit = kind === 'open' ? visitBadge(lead.visit_status, lead.visit_at) : null;
+  const visitSoon = lead.visit_status === 'planned';
+  const visitLate = visitSoon && !!lead.visit_at && new Date(lead.visit_at).getTime() < Date.now();
+
   return (
     <Pressable
       onPress={onPress}
@@ -808,6 +814,18 @@ function LeadCard({
             <View style={[styles.papers, papers.complete ? styles.papersDone : styles.papersMissing]}>
               <Text style={[styles.papersText, { color: papers.complete ? colors.success : colors.warning }]}>
                 {papers.text}
+              </Text>
+            </View>
+          )}
+          {visit && (
+            <View style={[styles.papers, visitSoon ? styles.visitPlanned : styles.visitOther]}>
+              <Text
+                style={[
+                  styles.papersText,
+                  { color: visitLate ? colors.danger : visitSoon ? colors.primary : colors.textMuted },
+                ]}
+              >
+                {visit}
               </Text>
             </View>
           )}
@@ -1001,6 +1019,8 @@ const styles = StyleSheet.create({
   papersDone: { borderColor: colors.success, backgroundColor: colors.successSoft },
   papersMissing: { borderColor: colors.warning, backgroundColor: colors.surface },
   papersText: { fontSize: 11, fontWeight: fontWeight.bold },
+  visitPlanned: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  visitOther: { borderColor: colors.border, backgroundColor: colors.surface },
   overdue: { color: colors.danger, fontWeight: fontWeight.bold },
   assignee: { fontSize: 11, color: colors.textMuted },
   contact: { flexDirection: 'row', gap: 6 },

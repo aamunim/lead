@@ -1040,6 +1040,67 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_visits: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          lead_id: string
+          note: string | null
+          planned_at: string | null
+          status: string
+          updated_at: string
+          updated_by: string | null
+          visited_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lead_id: string
+          note?: string | null
+          planned_at?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          visited_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lead_id?: string
+          note?: string | null
+          planned_at?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          visited_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_visits_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_visits_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_visits_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           admission_note: string | null
@@ -1090,6 +1151,8 @@ export type Database = {
           student_ref: string | null
           unreachable_at: string | null
           updated_at: string
+          visit_at: string | null
+          visit_status: string | null
         }
         Insert: {
           admission_note?: string | null
@@ -1140,6 +1203,8 @@ export type Database = {
           student_ref?: string | null
           unreachable_at?: string | null
           updated_at?: string
+          visit_at?: string | null
+          visit_status?: string | null
         }
         Update: {
           admission_note?: string | null
@@ -1190,6 +1255,8 @@ export type Database = {
           student_ref?: string | null
           unreachable_at?: string | null
           updated_at?: string
+          visit_at?: string | null
+          visit_status?: string | null
         }
         Relationships: [
           {
@@ -1600,6 +1667,7 @@ export type Database = {
         }[]
       }
       call_sync_setting: { Args: never; Returns: Json }
+      campus_visit_setting: { Args: never; Returns: Json }
       can_assign_to: { Args: { p_target: string }; Returns: boolean }
       can_cancel_admission: { Args: never; Returns: boolean }
       can_edit_lead: { Args: { p_assigned_to: string }; Returns: boolean }
@@ -1613,6 +1681,7 @@ export type Database = {
         Returns: undefined
       }
       cancel_follow_up: { Args: { p_lead_id: string }; Returns: undefined }
+      cancel_visit: { Args: { p_lead_id: string }; Returns: undefined }
       close_my_sync_nudges: { Args: never; Returns: undefined }
       complete_first_run_setup: {
         Args: { p_full_name: string; p_institution_name: string }
@@ -1630,6 +1699,15 @@ export type Database = {
           phone: string
           stage_name: string
         }[]
+      }
+      finish_visit: {
+        Args: {
+          p_lead_id: string
+          p_note?: string
+          p_status: string
+          p_visited_at?: string
+        }
+        Returns: Json
       }
       finish_pending_follow_up: {
         Args: { p_lead_id: string }
@@ -1755,6 +1833,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      plan_visit: {
+        Args: { p_at: string; p_lead_id: string; p_note?: string }
+        Returns: string
       }
       preview_student_ref: { Args: never; Returns: string }
       refresh_lead_papers: { Args: { p_lead_id: string }; Returns: undefined }

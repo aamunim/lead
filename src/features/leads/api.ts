@@ -50,6 +50,9 @@ export type LeadListItem = Pick<
   | 'papers_missing'
   | 'papers_originals_held'
   | 'papers_kept_at'
+  // Campus visit (kept up to date by the database)
+  | 'visit_status'
+  | 'visit_at'
 > & {
   stage: Stage | null;
   source: Named | null;
@@ -146,6 +149,7 @@ function toError(error: { message: string }): Error {
 const LIST_SELECT = `
   id, name, phone, rating, next_follow_up_at, created_at, assigned_to, stage_id, closed_at, student_ref,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
+  visit_status, visit_at,
   stage:pipeline_stages(id, key, name, color, kind),
   source:lead_sources(id, name),
   assignee:assigned_to(id, full_name),

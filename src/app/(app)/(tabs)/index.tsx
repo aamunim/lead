@@ -8,6 +8,7 @@ import { canImportContacts } from '@/features/contacts/api';
 import { TodayList } from '@/features/follow-ups/TodayList';
 import { getMyOpenNudge, markNudgeSeen, nudgeTitle, type Nudge } from '@/features/nudges/api';
 import { SyncSetupSheet } from '@/features/nudges/SyncSetupSheet';
+import { TodayVisits } from '@/features/visits/TodayVisits';
 import { countPendingUsers } from '@/features/users/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
@@ -132,6 +133,7 @@ export default function HomeScreen() {
         {/* Today: follow-ups due today and overdue */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>TODAY</Text>
+          <TodayVisits />
           <TodayList />
         </View>
 
