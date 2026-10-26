@@ -1,0 +1,21 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- Read the phone's call history (only lead calls are ever uploaded) -->
+  <uses-permission android:name="android.permission.READ_CALL_LOG" />
+  <!-- Know when a call ends / rings, and which SIM was used -->
+  <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+  <!-- "Add a note" and "Lead is calling" notifications (asked on Android 13+) -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <application>
+    <!-- Wakes the app for a few seconds when a call rings or ends -->
+    <receiver
+      android:name="expo.modules.calllog.CallEndReceiver"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.PHONE_STATE" />
+      </intent-filter>
+    </receiver>
+  </application>
+
+</manifest>
