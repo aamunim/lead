@@ -40,12 +40,14 @@ import {
   type ActivityItem,
   type LeadDetail,
 } from '@/features/leads/api';
+import { splitLeadNotes, type LeadNote } from '@/features/leads/notes';
 import { PapersCard } from '@/features/papers/PapersCard';
 import { PipelineCard } from '@/features/pipeline/PipelineCard';
 import { listHolidays, listItems, type Holiday } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
+import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -55,6 +57,11 @@ const RATING_COLOR: Record<string, string> = {
 
 // 01711234567 → 8801711234567 (for WhatsApp)
 const toInternational = (phone: string) => (phone.startsWith('0') ? `88${phone}` : phone);
+
+/** One line in "Calls & notes" */
+type FeedItem =
+  | { kind: 'call'; key: string; at: string; call: CallLog }
+  | { kind: 'note'; key: string; at: string; note: LeadNote };
 
 function initials(name: string): string {
   return name
@@ -375,6 +382,20 @@ export default function LeadDetailScreen() {
     }
   };
 
+  // --- calls and notes, newest first ----------------------------------
+  const feed = useMemo<FeedItem[]>(() => {
+    const notes = lead ? splitLeadNotes(lead.notes, lead.created_at, activity) : [];
+    return [
+      ...calls.map((c): FeedItem => ({ kind: 'call', key: c.id, at: c.called_at, call: c })),
+      ...notes.map((n): FeedItem => ({ kind: 'note', key: n.key, at: n.at, note: n })),
+    ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  }, [lead, calls, activity]);
+
+  // Long lists show the newest few until "View more"
+  const feedMore = useShowMore(feed, 3);
+  const activityMore = useShowMore(activity, 5);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   // --- states ----------------------------------------------------------
   if (loading) {
     return (
@@ -580,21 +601,47 @@ export default function LeadDetailScreen() {
           </View>
         )}
 
-        {/* Calls */}
+        {/* Calls and notes, in one list */}
         <Section
-          title={`Calls${calls.length > 0 ? ` (${calls.length})` : ''}`}
+          title={`Calls & notes${feed.length > 0 ? ` (${feed.length})` : ''}`}
           right={talkSec > 0 ? `Talk time ${formatDuration(talkSec)}` : undefined}
         >
-          {calls.length === 0 ? (
-            <Text style={styles.muted}>No calls yet. Tap Call above to start.</Text>
+          {feed.length === 0 ? (
+            <Text style={styles.muted}>No calls or notes yet. Tap Call above to start.</Text>
           ) : (
-            calls.map((c) => {
+            feedMore.visible.map((item) => {
+              if (item.kind === 'note') {
+                const n = item.note;
+                const when =
+                  n.when === 'exact'
+                    ? formatDateTime(n.at)
+                    : n.when === 'day'
+                      ? new Date(n.at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })
+                      : 'Lead notes';
+                return (
+                  <View key={item.key} style={styles.callRow}>
+                    <View style={[styles.dirBadge, { backgroundColor: colors.primarySoft }]}>
+                      <Text style={styles.noteIcon}>📝</Text>
+                    </View>
+                    <View style={styles.flex}>
+                      <Text style={[styles.callOutcome, { color: colors.primary }]}>Note</Text>
+                      <NoteText text={n.text} />
+                      <Text style={styles.timelineMeta}>
+                        {when}
+                        {n.author ? ` · ${n.author}` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              }
+
+              const c = item.call;
               const info = outcomeInfo(c.outcome);
               const dir = directionInfo(c.direction);
               const duration = c.duration_sec && c.duration_sec > 0 ? formatDuration(c.duration_sec) : null;
               const fromPhone = c.source === 'phone' || c.phone_verified === true;
               return (
-                <View key={c.id} style={styles.callRow}>
+                <View key={item.key} style={styles.callRow}>
                   <View style={[styles.dirBadge, { backgroundColor: dir.color + '1A' }]}>
                     <Text style={[styles.dirArrow, { color: dir.color }]}>{dir.arrow}</Text>
                   </View>
@@ -611,7 +658,7 @@ export default function LeadDetailScreen() {
                         </Text>
                       )}
                     </View>
-                    {c.notes && <Text style={styles.callNotes}>{c.notes}</Text>}
+                    {c.notes && <NoteText text={c.notes} />}
                     <Text style={styles.timelineMeta}>
                       {formatDateTime(c.called_at)}
                       {c.caller ? ` · ${personName(c.caller)}` : ''}
@@ -622,6 +669,7 @@ export default function LeadDetailScreen() {
               );
             })
           )}
+          <ShowMoreButton {...feedMore} />
           <Button title="+ Log a call made from another phone" variant="ghost" onPress={logManually} />
           {calls.some((c) => c.source === 'phone' || c.phone_verified) && (
             <Text style={styles.hint}>📱 = taken from the phone’s call log (real time and length)</Text>
@@ -642,57 +690,50 @@ export default function LeadDetailScreen() {
           )}
         </Section>
 
-        {/* Contact */}
-        <Section title="Contact">
+        {/* Contact, guardian and source: the main lines, the rest under "More details" */}
+        <Section title="Details">
           <PhoneRow label="Phone" phone={lead.phone} onCall={call} />
-          {lead.alt_phone && <PhoneRow label="Alternative" phone={lead.alt_phone} onCall={call} />}
-          <InfoRow label="Email" value={lead.email} />
           <InfoRow label="Area" value={lead.area} />
-          <InfoRow
-            label="Last contacted"
-            value={lead.last_contacted_at ? formatDateTime(lead.last_contacted_at) : 'Never'}
+          <InfoRow label="Source" value={lead.source?.name ?? null} />
+          {detailsOpen && (
+            <>
+              {lead.alt_phone && <PhoneRow label="Alternative" phone={lead.alt_phone} onCall={call} />}
+              <InfoRow label="Email" value={lead.email} />
+              <InfoRow
+                label="Last contacted"
+                value={lead.last_contacted_at ? formatDateTime(lead.last_contacted_at) : 'Never'}
+              />
+              <InfoRow
+                label="Guardian"
+                value={[lead.guardian_name, lead.guardian_relation && `(${lead.guardian_relation})`].filter(Boolean).join(' ')}
+              />
+              {lead.guardian_phone && <PhoneRow label="Guardian phone" phone={lead.guardian_phone} onCall={call} />}
+              <InfoRow label="Campaign" value={lead.campaign?.name ?? null} />
+              <InfoRow label="Referred by" value={lead.referred_by} />
+              <InfoRow label="Lead type" value={lead.lead_type?.name ?? null} />
+              <InfoRow label="Added" value={formatDateTime(lead.created_at)} />
+            </>
+          )}
+          <ShowMoreButton
+            expanded={detailsOpen}
+            hidden={1}
+            toggle={() => setDetailsOpen((o) => !o)}
+            label="More details"
           />
         </Section>
-
-        {/* Guardian */}
-        {(lead.guardian_name || lead.guardian_phone) && (
-          <Section title="Guardian">
-            <InfoRow
-              label="Name"
-              value={[lead.guardian_name, lead.guardian_relation && `(${lead.guardian_relation})`].filter(Boolean).join(' ')}
-            />
-            {lead.guardian_phone && <PhoneRow label="Phone" phone={lead.guardian_phone} onCall={call} />}
-          </Section>
-        )}
-
-        {/* Source */}
-        <Section title="Source">
-          <InfoRow label="Source" value={lead.source?.name ?? null} />
-          <InfoRow label="Campaign" value={lead.campaign?.name ?? null} />
-          <InfoRow label="Referred by" value={lead.referred_by} />
-          <InfoRow label="Lead type" value={lead.lead_type?.name ?? null} />
-          <InfoRow label="Added" value={formatDateTime(lead.created_at)} />
-        </Section>
-
-        {/* Notes */}
-        {lead.notes && (
-          <Section title="Notes">
-            <Text style={styles.notes}>{lead.notes}</Text>
-          </Section>
-        )}
 
         {/* Activity */}
         <Section title="Activity">
           {activity.length === 0 ? (
             <Text style={styles.muted}>No activity yet.</Text>
           ) : (
-            activity.map((item, index) => {
+            activityMore.visible.map((item, index) => {
               const who = actorName(item);
               return (
                 <View key={item.id} style={styles.timelineRow}>
                   <View style={styles.timelineMarker}>
                     <View style={styles.timelineDot} />
-                    {index < activity.length - 1 && <View style={styles.timelineLine} />}
+                    {index < activityMore.visible.length - 1 && <View style={styles.timelineLine} />}
                   </View>
                   <View style={styles.timelineBody}>
                     <Text style={styles.timelineText}>{describe(item)}</Text>
@@ -705,6 +746,7 @@ export default function LeadDetailScreen() {
               );
             })
           )}
+          <ShowMoreButton {...activityMore} />
         </Section>
 
         {hasPermission('leads.delete') && (
@@ -745,6 +787,24 @@ function Section({ title, right, children }: { title: string; right?: string; ch
       </View>
       {children}
     </View>
+  );
+}
+
+/** A note: the first 4 lines, then "View more" */
+function NoteText({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.split('\n').length > 4 || text.length > 200;
+  return (
+    <>
+      <Text style={styles.callNotes} numberOfLines={open ? undefined : 4}>
+        {text}
+      </Text>
+      {long && (
+        <Pressable onPress={() => setOpen((o) => !o)} hitSlop={8} accessibilityRole="button">
+          <Text style={styles.moreLink}>{open ? 'Show less' : 'View more'}</Text>
+        </Pressable>
+      )}
+    </>
   );
 }
 
@@ -862,7 +922,8 @@ const styles = StyleSheet.create({
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   tag: { paddingVertical: 3, paddingHorizontal: spacing.md, borderRadius: radius.pill },
   tagText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold },
-  notes: { fontSize: fontSize.small, lineHeight: 20, color: colors.text },
+  noteIcon: { fontSize: 14 },
+  moreLink: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary, marginTop: 2 },
   callRow: {
     flexDirection: 'row',
     gap: spacing.md,

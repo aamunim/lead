@@ -56,6 +56,9 @@ export function PapersCard({ leadId, stageKind, stageKey, onChanged }: Props) {
   const [detail, setDetail] = useState<LeadPaper | null>(null);
   const [folderOpen, setFolderOpen] = useState(false);
 
+  // The card starts closed: only the title and the count until tapped
+  const [open, setOpen] = useState(false);
+
   const load = useCallback(async () => {
     try {
       setError(null);
@@ -185,53 +188,69 @@ export function PapersCard({ leadId, stageKind, stageKey, onChanged }: Props) {
 
   return (
     <View style={[styles.card, stageKey === 'papers_pending' && !complete && styles.cardFocus]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>📄 Papers</Text>
-        {data.required > 0 && (
-          <Text style={[styles.progress, complete ? styles.progressDone : styles.progressMissing]}>
-            {data.done} of {data.required} required{complete ? ' ✓' : ''}
-          </Text>
-        )}
-      </View>
-
-      {/* Where the file is kept */}
+      {/* Header: tap to open or close */}
       <Pressable
-        onPress={() => setFolderOpen(true)}
-        style={({ pressed }) => [styles.folder, pressed && styles.pressed]}
+        onPress={() => setOpen((o) => !o)}
+        hitSlop={8}
+        style={({ pressed }) => [styles.header, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={data.folder ? `Kept at ${data.folder}. Change` : 'Set where the papers are kept'}
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`Papers${data.required > 0 ? `, ${data.done} of ${data.required} required` : ''}`}
       >
-        <Text style={styles.folderIcon}>📁</Text>
-        <Text style={[styles.folderText, !data.folder && styles.folderEmpty]} numberOfLines={2}>
-          {data.folder ? `Kept at: ${data.folder}` : 'Where are the papers kept? Tap to set'}
-        </Text>
-        <Ionicons name="pencil" size={14} color={colors.textMuted} />
+        <Text style={styles.title}>📄 Papers</Text>
+        <View style={styles.headerRight}>
+          {data.required > 0 ? (
+            <Text style={[styles.progress, complete ? styles.progressDone : styles.progressMissing]}>
+              {data.done} of {data.required} required{complete ? ' ✓' : ''}
+            </Text>
+          ) : (
+            <Text style={styles.hint}>{data.papers.length} {data.papers.length === 1 ? 'paper' : 'papers'}</Text>
+          )}
+          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} />
+        </View>
       </Pressable>
 
-      {data.originalsHeld > 0 && (
-        <Text style={styles.originals}>
-          🗂 {data.originalsHeld} {data.originalsHeld === 1 ? 'original is' : 'originals are'} with us
-        </Text>
+      {open && (
+        <>
+          {/* Where the file is kept */}
+          <Pressable
+            onPress={() => setFolderOpen(true)}
+            style={({ pressed }) => [styles.folder, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={data.folder ? `Kept at ${data.folder}. Change` : 'Set where the papers are kept'}
+          >
+            <Text style={styles.folderIcon}>📁</Text>
+            <Text style={[styles.folderText, !data.folder && styles.folderEmpty]} numberOfLines={2}>
+              {data.folder ? `Kept at: ${data.folder}` : 'Where are the papers kept? Tap to set'}
+            </Text>
+            <Ionicons name="pencil" size={14} color={colors.textMuted} />
+          </Pressable>
+
+          {data.originalsHeld > 0 && (
+            <Text style={styles.originals}>
+              🗂 {data.originalsHeld} {data.originalsHeld === 1 ? 'original is' : 'originals are'} with us
+            </Text>
+          )}
+
+          {/* The papers */}
+          {data.papers.map((p) => (
+            <PaperRow
+              key={p.paperId}
+              paper={p}
+              busy={busy === p.paperId}
+              onToggle={() => quickToggle(p)}
+              onDetails={() => setDetail(p)}
+            />
+          ))}
+
+          {error && <Text style={styles.errorText}>{error}</Text>}
+
+          {missingCount > 0 && stageKind === 'open' && (
+            <Button title={`📞 Remind to bring ${missingCount} ${missingCount === 1 ? 'paper' : 'papers'}`} variant="ghost" onPress={remind} fullWidth />
+          )}
+          <Text style={styles.hint}>Tap to tick · ⋯ for original / copy, place, note, returned</Text>
+        </>
       )}
-
-      {/* The papers */}
-      {data.papers.map((p) => (
-        <PaperRow
-          key={p.paperId}
-          paper={p}
-          busy={busy === p.paperId}
-          onToggle={() => quickToggle(p)}
-          onDetails={() => setDetail(p)}
-        />
-      ))}
-
-      {error && <Text style={styles.errorText}>{error}</Text>}
-
-      {missingCount > 0 && stageKind === 'open' && (
-        <Button title={`📞 Remind to bring ${missingCount} ${missingCount === 1 ? 'paper' : 'papers'}`} variant="ghost" onPress={remind} fullWidth />
-      )}
-      <Text style={styles.hint}>Tap to tick · ⋯ for original / copy, place, note, returned</Text>
 
       {detail && (
         <PaperDetailSheet
@@ -603,6 +622,7 @@ const styles = StyleSheet.create({
   },
   cardFocus: { borderColor: colors.warning, borderWidth: 1.5 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   title: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
   progress: { fontSize: fontSize.small, fontWeight: fontWeight.bold },
   progressDone: { color: colors.success },
