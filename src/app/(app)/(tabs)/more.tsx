@@ -98,7 +98,7 @@ export default function MoreScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>REPORTS</Text>
           <View style={styles.group}>
-            <Row icon="📊" title="Reports" subtitle="Funnel, sources, team, best time to call" href="/reports" />
+            <Row icon="📊" title="Reports" subtitle="Pipeline, sources, team, best time to call" href="/reports" />
           </View>
         </View>
       )}

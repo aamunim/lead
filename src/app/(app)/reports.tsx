@@ -24,18 +24,15 @@ import {
   getReportSettings,
   pct,
   periodRange,
-  type FunnelStep,
   type HeatCell,
   type LeadReport,
+  type PipelineStep,
   type Period,
   type ReportSettings,
 } from '@/features/reports/api';
-import { BarList, FunnelBars, Heatmap, StatTile } from '@/features/reports/charts';
+import { BarList, Heatmap, PipelineBars, StatTile } from '@/features/reports/charts';
 import { listCourses } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
-
-// The stage history (used by the funnel) starts on this day
-const HISTORY_FROM = '2026-10-25';
 
 type Option = { id: string; name: string };
 
@@ -49,6 +46,8 @@ export default function ReportsScreen() {
   const [ready, setReady] = useState(false);
 
   const [period, setPeriod] = useState<Period>('month');
+  // Pipeline now: every lead (like the board) or only the ones added in the period
+  const [pipeMode, setPipeMode] = useState<'all' | 'period'>('all');
   const [person, setPerson] = useState<Option | null>(null);
   const [course, setCourse] = useState<Option | null>(null);
   const [people, setPeople] = useState<Option[]>([]);
@@ -103,9 +102,8 @@ export default function ReportsScreen() {
     load();
   }, [ready, load]);
 
-  // Funnel bar → the leads now in that stage
-  const openStage = (step: FunnelStep) => {
-    if (step.now === 0) return;
+  // Pipeline bar → the leads now in that stage
+  const openStage = (step: PipelineStep) => {
     router.push({ pathname: '/leads', params: { stage: step.stage_id } } as unknown as Href);
   };
 
@@ -219,19 +217,37 @@ export default function ReportsScreen() {
               </Card>
             )}
 
-            {/* ② Funnel */}
+            {/* ② Pipeline now (same numbers as the board) */}
             {show.funnel && (
-              <Card title="🔻 Funnel" subtitle="How far the leads added in this period got">
-                {report.funnel.length === 0 || report.funnel[0].reached === 0 ? (
-                  <Text style={styles.empty}>No new leads in this period.</Text>
+              <Card title="📋 Pipeline now" subtitle="How many leads are in each stage right now">
+                <View style={styles.segment}>
+                  {(['all', 'period'] as const).map((m) => {
+                    const on = pipeMode === m;
+                    return (
+                      <Pressable
+                        key={m}
+                        onPress={() => setPipeMode(m)}
+                        style={[styles.segBtn, on && styles.segBtnOn]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                      >
+                        <Text style={[styles.segText, on && styles.segTextOn]}>
+                          {m === 'all' ? 'All leads' : 'Added in this period'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {report.pipeline.every((p) => p[pipeMode] === 0) ? (
+                  <Text style={styles.empty}>
+                    {pipeMode === 'all' ? 'No leads yet.' : 'No new leads in this period.'}
+                  </Text>
                 ) : (
-                  <FunnelBars steps={report.funnel} onPressStep={openStage} />
+                  <PipelineBars steps={report.pipeline} mode={pipeMode} onPressStep={openStage} />
                 )}
                 <Text style={styles.hint}>
-                  % = share of the step before. A lead that skipped a stage still counts as having got that far.
-                  {range.from < HISTORY_FROM
-                    ? ` Stage history starts on 25 Oct 2026, so leads added before that only show the stage they were in then.`
-                    : ''}
+                  Each lead counts once, in the stage it is in now. “All leads” matches the board (without filters).
+                  Tap a stage to see its leads.
                 </Text>
               </Card>
             )}
@@ -512,6 +528,18 @@ const styles = StyleSheet.create({
   cardSubtitle: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
   subTitle: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text, marginTop: spacing.sm },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  segment: {
+    flexDirection: 'row',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+  },
+  segBtn: { paddingVertical: 6, paddingHorizontal: spacing.md },
+  segBtnOn: { backgroundColor: colors.text },
+  segText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.textMuted },
+  segTextOn: { color: colors.surface },
 
   person: { gap: 2, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   personTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

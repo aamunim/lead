@@ -11,7 +11,7 @@ import {
   periodRange,
   type LeadReport,
 } from '@/features/reports/api';
-import { FunnelBars } from '@/features/reports/charts';
+import { PipelineBars } from '@/features/reports/charts';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -67,7 +67,8 @@ export function ReportHomeCard() {
         <Stat value={String(s.lost)} label="lost" />
       </View>
 
-      {s.new_leads > 0 && <FunnelBars steps={report.funnel} compact />}
+      {/* Where this month's new leads are now */}
+      {s.new_leads > 0 && <PipelineBars steps={report.pipeline} mode="period" compact />}
     </Pressable>
   );
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { pct, type FunnelStep, type HeatCell } from '@/features/reports/api';
+import { pct, type HeatCell, type PipelineStep } from '@/features/reports/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -32,76 +32,51 @@ export function StatTile({ label, value, hint }: { label: string; value: string;
   );
 }
 
-// --- Funnel -------------------------------------------------------------------
-/** The step with the biggest share lost from the step before it */
-export function biggestDrop(steps: FunnelStep[]): number {
-  let at = -1;
-  let worst = 0;
-  for (let i = 1; i < steps.length; i++) {
-    const prev = steps[i - 1].reached;
-    if (prev <= 0) continue;
-    const lost = (prev - steps[i].reached) / prev;
-    if (lost > worst) {
-      worst = lost;
-      at = i;
-    }
-  }
-  return at;
-}
-
-export function FunnelBars({
+// --- Pipeline now ------------------------------------------------------------
+/** Each lead once, in the stage it is in now (same numbers as the board) */
+export function PipelineBars({
   steps,
+  mode,
   compact = false,
   onPressStep,
 }: {
-  steps: FunnelStep[];
-  /** Home card: thinner bars, no "now in stage" line */
+  steps: PipelineStep[];
+  mode: 'all' | 'period';
+  /** Home card: thinner bars, open stages and Admitted only */
   compact?: boolean;
-  onPressStep?: (step: FunnelStep) => void;
+  onPressStep?: (step: PipelineStep) => void;
 }) {
-  const max = Math.max(1, ...steps.map((s) => s.reached));
-  const drop = biggestDrop(steps);
+  const shown = compact ? steps.filter((s) => s.kind !== 'lost') : steps;
+  const total = shown.reduce((sum, s) => sum + s[mode], 0);
+  const max = Math.max(1, ...shown.map((s) => s[mode]));
 
   return (
     <View style={styles.funnel}>
-      {steps.map((s, i) => {
-        const share = s.reached / max;
-        const fromPrev = i > 0 ? pct(s.reached, steps[i - 1].reached) : null;
-        const isDrop = i === drop;
+      {shown.map((s) => {
+        const n = s[mode];
+        const icon = s.kind === 'won' ? '🎓 ' : s.kind === 'lost' ? '✕ ' : '';
         return (
           <Pressable
             key={s.stage_id}
-            onPress={onPressStep ? () => onPressStep(s) : undefined}
-            disabled={!onPressStep}
+            onPress={onPressStep && n > 0 ? () => onPressStep(s) : undefined}
+            disabled={!onPressStep || n === 0}
             style={({ pressed }) => [styles.fRow, pressed && styles.pressed]}
             accessibilityRole={onPressStep ? 'button' : 'text'}
-            accessibilityLabel={`${s.name}: ${s.reached}${fromPrev ? `, ${fromPrev} of the step before` : ''}${
-              isDrop ? ', biggest drop' : ''
-            }`}
+            accessibilityLabel={`${s.name}: ${n} leads now${onPressStep && n > 0 ? '. Open them' : ''}`}
           >
             <View style={styles.fTop}>
               <Text style={[styles.fName, compact && styles.fNameCompact]} numberOfLines={1}>
-                {s.kind === 'won' ? '🎓 ' : ''}
+                {icon}
                 {s.name}
               </Text>
-              <Text style={styles.fCount}>{s.reached}</Text>
-              <Text style={[styles.fPct, isDrop && styles.fPctDrop]}>{fromPrev ?? ''}</Text>
+              <Text style={styles.fCount}>{n}</Text>
+              <Text style={styles.fPct}>{pct(n, total)}</Text>
             </View>
             <View style={[styles.track, compact && styles.trackCompact]}>
               <View
-                style={[
-                  styles.bar,
-                  compact && styles.trackCompact,
-                  { width: `${Math.max(share * 100, s.reached > 0 ? 2 : 0)}%` },
-                ]}
+                style={[styles.bar, compact && styles.trackCompact, { width: `${Math.max((n / max) * 100, n > 0 ? 2 : 0)}%` }]}
               />
             </View>
-            {!compact && (isDrop || s.now > 0) && (
-              <Text style={[styles.fNote, isDrop && styles.fNoteDrop]}>
-                {isDrop ? '▼ Biggest drop · ' : ''}
-                {s.now > 0 ? `${s.now} in this stage now${onPressStep ? ' ›' : ''}` : ''}
-              </Text>
-            )}
           </Pressable>
         );
       })}
@@ -256,12 +231,9 @@ const styles = StyleSheet.create({
   fNameCompact: { fontSize: fontSize.caption },
   fCount: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text, minWidth: 28, textAlign: 'right' },
   fPct: { fontSize: fontSize.caption, color: colors.textMuted, minWidth: 40, textAlign: 'right' },
-  fPctDrop: { color: colors.danger, fontWeight: fontWeight.bold },
   track: { height: 10, borderRadius: 4, backgroundColor: TRACK, overflow: 'hidden' },
   trackCompact: { height: 6 },
   bar: { height: 10, borderRadius: 4, backgroundColor: BAR },
-  fNote: { fontSize: 11, color: colors.textMuted },
-  fNoteDrop: { color: colors.danger, fontWeight: fontWeight.semibold },
 
   heat: { gap: 3 },
   heatBest: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text, marginBottom: spacing.sm },

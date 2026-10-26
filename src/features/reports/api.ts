@@ -13,7 +13,7 @@ export type ReportSection = 'summary' | 'funnel' | 'visits' | 'sources' | 'team'
 
 export const SECTION_LABELS: Record<ReportSection, { title: string; text: string }> = {
   summary: { title: 'Summary', text: 'New leads, contacted, admitted, conversion, lost' },
-  funnel: { title: 'Funnel', text: 'How far the leads added in the period got' },
+  funnel: { title: 'Pipeline now', text: 'How many leads are in each stage right now (same as the board)' },
   visits: { title: 'Campus visits', text: 'Visited / didn’t come, and admissions with or without a visit' },
   sources: { title: 'Sources & campaigns', text: 'Where leads and admissions come from' },
   team: { title: 'Team', text: 'Leads, calls, talk time and admissions per person' },
@@ -114,16 +114,17 @@ export function periodRange(period: Period, now = new Date()): { from: string; t
 // =====================================================================
 // Data
 // =====================================================================
-export type FunnelStep = {
+/** One stage, counted like the board: each lead once, in the stage it is in now */
+export type PipelineStep = {
   stage_id: string;
   key: string;
   name: string;
   color: string;
-  kind: 'open' | 'won';
-  /** Leads added in the period that got at least this far */
-  reached: number;
-  /** Of those, how many are in this stage now */
-  now: number;
+  kind: 'open' | 'won' | 'lost';
+  /** Every lead (the period is not used) */
+  all: number;
+  /** Only the leads added in the period */
+  period: number;
 };
 
 export type NamedCount = { name: string; leads: number; admitted?: number };
@@ -149,7 +150,7 @@ export type LeadReport = {
     lost: number;
     avg_days_to_admit: number | null;
   };
-  funnel: FunnelStep[];
+  pipeline: PipelineStep[];
   visits: {
     planned_now: number;
     visited: number;
