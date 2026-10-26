@@ -63,6 +63,13 @@ type FeedItem =
   | { kind: 'call'; key: string; at: string; call: CallLog }
   | { kind: 'note'; key: string; at: string; note: LeadNote };
 
+/** When a note was written: exact time, only the day, or none (typed on the edit screen) */
+function noteWhen(n: LeadNote): string {
+  if (n.when === 'exact') return formatDateTime(n.at);
+  if (n.when === 'day') return new Date(n.at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  return 'Lead notes';
+}
+
 function initials(name: string): string {
   return name
     .split(' ')
@@ -391,6 +398,10 @@ export default function LeadDetailScreen() {
     ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   }, [lead, calls, activity]);
 
+  // Newest call and newest note, for the top card
+  const lastCall = feed.find((f) => f.kind === 'call')?.call ?? null;
+  const lastNote = feed.find((f) => f.kind === 'note')?.note ?? null;
+
   // Long lists show the newest few until "View more"
   const feedMore = useShowMore(feed, 3);
   const activityMore = useShowMore(activity, 5);
@@ -501,6 +512,52 @@ export default function LeadDetailScreen() {
             <ActionButton label="WhatsApp" icon="💬" color="#1F7A57" onPress={() => whatsapp(lead.phone)} />
             <ActionButton label="SMS" icon="✉️" color={colors.info} onPress={() => sms(lead.phone)} />
           </View>
+
+          {/* Last call and last note at a glance */}
+          {(lastCall || lastNote) && (
+            <View style={styles.recent}>
+              {lastCall && (
+                <View style={styles.recentRow}>
+                  <Text style={styles.recentIcon}>📞</Text>
+                  <View style={styles.flex}>
+                    <Text style={styles.recentTitle} numberOfLines={1}>
+                      Last call:{' '}
+                      <Text style={{ color: outcomeInfo(lastCall.outcome).color }}>
+                        {lastCall.direction === 'incoming' && lastCall.outcome === 'connected' ? 'Incoming · ' : ''}
+                        {outcomeInfo(lastCall.outcome).label}
+                      </Text>
+                      {lastCall.duration_sec && lastCall.duration_sec > 0
+                        ? ` · ${formatDuration(lastCall.duration_sec)}`
+                        : ''}
+                    </Text>
+                    <Text style={styles.timelineMeta}>
+                      {formatDateTime(lastCall.called_at)}
+                      {lastCall.caller ? ` · ${personName(lastCall.caller)}` : ''}
+                    </Text>
+                    {lastCall.notes && (
+                      <Text style={styles.callNotes} numberOfLines={2}>
+                        “{lastCall.notes}”
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )}
+              {lastNote && (
+                <View style={styles.recentRow}>
+                  <Text style={styles.recentIcon}>📝</Text>
+                  <View style={styles.flex}>
+                    <Text style={styles.recentTitle} numberOfLines={2}>
+                      Last note: <Text style={styles.recentNote}>{lastNote.text}</Text>
+                    </Text>
+                    <Text style={styles.timelineMeta}>
+                      {noteWhen(lastNote)}
+                      {lastNote.author ? ` · ${lastNote.author}` : ''}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Pipeline: step bar, Admitted / Lost, or the closed status */}
@@ -612,12 +669,6 @@ export default function LeadDetailScreen() {
             feedMore.visible.map((item) => {
               if (item.kind === 'note') {
                 const n = item.note;
-                const when =
-                  n.when === 'exact'
-                    ? formatDateTime(n.at)
-                    : n.when === 'day'
-                      ? new Date(n.at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })
-                      : 'Lead notes';
                 return (
                   <View key={item.key} style={styles.callRow}>
                     <View style={[styles.dirBadge, { backgroundColor: colors.primarySoft }]}>
@@ -627,7 +678,7 @@ export default function LeadDetailScreen() {
                       <Text style={[styles.callOutcome, { color: colors.primary }]}>Note</Text>
                       <NoteText text={n.text} />
                       <Text style={styles.timelineMeta}>
-                        {when}
+                        {noteWhen(n)}
                         {n.author ? ` · ${n.author}` : ''}
                       </Text>
                     </View>
@@ -884,6 +935,11 @@ const styles = StyleSheet.create({
   pill: { paddingVertical: 3, paddingHorizontal: spacing.md, borderRadius: radius.pill },
   pillText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold },
   actions: { flexDirection: 'row', gap: spacing.sm },
+  recent: { gap: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  recentRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
+  recentIcon: { fontSize: 16, marginTop: 1 },
+  recentTitle: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text },
+  recentNote: { fontWeight: fontWeight.regular },
   actionBtn: {
     flex: 1,
     alignItems: 'center',
