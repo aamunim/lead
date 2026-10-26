@@ -130,7 +130,7 @@ export function canUndo(batch: ImportBatch): boolean {
 const EXPORT_SELECT = `
   name, phone, alt_phone, email, area,
   guardian_name, guardian_phone, guardian_relation,
-  rating, notes, referred_by, created_at, next_follow_up_at, last_contacted_at,
+  rating, notes, referred_by, created_at, next_follow_up_at, last_contacted_at, visit_status, visit_at,
   stage:pipeline_stages(name),
   source:lead_sources(name),
   campaign:campaigns(name),
@@ -155,6 +155,8 @@ type ExportLead = {
   created_at: string;
   next_follow_up_at: string | null;
   last_contacted_at: string | null;
+  visit_status: string | null;
+  visit_at: string | null;
   stage: { name: string } | null;
   source: { name: string } | null;
   campaign: { name: string } | null;
@@ -168,8 +170,15 @@ const EXPORT_HEADERS = [
   'Name', 'Phone', 'Alternative phone', 'Email', 'Area',
   'Guardian name', 'Guardian phone', 'Guardian relation',
   'Courses', 'Stage', 'Rating', 'Source', 'Campaign', 'Referred by', 'Lead type', 'Tags',
-  'Assigned to', 'Created', 'Next follow-up', 'Last contacted', 'Notes',
+  'Assigned to', 'Created', 'Next follow-up', 'Last contacted', 'Campus visit', 'Notes',
 ];
+
+/** "Planned · 28 Oct 2026, 11:00", "Visited · …", "Didn't come · …" */
+function visitText(status: string | null, at: string | null): string {
+  const label = status === 'planned' ? 'Planned' : status === 'visited' ? 'Visited' : status === 'missed' ? "Didn't come" : '';
+  if (!label) return '';
+  return at ? `${label} · ${dateText(at)}` : label;
+}
 
 const dateText = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '';
@@ -244,6 +253,7 @@ export async function exportLeads(filters: ExportFilters, userId: string): Promi
     dateText(l.created_at),
     dateText(l.next_follow_up_at),
     dateText(l.last_contacted_at),
+    visitText(l.visit_status, l.visit_at),
     l.notes,
   ]);
 

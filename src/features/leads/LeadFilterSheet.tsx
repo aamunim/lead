@@ -25,6 +25,7 @@ import {
   LAST_CONTACTED_OPTIONS,
   NONE,
   PAPERS_OPTIONS,
+  VISIT_OPTIONS,
   cleanFilters,
   countActiveFilters,
   createSavedFilter,
@@ -153,7 +154,8 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
             .filter((k) => k !== 'assigned' || showAssigned),
         );
         setOptions({
-          stages: toOpts(stages),
+          // Switched-off stages hold no leads (e.g. the old "Campus visit")
+          stages: toOpts(stages.filter((s) => s.is_active !== false)),
           tags: toOpts(tags),
           users: [
             ...users.map((u) => ({ value: u.id, label: u.full_name ?? 'No name' })),
@@ -180,7 +182,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
     });
   };
 
-  const setSingle = <K extends 'followUp' | 'created' | 'lastContacted' | 'admitted' | 'papers'>(
+  const setSingle = <K extends 'followUp' | 'created' | 'lastContacted' | 'admitted' | 'papers' | 'visit'>(
     key: K,
     v: LeadFilters[K],
   ) => {
@@ -197,6 +199,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
       if (key === 'last_contacted') delete next.lastContacted;
       if (key === 'admitted') delete next.admitted;
       if (key === 'papers') delete next.papers;
+      if (key === 'visit') delete next.visit;
       return next;
     });
   };
@@ -209,6 +212,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
     if (key === 'last_contacted') return !!draft.lastContacted;
     if (key === 'admitted') return !!draft.admitted;
     if (key === 'papers') return !!draft.papers;
+    if (key === 'visit') return !!draft.visit;
     return false;
   };
 
@@ -370,6 +374,21 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
             </View>
             <Text style={styles.hint}>Open leads and admitted students (lost and cancelled left out).</Text>
           </>
+        );
+        break;
+      case 'visit':
+        body = (
+          <View style={styles.chips}>
+            {VISIT_OPTIONS.map((o) => (
+              <Chip
+                key={o.value}
+                label={o.label}
+                color={o.value === 'visited' ? colors.success : o.value === 'overdue' ? colors.danger : undefined}
+                on={draft.visit === o.value}
+                onPress={() => setSingle('visit', o.value)}
+              />
+            ))}
+          </View>
         );
         break;
     }

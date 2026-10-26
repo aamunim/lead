@@ -352,7 +352,7 @@ function StageSheet({
               <TextInput
                 value={form.name}
                 onChangeText={(t) => set('name', t)}
-                placeholder="e.g. Campus visit"
+                placeholder="e.g. Interview"
                 placeholderTextColor={colors.textMuted}
                 maxLength={40}
                 style={styles.input}
