@@ -8,6 +8,7 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { canSyncCalls, isCallLogAvailable, isCallSyncEnabled } from '@/features/call-sync/api';
 import { listSyncHealth } from '@/features/call-sync/health';
 import { canImportContacts } from '@/features/contacts/api';
+import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -20,6 +21,7 @@ export default function MoreScreen() {
   const [callSyncAllowed, setCallSyncAllowed] = useState(false);
   const [callSyncOn, setCallSyncOn] = useState(false);
   const [syncProblems, setSyncProblems] = useState(0);
+  const [reportsAllowed, setReportsAllowed] = useState(false);
 
   const canManageUsers = hasPermission('users.manage');
   const canManageSettings = hasPermission('settings.manage');
@@ -40,6 +42,8 @@ export default function MoreScreen() {
         .then(setContactsAllowed)
         .catch(() => setContactsAllowed(false));
 
+      getReportSettings().then((s) => setReportsAllowed(canSeeReports(s, profile, canManageSettings)));
+
       // Call log sync only exists in the Android app (not Expo Go / iPhone)
       if (isCallLogAvailable) {
         canSyncCalls()
@@ -59,7 +63,7 @@ export default function MoreScreen() {
       countPendingUsers()
         .then(setPendingCount)
         .catch(() => setPendingCount(0));
-    }, [canManageUsers, canSeeSyncHealth]),
+    }, [canManageUsers, canSeeSyncHealth, profile, canManageSettings]),
   );
 
   const handleSignOut = async () => {
@@ -88,6 +92,16 @@ export default function MoreScreen() {
           </View>
         </View>
       </View>
+
+      {/* Reports (Settings → Reports decides who) */}
+      {reportsAllowed && (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>REPORTS</Text>
+          <View style={styles.group}>
+            <Row icon="📊" title="Reports" subtitle="Funnel, sources, team, best time to call" href="/reports" />
+          </View>
+        </View>
+      )}
 
       {/* Tools (for anyone who is allowed) */}
       {showTools && (
