@@ -21,12 +21,15 @@ import { markCallFromApp } from '@/features/call-sync/api';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { LeadQuickSheet, type QuickField } from '@/features/leads/LeadQuickSheet';
+import { LeadSortSheet, loadLeadSort, saveLeadSort, sortLabel } from '@/features/leads/LeadSortSheet';
 import {
+  DEFAULT_SORT,
   MAX_MARK_ALL,
   listAllMatchingLeads,
   listLeads,
   type ClosedMode,
   type LeadListItem,
+  type LeadSort,
   type QuickFilter,
 } from '@/features/leads/api';
 import {
@@ -117,6 +120,25 @@ export default function LeadsScreen() {
   const showAssignee = assignmentOn && seesOthers;
 
   const [quick, setQuick] = useState<QuickFilter>('all');
+
+  // Sort: kept on this phone
+  const [sort, setSort] = useState<LeadSort>(DEFAULT_SORT);
+  const [sortSheetVisible, setSortSheetVisible] = useState(false);
+  useEffect(() => {
+    loadLeadSort().then((saved) => {
+      if (saved !== DEFAULT_SORT) {
+        setLoading(true);
+        setSort(saved);
+      }
+    });
+  }, []);
+  const pickSort = (next: LeadSort) => {
+    setSortSheetVisible(false);
+    if (next === sort) return;
+    saveLeadSort(next);
+    setLoading(true);
+    setSort(next);
+  };
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -211,6 +233,7 @@ export default function LeadsScreen() {
         userId: profile?.id,
         filters: effectiveFilters,
         closedMode,
+        sort,
         page: 0,
       });
       if (myRequest !== requestId.current) return;
@@ -227,7 +250,7 @@ export default function LeadsScreen() {
         setRefreshing(false);
       }
     }
-  }, [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode]);
+  }, [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort]);
 
   const loadSavedFilters = useCallback(async () => {
     try {
@@ -283,6 +306,7 @@ export default function LeadsScreen() {
         userId: profile?.id,
         filters: effectiveFilters,
         closedMode,
+        sort,
         page: next,
       });
       setLeads((list) => [...list, ...result.items]);
@@ -401,6 +425,7 @@ export default function LeadsScreen() {
         userId: profile?.id,
         filters: effectiveFilters,
         closedMode,
+        sort,
       });
       setMatchingCache(all);
       setSelected(new Set(all.map((l) => l.id)));
@@ -513,18 +538,32 @@ export default function LeadsScreen() {
         </ScrollView>
       )}
 
-      {/* Count line */}
-      {!selecting && !loading && (
+      {/* Count line + sort */}
+      {!selecting && (
         <View style={styles.countRow}>
-          <Text style={styles.countText}>
-            {total ?? leads.length} {(total ?? leads.length) === 1 ? 'lead' : 'leads'}
-            {listIsFiltered ? ' found' : ''}
+          <Text style={[styles.countText, styles.countGrow]} numberOfLines={1}>
+            {loading
+              ? ' '
+              : `${total ?? leads.length} ${(total ?? leads.length) === 1 ? 'lead' : 'leads'}${listIsFiltered ? ' found' : ''}`}
           </Text>
           {filterCount > 0 && (
             <Pressable onPress={() => applyFilters({}, null)} hitSlop={8} accessibilityRole="button">
               <Text style={styles.clearFilters}>Clear filters</Text>
             </Pressable>
           )}
+          <Pressable
+            onPress={() => setSortSheetVisible(true)}
+            hitSlop={8}
+            style={({ pressed }) => [styles.sortBtn, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Sort: ${sortLabel(sort)}. Change`}
+          >
+            <Ionicons name="swap-vertical" size={14} color={sort === DEFAULT_SORT ? colors.textMuted : colors.primary} />
+            <Text style={[styles.sortText, sort !== DEFAULT_SORT && styles.sortTextOn]} numberOfLines={1}>
+              {sortLabel(sort)}
+            </Text>
+            <Ionicons name="chevron-down" size={12} color={sort === DEFAULT_SORT ? colors.textMuted : colors.primary} />
+          </Pressable>
         </View>
       )}
 
@@ -653,6 +692,13 @@ export default function LeadsScreen() {
           <Text style={styles.fabText}>＋</Text>
         </Pressable>
       )}
+
+      <LeadSortSheet
+        visible={sortSheetVisible}
+        value={sort}
+        onClose={() => setSortSheetVisible(false)}
+        onPick={pickSort}
+      />
 
       <LeadFilterSheet
         visible={filterSheetVisible}
@@ -934,17 +980,21 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 10, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
 
   // Chips
-  chipsScroll: { flexGrow: 0 },
+  // The row keeps its full height (Android squeezed it and cut the chips)
+  chipsScroll: { flexGrow: 0, flexShrink: 0 },
   chips: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.xl,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
   chip: {
-    paddingVertical: spacing.xs + 2,
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     borderWidth: 1,
@@ -967,6 +1017,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   countText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.textMuted },
+  countGrow: { flex: 1 },
+  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: spacing.md, maxWidth: '60%' },
+  sortText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.textMuted, flexShrink: 1 },
+  sortTextOn: { color: colors.primary },
   clearFilters: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.danger },
 
   // List
