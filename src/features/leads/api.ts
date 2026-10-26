@@ -112,6 +112,30 @@ export type QuickFilter = 'all' | 'mine' | 'new' | 'hot' | 'unassigned' | 'close
  */
 export type ClosedMode = 'hide' | 'show';
 
+/** How the list is ordered (chosen on the list, remembered on the phone) */
+export type LeadSort =
+  | 'next_call'
+  | 'newest'
+  | 'oldest'
+  | 'name'
+  | 'not_contacted_longest'
+  | 'recently_contacted'
+  | 'visit_date'
+  | 'papers_missing';
+
+export const DEFAULT_SORT: LeadSort = 'next_call';
+
+export const SORT_OPTIONS: { value: LeadSort; label: string; text: string; icon: string }[] = [
+  { value: 'next_call', label: 'Next call', text: 'Soonest call first', icon: '⏰' },
+  { value: 'newest', label: 'Newest first', text: 'Last added first', icon: '🆕' },
+  { value: 'oldest', label: 'Oldest first', text: 'First added first', icon: '📜' },
+  { value: 'name', label: 'Name A–Z', text: 'By name', icon: '🔤' },
+  { value: 'not_contacted_longest', label: 'Not contacted longest', text: 'Never called first, then the longest wait', icon: '📞' },
+  { value: 'recently_contacted', label: 'Recently contacted', text: 'Last talked to first', icon: '🕐' },
+  { value: 'visit_date', label: 'Campus visit date', text: 'Earliest visit first, no visit last', icon: '🏫' },
+  { value: 'papers_missing', label: 'Most papers missing', text: 'Most required papers still to collect first', icon: '📄' },
+];
+
 /** Everything the list can be narrowed by */
 export type LeadQuery = {
   search?: string;
@@ -120,6 +144,7 @@ export type LeadQuery = {
   userId?: string;       // the signed-in user, for "mine"
   filters?: LeadFilters;
   closedMode?: ClosedMode;
+  sort?: LeadSort;
 };
 
 export type DuplicateLead = {
@@ -178,7 +203,15 @@ export const MAX_MARK_ALL = 2000;
 
 /** Builds the leads query with search, quick filter and the full filters */
 function buildLeadQuery(options: LeadQuery, withCount: boolean) {
-  const { search = '', quick = 'all', stageId = null, userId, filters = {}, closedMode = 'hide' } = options;
+  const {
+    search = '',
+    quick = 'all',
+    stageId = null,
+    userId,
+    filters = {},
+    closedMode = 'hide',
+    sort = DEFAULT_SORT,
+  } = options;
 
   let query = supabase
     .from('leads')
@@ -211,9 +244,42 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
   // Full filters
   query = applyLeadFilters(query, filters);
 
-  return query
-    .order('next_follow_up_at', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: false });
+  return orderLeads(query, sort);
+}
+
+/**
+ * The order for each sort. Every sort ends with the id, so leads with the same
+ * value (e.g. the same name) never show twice or go missing between pages.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: LeadSort): Q {
+  let q = query;
+  switch (sort) {
+    case 'newest':
+      q = q.order('created_at', { ascending: false });
+      break;
+    case 'oldest':
+      q = q.order('created_at', { ascending: true });
+      break;
+    case 'name':
+      q = q.order('name', { ascending: true }).order('created_at', { ascending: false });
+      break;
+    case 'not_contacted_longest':
+      q = q.order('last_contacted_at', { ascending: true, nullsFirst: true }).order('created_at', { ascending: true });
+      break;
+    case 'recently_contacted':
+      q = q.order('last_contacted_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+      break;
+    case 'visit_date':
+      q = q.order('visit_at', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
+      break;
+    case 'papers_missing':
+      q = q.order('papers_missing', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+      break;
+    default:
+      q = q.order('next_follow_up_at', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
+  }
+  return q.order('id', { ascending: true });
 }
 
 /** Strip the helper joins used only for filtering */
