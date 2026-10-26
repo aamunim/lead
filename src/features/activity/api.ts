@@ -1,0 +1,385 @@
+import { getSetting, updateSetting } from '@/features/settings/api';
+import { supabase } from '@/shared/lib/supabase';
+import type { Json } from '@/shared/types/database';
+
+// =====================================================================
+// 👁 Team activity: settings, data and the words for each change
+//   Admins see everyone; Team Leads their team (setting); callers no one.
+//   The database checks this again (can_see_activity).
+// =====================================================================
+
+export type ActivitySettings = {
+  /** Count app time (the change log always works) */
+  enabled: boolean;
+  /** Team Leads see their team's activity */
+  team_leads: boolean;
+  /** Counting app time stops after this many minutes without a touch */
+  idle_minutes: number;
+  /** ⚠ after this many minutes without work, in office hours */
+  alert_minutes: number;
+  /** App sessions are kept this many days */
+  keep_days: number;
+};
+
+export const DEFAULT_ACTIVITY: ActivitySettings = {
+  enabled: true,
+  team_leads: true,
+  idle_minutes: 10,
+  alert_minutes: 60,
+  keep_days: 90,
+};
+
+export async function getActivitySettings(): Promise<ActivitySettings> {
+  try {
+    const saved = await getSetting<Partial<ActivitySettings>>('activity');
+    return { ...DEFAULT_ACTIVITY, ...(saved ?? {}) };
+  } catch {
+    return DEFAULT_ACTIVITY;
+  }
+}
+
+export async function saveActivitySettings(settings: ActivitySettings): Promise<void> {
+  await updateSetting('activity', settings as unknown as Json);
+}
+
+/** Show the activity screens to this person? */
+export function canOpenActivity(
+  settings: ActivitySettings,
+  hasPermission: (p: string) => boolean,
+): boolean {
+  if (hasPermission('settings.manage') || hasPermission('leads.view_all')) return true;
+  return settings.team_leads && hasPermission('leads.view_team');
+}
+
+function toError(error: { message: string }): Error {
+  const m = error.message.toLowerCase();
+  if (m.includes('network request failed') || m.includes('fetch')) {
+    return new Error('No internet connection. Please try again.');
+  }
+  return new Error(error.message);
+}
+
+// =====================================================================
+// Periods
+// =====================================================================
+export type ActivityPeriod = 'today' | 'yesterday' | 'week' | 'month';
+
+export const ACTIVITY_PERIODS: { value: ActivityPeriod; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'week', label: 'This week' },
+  { value: 'month', label: 'This month' },
+];
+
+function day(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function activityRange(period: ActivityPeriod, now = new Date()): { from: string; to: string } {
+  switch (period) {
+    case 'yesterday': {
+      const y = new Date(now);
+      y.setDate(now.getDate() - 1);
+      return { from: day(y), to: day(y) };
+    }
+    case 'week': {
+      // Week starts on Saturday
+      const start = new Date(now);
+      start.setDate(now.getDate() - ((now.getDay() + 1) % 7));
+      return { from: day(start), to: day(now) };
+    }
+    case 'month':
+      return { from: day(new Date(now.getFullYear(), now.getMonth(), 1)), to: day(now) };
+    default:
+      return { from: day(now), to: day(now) };
+  }
+}
+
+// =====================================================================
+// Data
+// =====================================================================
+export type TeamMember = {
+  user_id: string;
+  name: string | null;
+  role_key: string;
+  last_seen_at: string | null;
+  app_sec: number;
+  sessions: number;
+  calls: number;
+  connected: number;
+  talk_sec: number;
+  actions: number;
+  admitted: number;
+  first_at: string | null;
+  last_at: string | null;
+};
+
+export async function listTeamActivity(from: string, to: string): Promise<TeamMember[]> {
+  const { data, error } = await supabase.rpc('team_activity', { p_from: from, p_to: to });
+  if (error) throw toError(error);
+  return (data ?? []) as TeamMember[];
+}
+
+export type FeedItem = {
+  id: string;
+  created_at: string;
+  action: string;
+  details: Record<string, unknown> | null;
+  lead_id: string;
+  lead_name: string;
+  lead_phone: string;
+  user_id: string;
+  user_name: string | null;
+};
+
+export type FeedQuery = {
+  from: string;
+  to: string;
+  userId?: string | null;
+  actions?: string[] | null;
+  search?: string;
+  before?: string | null;
+};
+
+export const FEED_PAGE = 100;
+
+export async function listActivityFeed(q: FeedQuery): Promise<FeedItem[]> {
+  const { data, error } = await supabase.rpc('activity_feed', {
+    p_from: q.from,
+    p_to: q.to,
+    p_user_id: q.userId ?? undefined,
+    p_actions: q.actions && q.actions.length > 0 ? q.actions : undefined,
+    p_search: q.search?.trim() || undefined,
+    p_before: q.before ?? undefined,
+    p_limit: FEED_PAGE,
+  });
+  if (error) throw toError(error);
+  return (data ?? []) as unknown as FeedItem[];
+}
+
+export async function countActivity(q: FeedQuery): Promise<Map<string, number>> {
+  const { data, error } = await supabase.rpc('activity_counts', {
+    p_from: q.from,
+    p_to: q.to,
+    p_user_id: q.userId ?? undefined,
+    p_search: q.search?.trim() || undefined,
+  });
+  if (error) throw toError(error);
+  return new Map((data ?? []).map((r) => [r.action, r.n]));
+}
+
+export type ActivityDay = { day: string; app_sec: number; actions: number; calls: number };
+
+export async function listUserDays(userId: string, days = 14): Promise<ActivityDay[]> {
+  const { data, error } = await supabase.rpc('user_activity_days', { p_user_id: userId, p_days: days });
+  if (error) throw toError(error);
+  return (data ?? []) as ActivityDay[];
+}
+
+export type AppSession = {
+  id: string;
+  started_at: string;
+  last_seen_at: string;
+  active_sec: number;
+  ended: boolean;
+  device_label: string | null;
+  app_version: string | null;
+};
+
+/** One person's app sessions that started on the days from..to (phone's time) */
+export async function listUserSessions(userId: string, from: string, to: string): Promise<AppSession[]> {
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  end.setDate(end.getDate() + 1);
+  const { data, error } = await supabase
+    .from('app_sessions')
+    .select('id, started_at, last_seen_at, active_sec, ended, device_label, app_version')
+    .eq('user_id', userId)
+    .gte('started_at', start.toISOString())
+    .lt('started_at', end.toISOString())
+    .order('started_at', { ascending: false })
+    .limit(200);
+  if (error) throw toError(error);
+  return (data ?? []) as AppSession[];
+}
+
+// =====================================================================
+// Kinds of change (filter chips) and how each line reads
+// =====================================================================
+export type ChangeKind =
+  | 'stage'
+  | 'tag'
+  | 'call'
+  | 'note'
+  | 'followup'
+  | 'assign'
+  | 'rating'
+  | 'details'
+  | 'visit'
+  | 'papers'
+  | 'lead';
+
+export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; actions: string[] }[] = [
+  { kind: 'stage', label: 'Stage', icon: '🚩', actions: ['stage_changed'] },
+  { kind: 'tag', label: 'Tag', icon: '🏷', actions: ['tag_added', 'tag_removed'] },
+  { kind: 'call', label: 'Call', icon: '📞', actions: ['call_logged'] },
+  { kind: 'note', label: 'Note', icon: '📝', actions: ['note_added', 'note_edited'] },
+  { kind: 'followup', label: 'Next call', icon: '⏰', actions: ['follow_up_set', 'follow_up_cancelled'] },
+  { kind: 'assign', label: 'Assign', icon: '👥', actions: ['assigned'] },
+  { kind: 'rating', label: 'Rating', icon: '⭐', actions: ['rating_changed'] },
+  {
+    kind: 'details',
+    label: 'Details',
+    icon: '✏️',
+    actions: ['details_changed', 'fields_changed', 'course_added', 'course_removed'],
+  },
+  {
+    kind: 'visit',
+    label: 'Visit',
+    icon: '🏫',
+    actions: ['visit_planned', 'visit_moved', 'visit_done', 'visit_missed', 'visit_cancelled'],
+  },
+  {
+    kind: 'papers',
+    label: 'Papers',
+    icon: '📄',
+    actions: ['paper_received', 'paper_not_needed', 'paper_unticked', 'paper_returned', 'papers_moved'],
+  },
+  { kind: 'lead', label: 'Added / deleted', icon: '➕', actions: ['created', 're_enquiry', 'deleted', 'restored'] },
+];
+
+export function kindOf(action: string) {
+  return CHANGE_KINDS.find((k) => k.actions.includes(action)) ?? null;
+}
+
+export type StageInfo = { name: string; kind: string };
+
+function when(iso?: unknown): string {
+  if (typeof iso !== 'string') return '';
+  const d = new Date(iso);
+  return `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${d.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  })}`;
+}
+
+const q = (v: unknown) => (v == null || v === '' ? '—' : String(v));
+
+/**
+ * What changed, in words. "warn" = worth a second look (lost, cancelled, deleted).
+ * userNames: id → name, for "Assigned to …".
+ */
+export function describeChange(
+  item: Pick<FeedItem, 'action' | 'details'>,
+  stages: Map<string, StageInfo>,
+  userNames: Map<string, string>,
+): { text: string; warn: boolean } {
+  const d = (item.details ?? {}) as Record<string, unknown>;
+  switch (item.action) {
+    case 'stage_changed': {
+      const to = stages.get(String(d.to ?? ''));
+      return {
+        text: `${stages.get(String(d.from ?? ''))?.name ?? '—'} → ${to?.name ?? '—'}`,
+        warn: to?.kind === 'lost' || to?.kind === 'cancelled',
+      };
+    }
+    case 'tag_added':
+      return { text: `+ ${q(d.tag)}`, warn: false };
+    case 'tag_removed':
+      return { text: `− ${q(d.tag)}`, warn: false };
+    case 'course_added':
+      return { text: `Course + ${q(d.course)}`, warn: false };
+    case 'course_removed':
+      return { text: `Course − ${q(d.course)}`, warn: false };
+    case 'call_logged':
+      return { text: `${String(d.direction ?? '') === 'incoming' ? 'Incoming · ' : ''}${q(d.outcome).replace(/_/g, ' ')}`, warn: false };
+    case 'note_added':
+      return { text: `“${q(d.note)}”`, warn: false };
+    case 'note_edited':
+      return { text: `Notes edited: “${q(d.to)}”`, warn: false };
+    case 'follow_up_set':
+      return { text: `Next call ${when(d.due_at)}`, warn: false };
+    case 'follow_up_cancelled':
+      return { text: 'Next call removed', warn: false };
+    case 'assigned':
+      return {
+        text: d.to ? `→ ${userNames.get(String(d.to)) ?? 'someone'}` : 'Unassigned',
+        warn: false,
+      };
+    case 'rating_changed':
+      return { text: `${q(d.from)} → ${q(d.to)}`, warn: false };
+    case 'details_changed':
+      return {
+        text: [
+          d.old_name !== d.new_name ? `Name: ${q(d.old_name)} → ${q(d.new_name)}` : null,
+          d.old_phone !== d.new_phone ? `Phone: ${q(d.old_phone)} → ${q(d.new_phone)}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        warn: false,
+      };
+    case 'fields_changed': {
+      const changes = (Array.isArray(d.changes) ? d.changes : []) as { field: string; from: unknown; to: unknown }[];
+      return { text: changes.map((c) => `${c.field}: ${q(c.from)} → ${q(c.to)}`).join(' · '), warn: false };
+    }
+    case 'visit_planned':
+      return { text: `Visit planned ${when(d.at)}`, warn: false };
+    case 'visit_moved':
+      return { text: `Visit moved to ${when(d.at)}`, warn: false };
+    case 'visit_done':
+      return { text: 'Visited the campus', warn: false };
+    case 'visit_missed':
+      return { text: 'Didn’t come to the visit', warn: false };
+    case 'visit_cancelled':
+      return { text: 'Visit cancelled', warn: false };
+    case 'paper_received':
+      return { text: `${q(d.paper)} received`, warn: false };
+    case 'paper_not_needed':
+      return { text: `${q(d.paper)}: not needed`, warn: false };
+    case 'paper_unticked':
+      return { text: `${q(d.paper)} unticked`, warn: false };
+    case 'paper_returned':
+      return { text: `${q(d.paper)} returned`, warn: false };
+    case 'papers_moved':
+      return { text: d.kept_at ? `Kept at ${q(d.kept_at)}` : 'Place removed', warn: false };
+    case 'created':
+      return { text: 'Lead added', warn: false };
+    case 're_enquiry':
+      return { text: 'Asked again (re-enquiry)', warn: false };
+    case 'deleted':
+      return { text: 'Lead deleted', warn: true };
+    case 'restored':
+      return { text: 'Lead restored', warn: false };
+    default:
+      return { text: item.action.replace(/_/g, ' '), warn: false };
+  }
+}
+
+/** Same change by the same person to many leads within 2 minutes → one group */
+export type FeedGroup = { key: string; items: FeedItem[] };
+
+export function groupFeed(items: FeedItem[]): FeedGroup[] {
+  const groups: FeedGroup[] = [];
+  const sameChange = (a: FeedItem, b: FeedItem) =>
+    a.user_id === b.user_id &&
+    a.action === b.action &&
+    a.lead_id !== b.lead_id &&
+    JSON.stringify(a.details?.to ?? a.details?.tag ?? a.details?.course ?? null) ===
+      JSON.stringify(b.details?.to ?? b.details?.tag ?? b.details?.course ?? null) &&
+    Math.abs(new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) < 2 * 60 * 1000 &&
+    !['call_logged', 'note_added', 'note_edited', 'fields_changed', 'details_changed'].includes(a.action);
+
+  for (const item of items) {
+    const last = groups[groups.length - 1];
+    if (last && sameChange(last.items[last.items.length - 1], item)) last.items.push(item);
+    else groups.push({ key: item.id, items: [item] });
+  }
+  return groups;
+}
+
+export function formatDuration(sec: number): string {
+  if (sec < 60) return sec > 0 ? '<1m' : '0m';
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
