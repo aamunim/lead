@@ -16,6 +16,7 @@ import { formatDue } from '@/features/follow-ups/api';
 import { type LeadDetail } from '@/features/leads/api';
 import { AdmitSheet } from '@/features/pipeline/AdmitSheet';
 import { LostSheet } from '@/features/pipeline/LostSheet';
+import { MoveStageSheet } from '@/features/pipeline/MoveStageSheet';
 import {
   canCancelAdmission,
   CANCEL_REASONS,
@@ -30,7 +31,6 @@ import {
 import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
-import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { TextField } from '@/shared/ui/TextField';
 
 // =====================================================================
@@ -311,7 +311,7 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
         }}
       />
 
-      <MoveSheet
+      <MoveStageSheet
         visible={sheet === 'move'}
         stage={moveStage}
         isCurrent={!!moveStage && moveStage.id === lead.stage_id}
@@ -349,151 +349,6 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
         }}
       />
     </View>
-  );
-}
-
-// =====================================================================
-// Moving to a stage that needs a note and/or a date (e.g. Campus visit)
-// =====================================================================
-function quickDates(): { key: string; label: string; date: Date }[] {
-  const at11 = (daysAhead: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + daysAhead);
-    d.setHours(11, 0, 0, 0);
-    return d;
-  };
-  return [
-    { key: 'tomorrow', label: 'Tomorrow 11 am', date: at11(1) },
-    { key: '2d', label: 'In 2 days 11 am', date: at11(2) },
-    { key: '1w', label: 'Next week 11 am', date: at11(7) },
-  ];
-}
-
-function MoveSheet({
-  visible,
-  stage,
-  isCurrent,
-  onClose,
-  onSave,
-}: {
-  visible: boolean;
-  stage: PipelineStage | null;
-  /** Changing the date of the stage the lead is already in */
-  isCurrent: boolean;
-  onClose: () => void;
-  onSave: (note: string, dueAt: Date | null) => Promise<void>;
-}) {
-  const [note, setNote] = useState('');
-  const [dueAt, setDueAt] = useState<Date | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const quick = useMemo(() => (visible ? quickDates() : []), [visible]);
-  const dateLabel = stage?.dateLabel?.trim() || 'Date & time';
-
-  useEffect(() => {
-    if (!visible) return;
-    setNote('');
-    setDueAt(null);
-    setError(null);
-  }, [visible]);
-
-  const save = async () => {
-    if (!stage) return;
-    if (stage.askDate) {
-      if (!dueAt) {
-        setError(`Please pick the ${dateLabel.toLowerCase()}.`);
-        return;
-      }
-      if (dueAt.getTime() < Date.now() - 5 * 60 * 1000) {
-        setError('The date & time must be in the future.');
-        return;
-      }
-    }
-    if (stage.noteRequired && !isCurrent && !note.trim()) {
-      setError('Please add a note.');
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      await onSave(note, stage.askDate ? dueAt : null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not move the lead.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <SmallSheet visible={visible} onClose={saving ? undefined : onClose}>
-      <Text style={styles.sheetTitle}>
-        {isCurrent ? 'Change ' : 'Move to '}
-        <Text style={{ color: stage?.color ?? colors.primary }}>{stage?.name}</Text>
-      </Text>
-
-      {/* Date & time (e.g. the visit) */}
-      {stage?.askDate && (
-        <View style={styles.field}>
-          <Text style={styles.label}>📅 {dateLabel} *</Text>
-          <View style={styles.chips}>
-            {quick.map((q) => {
-              const on = !!dueAt && dueAt.getTime() === q.date.getTime();
-              return (
-                <Pressable
-                  key={q.key}
-                  onPress={() => {
-                    setDueAt(q.date);
-                    setError(null);
-                  }}
-                  style={[styles.chip, on && { backgroundColor: stage.color, borderColor: stage.color }]}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: on }}
-                >
-                  <Text style={[styles.chipText, on && styles.textOn]}>{q.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <DateTimePickerButton
-            title={dueAt ? '📅 Change date & time' : '📅 Pick date & time'}
-            initial={dueAt ?? undefined}
-            onPick={(d) => {
-              setDueAt(d);
-              setError(null);
-            }}
-          />
-          <Text style={[styles.hint, dueAt && styles.hintStrong]}>
-            {dueAt
-              ? `📌 ${formatDue(dueAt)} · a reminder is set for this time`
-              : 'A reminder will be set for this time and show in Today’s calls.'}
-          </Text>
-        </View>
-      )}
-
-      {/* Note */}
-      <TextField
-        label={stage?.noteRequired && !isCurrent ? 'Note *' : 'Note (optional)'}
-        value={note}
-        onChangeText={setNote}
-        multiline
-        placeholder={stage?.askDate ? 'e.g. Coming with father, wants to see the lab' : 'What happened?'}
-      />
-
-      {!stage?.askDate && stage?.followUpDays != null && (
-        <Text style={styles.hint}>
-          A next call will be set{' '}
-          {stage.followUpDays === 0
-            ? 'for today'
-            : `${stage.followUpDays} ${stage.followUpDays === 1 ? 'day' : 'days'} from now`}
-          .
-        </Text>
-      )}
-
-      {error && <ErrorBox text={error} />}
-      <Button title={isCurrent ? 'Save' : 'Move'} onPress={save} loading={saving} fullWidth />
-      <Button title="Cancel" variant="ghost" onPress={onClose} disabled={saving} fullWidth />
-    </SmallSheet>
   );
 }
 

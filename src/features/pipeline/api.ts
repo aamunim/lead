@@ -298,6 +298,27 @@ export async function moveLeadStage(
   return { followUpAt: r.follow_up_at ? new Date(r.follow_up_at) : null };
 }
 
+/**
+ * Move one or many leads to an open stage, with all the stage rules.
+ * Leads that can't be moved are skipped; when none could be, it throws the reason.
+ */
+export async function bulkMoveLeadStage(
+  leadIds: string[],
+  stageId: string,
+  note?: string | null,
+  dueAt?: Date | null,
+): Promise<{ done: number; skipped: number }> {
+  const { data, error } = await supabase.rpc('bulk_move_lead_stage', {
+    p_lead_ids: leadIds,
+    p_stage_id: stageId,
+    p_note: note?.trim() || undefined,
+    p_due_at: dueAt ? dueAt.toISOString() : undefined,
+  });
+  if (error) throw toError(error);
+  const r = (data ?? {}) as { done?: number; skipped?: number };
+  return { done: r.done ?? 0, skipped: r.skipped ?? 0 };
+}
+
 // =====================================================================
 // Lists used by the sheets
 // =====================================================================

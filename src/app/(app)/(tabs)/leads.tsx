@@ -18,6 +18,16 @@ import {
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { markCallFromApp } from '@/features/call-sync/api';
+import {
+  canUseBoard,
+  getBoardSettings,
+  loadLeadsView,
+  saveLeadsView,
+  DEFAULT_BOARD,
+  type BoardSettings,
+  type LeadsView,
+} from '@/features/board/api';
+import { LeadBoard } from '@/features/board/LeadBoard';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { LeadQuickSheet, type QuickField } from '@/features/leads/LeadQuickSheet';
@@ -120,6 +130,22 @@ export default function LeadsScreen() {
   const showAssignee = assignmentOn && seesOthers;
 
   const [quick, setQuick] = useState<QuickFilter>('all');
+
+  // List or Board (Settings → Pipeline board decides who may use the board)
+  const [view, setView] = useState<LeadsView>('list');
+  const [boardSettings, setBoardSettings] = useState<BoardSettings>(DEFAULT_BOARD);
+  const boardAllowed = canUseBoard(boardSettings, profile, isAdmin);
+  const showBoard = view === 'board' && boardAllowed;
+  const [boardReload, setBoardReload] = useState(0);
+  useEffect(() => {
+    getBoardSettings().then(setBoardSettings);
+    loadLeadsView().then(setView);
+  }, []);
+  const switchView = (next: LeadsView) => {
+    setSelected(new Set()); // marking is for the list only
+    setView(next);
+    saveLeadsView(next);
+  };
 
   // Sort: kept on this phone
   const [sort, setSort] = useState<LeadSort>(DEFAULT_SORT);
@@ -265,6 +291,13 @@ export default function LeadsScreen() {
       loadFirstPage();
       loadSavedFilters();
     }, [loadFirstPage, loadSavedFilters]),
+  );
+
+  // Back on this screen (e.g. from a lead page): the board reloads too
+  useFocusEffect(
+    useCallback(() => {
+      setBoardReload((n) => n + 1);
+    }, []),
   );
 
   // Changing the search or filters clears the marks
@@ -551,6 +584,30 @@ export default function LeadsScreen() {
               <Text style={styles.clearFilters}>Clear filters</Text>
             </Pressable>
           )}
+          {boardAllowed && (
+            <View style={styles.viewToggle}>
+              {(['list', 'board'] as LeadsView[]).map((v) => {
+                const on = (v === 'board') === showBoard;
+                return (
+                  <Pressable
+                    key={v}
+                    onPress={() => switchView(v)}
+                    hitSlop={6}
+                    style={[styles.viewBtn, on && styles.viewBtnOn]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    accessibilityLabel={v === 'list' ? 'List view' : 'Board view'}
+                  >
+                    <Ionicons
+                      name={v === 'list' ? 'list' : 'grid'}
+                      size={14}
+                      color={on ? colors.textOnPrimary : colors.textMuted}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
           <Pressable
             onPress={() => setSortSheetVisible(true)}
             hitSlop={8}
@@ -567,7 +624,21 @@ export default function LeadsScreen() {
         </View>
       )}
 
-      {loading ? (
+      {showBoard ? (
+        <LeadBoard
+          query={{ search: debouncedSearch, quick, userId: profile?.id, filters: effectiveFilters, closedMode, sort }}
+          closedColumns={boardSettings.closed_columns}
+          showAssignee={showAssignee}
+          reloadKey={boardReload}
+          onCall={call}
+          onWhatsApp={whatsapp}
+          onSms={sms}
+          onChanged={(message) => {
+            showToast(message);
+            loadFirstPage();
+          }}
+        />
+      ) : loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -1018,6 +1089,16 @@ const styles = StyleSheet.create({
   },
   countText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.textMuted },
   countGrow: { flex: 1 },
+  viewToggle: {
+    flexDirection: 'row',
+    marginLeft: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  viewBtn: { paddingVertical: 3, paddingHorizontal: spacing.sm },
+  viewBtnOn: { backgroundColor: colors.primary },
   sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: spacing.md, maxWidth: '60%' },
   sortText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.textMuted, flexShrink: 1 },
   sortTextOn: { color: colors.primary },

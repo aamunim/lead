@@ -1611,6 +1611,15 @@ export type Database = {
       admission_setting: { Args: never; Returns: Json }
       assignment_setting: { Args: never; Returns: Json }
       batch_seats_taken: { Args: { p_batch_id: string }; Returns: number }
+      bulk_move_lead_stage: {
+        Args: {
+          p_due_at?: string
+          p_lead_ids: string[]
+          p_note?: string
+          p_stage_id: string
+        }
+        Returns: Json
+      }
       bulk_mark_lost: {
         Args: { p_lead_ids: string[]; p_note?: string; p_reason_id: string }
         Returns: Json

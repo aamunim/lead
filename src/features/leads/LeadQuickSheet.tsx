@@ -24,6 +24,8 @@ import {
   type QuickPatch,
   type Rating,
 } from '@/features/leads/api';
+import { MoveStageSheet } from '@/features/pipeline/MoveStageSheet';
+import { bulkMoveLeadStage, listPipelineStages, openStages, type PipelineStage } from '@/features/pipeline/api';
 import { createItem, listHolidays, listItems, type Holiday } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -94,6 +96,10 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
   // Note
   const [note, setNote] = useState('');
 
+  // Stage: the stage rules come with each stage; a note / date asks in the move sheet
+  const [stages, setStages] = useState<PipelineStage[]>([]);
+  const [moveStage, setMoveStage] = useState<PipelineStage | null>(null);
+
   // A holiday date picked by hand, waiting for a second tap to confirm
   const [pendingHoliday, setPendingHoliday] = useState<Date | null>(null);
 
@@ -105,6 +111,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
     setTagMarks(new Map());
     setNewTag('');
     setNote('');
+    setMoveStage(null);
     setPendingHoliday(null);
 
     const load = async () => {
@@ -112,12 +119,9 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
       setLoading(true);
       try {
         if (field === 'stage') {
-          const stg = await listItems('pipeline_stages');
-          setOptions(
-            stg
-              .filter((s) => s.kind === 'open')
-              .map((s) => ({ value: s.id, label: s.name, color: s.color as string })),
-          );
+          const stg = openStages(await listPipelineStages());
+          setStages(stg);
+          setOptions(stg.map((s) => ({ value: s.id, label: s.name, color: s.color })));
         } else if (field === 'tags') {
           const tg = await listItems('tags');
           setOptions(tg.map((t) => ({ value: t.id, label: t.name, color: t.color as string })));
@@ -190,6 +194,21 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
     });
 
   const applyNote = () => run(() => addNoteToLeads(ids, note));
+
+  // Same rules as the lead page: note required / ask for a date / next call after N days
+  const moveToStage = async (stage: PipelineStage, stageNote?: string, dueAt?: Date | null) => {
+    const r = await bulkMoveLeadStage(ids, stage.id, stageNote, dueAt);
+    return r.done;
+  };
+  const pickStage = (stageId: string) => {
+    const stage = stages.find((s) => s.id === stageId);
+    if (!stage) return;
+    if (stage.noteRequired || stage.askDate) {
+      setMoveStage(stage);
+      return;
+    }
+    run(() => moveToStage(stage));
+  };
 
   const pickFollowUpDate = (date: Date) => {
     if (pendingHoliday && dayKey(pendingHoliday) === dayKey(date)) {
@@ -306,7 +325,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
                 color={s.color}
                 on={single?.stage_id === s.value}
                 disabled={saving}
-                onPress={() => applyPatch({ stage_id: s.value })}
+                onPress={() => pickStage(s.value)}
               />
             ))}
             <Text style={styles.hint}>Admitted and Lost are set from the lead page.</Text>
@@ -456,35 +475,52 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.backdrop}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
+    <>
+      <Modal visible={visible && !moveStage} transparent animationType="slide" onRequestClose={onClose}>
+        <KeyboardAvoidingView
+          style={styles.backdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
 
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <View style={styles.header}>
-            <Text style={styles.title}>{TITLES[field]}</Text>
-            <Text style={styles.subtitle} numberOfLines={1}>
-              {single ? single.name : `${count} leads`}
-            </Text>
+          <View style={styles.sheet}>
+            <View style={styles.handle} />
+            <View style={styles.header}>
+              <Text style={styles.title}>{TITLES[field]}</Text>
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {single ? single.name : `${count} leads`}
+              </Text>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+              {renderBody()}
+
+              {error && (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              )}
+              {saving && field !== 'tags' && field !== 'note' && <ActivityIndicator color={colors.primary} />}
+            </ScrollView>
           </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            {renderBody()}
-
-            {error && (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
-            {saving && field !== 'tags' && field !== 'note' && <ActivityIndicator color={colors.primary} />}
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      {/* A stage that asks for a note and/or a date */}
+      <MoveStageSheet
+        visible={visible && !!moveStage}
+        stage={moveStage}
+        isCurrent={false}
+        subtitle={single ? single.name : `${count} leads`}
+        onClose={() => setMoveStage(null)}
+        onSave={async (stageNote, dueAt) => {
+          if (!moveStage) return;
+          // Errors show inside the move sheet
+          done(await moveToStage(moveStage, stageNote, dueAt));
+          setMoveStage(null);
+        }}
+      />
+    </>
   );
 }
 
