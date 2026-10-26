@@ -144,6 +144,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/calls' as Href,
       },
       {
+        title: 'Notifications',
+        description: 'What sends a push, quiet hours, reminders, who can hand over leads',
+        icon: '🔔',
+        href: '/settings/notifications' as Href,
+      },
+      {
         title: 'Team activity',
         description: 'App time, who sees activity and the change log, idle and alert minutes',
         icon: '👁',

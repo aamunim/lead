@@ -21,7 +21,15 @@ export type AssignmentSettings = {
   team_lead_assign: boolean;
   /** Team Leads get the leads they add */
   team_lead_self: boolean;
+  /**
+   * Hand over (anyone, callers too, can give a lead with a note):
+   *   anyone = any active user · team = own team / own Team Lead
+   *   managers = Team Leads and admins · off = only people who may assign
+   */
+  handover: HandoverRule;
 };
+
+export type HandoverRule = 'anyone' | 'team' | 'managers' | 'off';
 
 export const DEFAULT_ASSIGNMENT: AssignmentSettings = {
   enabled: true,
@@ -31,6 +39,7 @@ export const DEFAULT_ASSIGNMENT: AssignmentSettings = {
   caller_self: true,
   team_lead_assign: true,
   team_lead_self: true,
+  handover: 'anyone',
 };
 
 // =====================================================================
@@ -71,6 +80,12 @@ export function canAssignManually(
   if (!s.enabled || !hasPermission('leads.assign')) return false;
   if (hasPermission('leads.view_all')) return true;
   return s.team_lead_assign;
+}
+
+/** Can this user give leads to someone (hand over)? */
+export function canHandOver(s: AssignmentSettings, hasPermission: (key: string) => boolean): boolean {
+  if (!s.enabled) return false;
+  return canAssignManually(s, hasPermission) || (s.handover ?? 'anyone') !== 'off';
 }
 
 /**

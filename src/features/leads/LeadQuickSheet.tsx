@@ -24,6 +24,7 @@ import {
   type QuickPatch,
   type Rating,
 } from '@/features/leads/api';
+import { handOverLeads } from '@/features/notifications/api';
 import { MoveStageSheet } from '@/features/pipeline/MoveStageSheet';
 import { bulkMoveLeadStage, listPipelineStages, openStages, type PipelineStage } from '@/features/pipeline/api';
 import { createItem, listHolidays, listItems, type Holiday } from '@/features/settings/api';
@@ -40,7 +41,7 @@ const TITLES: Record<QuickField, string> = {
   rating: 'Rating',
   stage: 'Stage',
   tags: 'Tags',
-  assign: 'Assign to',
+  assign: 'Give to (hand over)',
   followup: 'Next call',
   note: 'Add a note',
 };
@@ -72,7 +73,7 @@ type Props = {
 };
 
 export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Props) {
-  const { profile, hasPermission } = useAuth();
+  const { profile, hasPermission, assignment, canAssign } = useAuth();
   const seesAllLeads = hasPermission('leads.view_all');
 
   const single = leads.length === 1 ? leads[0] : null;
@@ -96,6 +97,9 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
   // Note
   const [note, setNote] = useState('');
 
+  // Hand over: the person, and an optional note for them
+  const [giveTo, setGiveTo] = useState<string | null>(null);
+
   // Stage: the stage rules come with each stage; a note / date asks in the move sheet
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [moveStage, setMoveStage] = useState<PipelineStage | null>(null);
@@ -111,6 +115,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
     setTagMarks(new Map());
     setNewTag('');
     setNote('');
+    setGiveTo(null);
     setMoveStage(null);
     setPendingHoliday(null);
 
@@ -126,8 +131,34 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
           const tg = await listItems('tags');
           setOptions(tg.map((t) => ({ value: t.id, label: t.name, color: t.color as string })));
         } else if (field === 'assign') {
-          const ppl = await listAssignableUsers(seesAllLeads ? {} : { teamLeadId: profile?.id });
-          setOptions(ppl.map((p) => ({ value: p.id, label: p.full_name ?? 'No name' })));
+          // Who may I give leads to? (the database checks again)
+          const ppl = await listAssignableUsers();
+          const me = ppl.find((p) => p.id === profile?.id);
+          const rule = assignment.handover ?? 'anyone';
+          const allowed = ppl.filter((p) => {
+            if (seesAllLeads && canAssign) return true;
+            if (canAssign && (p.id === profile?.id || p.team_lead_id === profile?.id)) return true;
+            switch (rule) {
+              case 'anyone':
+                return true;
+              case 'team':
+                return (
+                  (!!me?.team_lead_id && p.team_lead_id === me.team_lead_id) ||
+                  p.id === me?.team_lead_id ||
+                  p.team_lead_id === profile?.id
+                );
+              case 'managers':
+                return ['team_lead', 'admin', 'super_admin'].includes(p.role_key);
+              default:
+                return false;
+            }
+          });
+          setOptions(
+            allowed.map((p) => ({
+              value: p.id,
+              label: `${p.full_name ?? 'No name'}${p.id === profile?.id ? ' (me)' : ''}`,
+            })),
+          );
         } else if (field === 'followup') {
           const year = new Date().getFullYear();
           const [h1, h2] = await Promise.all([
@@ -194,6 +225,13 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
     });
 
   const applyNote = () => run(() => addNoteToLeads(ids, note));
+
+  const applyHandOver = () =>
+    run(async () => {
+      if (!giveTo) return 0;
+      const r = await handOverLeads(ids, giveTo, note);
+      return r.done;
+    });
 
   // Same rules as the lead page: note required / ask for a date / next call after N days
   const moveToStage = async (stage: PipelineStage, stageNote?: string, dueAt?: Date | null) => {
@@ -339,18 +377,44 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
               <Row
                 key={u.value}
                 label={u.label}
-                on={single?.assigned_to === u.value}
+                on={giveTo ? giveTo === u.value : single?.assigned_to === u.value}
                 disabled={saving}
-                onPress={() => applyPatch({ assigned_to: u.value })}
+                onPress={() => setGiveTo(u.value)}
               />
             ))}
-            <Row
-              label="Unassigned"
-              color={colors.textMuted}
-              on={!!single && !single.assigned_to}
-              disabled={saving}
-              onPress={() => applyPatch({ assigned_to: null })}
-            />
+            {canAssign && (
+              <Row
+                label="Unassigned"
+                color={colors.textMuted}
+                on={!giveTo && !!single && !single.assigned_to}
+                disabled={saving}
+                onPress={() => applyPatch({ assigned_to: null })}
+              />
+            )}
+            {giveTo && (
+              <>
+                <TextInput
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Note for them (optional), e.g. Talked about fees, call tomorrow"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.noteInput}
+                  multiline
+                  maxLength={500}
+                  editable={!saving}
+                  textAlignVertical="top"
+                />
+                <Button
+                  title={`Give ${single ? 'this lead' : `${count} leads`} to ${
+                    options.find((o) => o.value === giveTo)?.label ?? 'them'
+                  }`}
+                  onPress={applyHandOver}
+                  loading={saving}
+                  fullWidth
+                />
+                <Text style={styles.hint}>They get a notification with your note.</Text>
+              </>
+            )}
           </View>
         );
 
@@ -500,7 +564,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
                   <Text style={styles.errorText}>{error}</Text>
                 </View>
               )}
-              {saving && field !== 'tags' && field !== 'note' && <ActivityIndicator color={colors.primary} />}
+              {saving && field !== 'tags' && field !== 'note' && field !== 'assign' && <ActivityIndicator color={colors.primary} />}
             </ScrollView>
           </View>
         </KeyboardAvoidingView>

@@ -30,6 +30,7 @@ import {
 import { LeadBoard } from '@/features/board/LeadBoard';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
+import { canHandOver } from '@/features/settings/assignment';
 import { LeadQuickSheet, type QuickField } from '@/features/leads/LeadQuickSheet';
 import { LeadSortSheet, loadLeadSort, saveLeadSort, sortLabel } from '@/features/leads/LeadSortSheet';
 import {
@@ -105,7 +106,9 @@ function followUpLabel(iso: string | null): { text: string; overdue: boolean } |
 }
 
 export default function LeadsScreen() {
-  const { profile, hasPermission, assignmentOn, sharedMode, canAssign } = useAuth();
+  const { profile, hasPermission, assignmentOn, sharedMode, canAssign, assignment } = useAuth();
+  // Everyone may give leads to someone (Settings → Lead assignment → Hand over)
+  const mayHandOver = canHandOver(assignment, hasPermission);
 
   // Can this user see other people's leads? (by role, or because everyone sees all)
   const seesOthers = sharedMode || hasPermission('leads.view_all') || hasPermission('leads.view_team');
@@ -125,11 +128,13 @@ export default function LeadsScreen() {
   const canBulkLost = hasPermission('leads.edit_team') || hasPermission('leads.edit_all');
 
   const actions = ACTIONS.filter(
-    (a) => (a.field !== 'assign' || canAssign) && (a.field !== 'lost' || canBulkLost),
+    (a) => (a.field !== 'assign' || mayHandOver) && (a.field !== 'lost' || canBulkLost),
   );
   const showAssignee = assignmentOn && seesOthers;
 
   const [quick, setQuick] = useState<QuickFilter>('all');
+  // Opened from a notification about many leads: show just those
+  const [idsFilter, setIdsFilter] = useState<string[] | null>(null);
 
   // List or Board (Settings → Pipeline board decides who may use the board)
   const [view, setView] = useState<LeadsView>('list');
@@ -260,6 +265,7 @@ export default function LeadsScreen() {
         filters: effectiveFilters,
         closedMode,
         sort,
+        ids: idsFilter,
         page: 0,
       });
       if (myRequest !== requestId.current) return;
@@ -276,7 +282,7 @@ export default function LeadsScreen() {
         setRefreshing(false);
       }
     }
-  }, [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort]);
+  }, [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort, idsFilter]);
 
   const loadSavedFilters = useCallback(async () => {
     try {
@@ -340,6 +346,7 @@ export default function LeadsScreen() {
         filters: effectiveFilters,
         closedMode,
         sort,
+        ids: idsFilter,
         page: next,
       });
       setLeads((list) => [...list, ...result.items]);
@@ -354,7 +361,14 @@ export default function LeadsScreen() {
 
   // --- filters ------------------------------------------------------------
   // Opened from Reports (a funnel bar): show the leads in that stage
-  const { stage: stageParam } = useLocalSearchParams<{ stage?: string }>();
+  const { stage: stageParam, ids: idsParam } = useLocalSearchParams<{ stage?: string; ids?: string }>();
+  useEffect(() => {
+    if (!idsParam) return;
+    setLoading(true);
+    setIdsFilter(String(idsParam).split(',').filter(Boolean));
+    router.setParams({ ids: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsParam]);
   useEffect(() => {
     if (!stageParam) return;
     applyFilters({ stageIds: [String(stageParam)] }, null);
@@ -468,6 +482,7 @@ export default function LeadsScreen() {
         filters: effectiveFilters,
         closedMode,
         sort,
+        ids: idsFilter,
       });
       setMatchingCache(all);
       setSelected(new Set(all.map((l) => l.id)));
@@ -586,8 +601,22 @@ export default function LeadsScreen() {
           <Text style={[styles.countText, styles.countGrow]} numberOfLines={1}>
             {loading
               ? ' '
-              : `${total ?? leads.length} ${(total ?? leads.length) === 1 ? 'lead' : 'leads'}${listIsFiltered ? ' found' : ''}`}
+              : `${total ?? leads.length} ${(total ?? leads.length) === 1 ? 'lead' : 'leads'}${
+                  idsFilter ? ' from a notification' : listIsFiltered ? ' found' : ''
+                }`}
           </Text>
+          {idsFilter && (
+            <Pressable
+              onPress={() => {
+                setLoading(true);
+                setIdsFilter(null);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
+              <Text style={styles.clearFilters}>Show all</Text>
+            </Pressable>
+          )}
           {filterCount > 0 && (
             <Pressable onPress={() => applyFilters({}, null)} hitSlop={8} accessibilityRole="button">
               <Text style={styles.clearFilters}>Clear filters</Text>
@@ -635,7 +664,7 @@ export default function LeadsScreen() {
 
       {showBoard ? (
         <LeadBoard
-          query={{ search: debouncedSearch, quick, userId: profile?.id, filters: effectiveFilters, closedMode, sort }}
+          query={{ search: debouncedSearch, quick, userId: profile?.id, filters: effectiveFilters, closedMode, sort, ids: idsFilter }}
           closedColumns={boardSettings.closed_columns}
           showAssignee={showAssignee}
           reloadKey={boardReload}

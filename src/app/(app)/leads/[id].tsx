@@ -357,7 +357,7 @@ export default function LeadDetailScreen() {
       case 'rating_changed':
         return `Rating: ${d.from ?? 'none'} → ${d.to ?? 'none'}`;
       case 'assigned':
-        return d.to ? `Assigned to ${userNames.get(d.to) ?? 'a removed user'}` : 'Unassigned';
+        return `${d.to ? `Assigned to ${userNames.get(d.to) ?? 'a removed user'}` : 'Unassigned'}${d.note ? ` · “${d.note}”` : ''}`;
       case 'details_changed':
         return 'Name or phone updated';
       case 'call_logged': {
@@ -424,6 +424,14 @@ export default function LeadDetailScreen() {
       ...notes.map((n): FeedItem => ({ kind: 'note', key: n.key, at: n.at, note: n })),
     ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   }, [lead, calls, activity]);
+
+  // The note from whoever gave this lead to its person (hand over)
+  const handover = useMemo(() => {
+    if (!lead?.assigned_to) return null;
+    const a = activity.find((x) => x.action === 'assigned');
+    const d = (a?.details ?? {}) as { to?: string; note?: string };
+    return a && d.note && d.to === lead.assigned_to ? { item: a, note: d.note } : null;
+  }, [activity, lead?.assigned_to]);
 
   // Newest call and newest note, for the top card
   const lastCall = feed.find((f) => f.kind === 'call')?.call ?? null;
@@ -532,6 +540,16 @@ export default function LeadDetailScreen() {
               <Text style={[styles.pillText, { color: colors.textMuted }]}>{assigneeName}</Text>
             </View>
           </View>
+
+          {/* Hand over note */}
+          {handover && (
+            <View style={styles.handover}>
+              <Text style={styles.handoverTitle}>
+                👥 From {actorName(handover.item) ?? 'someone'} · {formatDateTime(handover.item.created_at)}
+              </Text>
+              <Text style={styles.handoverNote}>“{handover.note}”</Text>
+            </View>
+          )}
 
           {/* Contact buttons */}
           <View style={styles.actions}>
@@ -973,6 +991,16 @@ const styles = StyleSheet.create({
   pill: { paddingVertical: 3, paddingHorizontal: spacing.md, borderRadius: radius.pill },
   pillText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold },
   actions: { flexDirection: 'row', gap: spacing.sm },
+  handover: {
+    gap: 2,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  handoverTitle: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.text },
+  handoverNote: { fontSize: fontSize.small, color: colors.text },
   recent: { gap: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   recentRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
   recentIcon: { fontSize: 16, marginTop: 1 },
