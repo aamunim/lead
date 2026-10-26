@@ -305,7 +305,8 @@ export function applyLeadFilters<Q extends { [k: string]: any }>(query: Q, f: Le
   // Admitted (still admitted: a cancelled admission doesn't count)
   if (f.admitted) {
     const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    q = q.not('admitted_at', 'is', null).is('cancelled_at', null);
+    // Still admitted: closed with an admission that wasn't cancelled (a reopened lead is open)
+    q = q.not('admitted_at', 'is', null).is('cancelled_at', null).not('closed_at', 'is', null);
     switch (f.admitted) {
       case 'this_month':
         q = q.gte('admitted_at', iso(thisMonth));
