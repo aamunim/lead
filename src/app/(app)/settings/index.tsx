@@ -144,6 +144,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/calls' as Href,
       },
       {
+        title: 'Team activity',
+        description: 'App time, who sees activity and the change log, idle and alert minutes',
+        icon: '👁',
+        href: '/settings/activity' as Href,
+      },
+      {
         title: 'Sync health',
         description: 'Whose phone is syncing, last sync, problems',
         icon: '🩺',

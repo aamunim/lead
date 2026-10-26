@@ -8,6 +8,7 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { canSyncCalls, isCallLogAvailable, isCallSyncEnabled } from '@/features/call-sync/api';
 import { listSyncHealth } from '@/features/call-sync/health';
 import { canImportContacts } from '@/features/contacts/api';
+import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -22,6 +23,7 @@ export default function MoreScreen() {
   const [callSyncOn, setCallSyncOn] = useState(false);
   const [syncProblems, setSyncProblems] = useState(0);
   const [reportsAllowed, setReportsAllowed] = useState(false);
+  const [activityAllowed, setActivityAllowed] = useState(false);
 
   const canManageUsers = hasPermission('users.manage');
   const canManageSettings = hasPermission('settings.manage');
@@ -43,6 +45,7 @@ export default function MoreScreen() {
         .catch(() => setContactsAllowed(false));
 
       getReportSettings().then((s) => setReportsAllowed(canSeeReports(s, profile, canManageSettings)));
+      getActivitySettings().then((s) => setActivityAllowed(canOpenActivity(s, hasPermission)));
 
       // Call log sync only exists in the Android app (not Expo Go / iPhone)
       if (isCallLogAvailable) {
@@ -63,6 +66,7 @@ export default function MoreScreen() {
       countPendingUsers()
         .then(setPendingCount)
         .catch(() => setPendingCount(0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [canManageUsers, canSeeSyncHealth, profile, canManageSettings]),
   );
 
@@ -131,10 +135,23 @@ export default function MoreScreen() {
       )}
 
       {/* Team (Admins and Team Leads) */}
-      {canSeeSyncHealth && (
+      {(canSeeSyncHealth || activityAllowed) && (
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>TEAM</Text>
           <View style={styles.group}>
+            {activityAllowed && (
+              <>
+                <Row icon="👥" title="Team activity" subtitle="Who is working, app time, calls" href="/activity" />
+                <Row
+                  icon="📜"
+                  title="Change log"
+                  subtitle="Who changed what on which lead"
+                  href="/changes"
+                  divider
+                />
+              </>
+            )}
+            {canSeeSyncHealth && (
             <Row
               icon="🩺"
               title="Sync health"
@@ -142,7 +159,9 @@ export default function MoreScreen() {
               href="/sync-health"
               badge={syncProblems > 0 ? `${syncProblems} ${syncProblems === 1 ? 'problem' : 'problems'}` : undefined}
               badgeTone="danger"
+              divider={activityAllowed}
             />
+            )}
           </View>
         </View>
       )}

@@ -116,6 +116,42 @@ export type Database = {
           },
         ]
       }
+      app_sessions: {
+        Row: {
+          active_sec: number
+          app_version: string | null
+          device_id: string | null
+          device_label: string | null
+          ended: boolean
+          id: string
+          last_seen_at: string
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          active_sec?: number
+          app_version?: string | null
+          device_id?: string | null
+          device_label?: string | null
+          ended?: boolean
+          id: string
+          last_seen_at: string
+          started_at: string
+          user_id: string
+        }
+        Update: {
+          active_sec?: number
+          app_version?: string | null
+          device_id?: string | null
+          device_label?: string | null
+          ended?: boolean
+          id?: string
+          last_seen_at?: string
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           created_at: string
@@ -1603,6 +1639,33 @@ export type Database = {
           status: string
         }[]
       }
+      activity_counts: {
+        Args: { p_from: string; p_search?: string; p_to: string; p_user_id?: string }
+        Returns: { action: string; n: number }[]
+      }
+      activity_feed: {
+        Args: {
+          p_actions?: string[]
+          p_before?: string
+          p_from: string
+          p_limit?: number
+          p_search?: string
+          p_to: string
+          p_user_id?: string
+        }
+        Returns: {
+          action: string
+          created_at: string
+          details: Json
+          id: string
+          lead_id: string
+          lead_name: string
+          lead_phone: string
+          user_id: string
+          user_name: string | null
+        }[]
+      }
+      activity_setting: { Args: never; Returns: Json }
       add_lead_note: {
         Args: { p_lead_ids: string[]; p_note: string }
         Returns: number
@@ -1847,6 +1910,19 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      report_app_session: {
+        Args: {
+          p_active_sec: number
+          p_app_version?: string
+          p_device_id?: string
+          p_device_label?: string
+          p_ended?: boolean
+          p_id: string
+          p_last_seen_at: string
+          p_started_at: string
+        }
+        Returns: undefined
+      }
       plan_visit: {
         Args: { p_at: string; p_lead_id: string; p_note?: string }
         Returns: string
@@ -1910,8 +1986,30 @@ export type Database = {
         Args: { p_calls: Json; p_device_id: string }
         Returns: Json
       }
+      team_activity: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          actions: number
+          admitted: number
+          app_sec: number
+          calls: number
+          connected: number
+          first_at: string | null
+          last_at: string | null
+          last_seen_at: string | null
+          name: string | null
+          role_key: string
+          sessions: number
+          talk_sec: number
+          user_id: string
+        }[]
+      }
       undo_contacts_save: { Args: { p_lead_ids: string[] }; Returns: number }
       undo_import: { Args: { p_batch_id: string }; Returns: number }
+      user_activity_days: {
+        Args: { p_days?: number; p_user_id: string }
+        Returns: { actions: number; app_sec: number; calls: number; day: string }[]
+      }
     }
     Enums: {
       [_ in never]: never

@@ -1,4 +1,4 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -291,6 +291,12 @@ export default function UserEditScreen() {
           {status === 'active' && (
             <>
               <Button title="Save changes" onPress={saveChanges} loading={saving} fullWidth />
+              <Button
+                title="👁 View activity"
+                variant="secondary"
+                onPress={() => router.push(`/activity/${user.id}` as Href)}
+                fullWidth
+              />
               {!isSelf && (
                 <Button
                   title="Deactivate user"

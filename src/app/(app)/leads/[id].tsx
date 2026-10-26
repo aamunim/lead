@@ -392,6 +392,21 @@ export default function LeadDetailScreen() {
         return `🏫 Didn’t come to the visit${d.note ? ` · ${d.note}` : ''}`;
       case 'visit_cancelled':
         return '🏫 Visit cancelled';
+      case 'tag_added':
+        return `🏷 Tag added: ${d.tag ?? ''}`;
+      case 'tag_removed':
+        return `🏷 Tag removed: ${d.tag ?? ''}`;
+      case 'course_added':
+        return `🎓 Course added: ${d.course ?? ''}`;
+      case 'course_removed':
+        return `🎓 Course removed: ${d.course ?? ''}`;
+      case 'note_edited':
+        return '📝 Notes edited';
+      case 'fields_changed': {
+        const changes = ((item.details as { changes?: { field: string; from: string | null; to: string | null }[] } | null)
+          ?.changes ?? []);
+        return `✏️ ${changes.map((c) => `${c.field}: ${c.from ?? '—'} → ${c.to ?? '—'}`).join(' · ')}`;
+      }
       case 'deleted':
         return 'Lead deleted';
       case 'restored':
