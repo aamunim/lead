@@ -63,6 +63,7 @@ const ACTIONS: {
   { field: 'tags', label: 'Tag', icon: 'pricetags', color: '#EC4899' },
   { field: 'assign', label: 'Assign', icon: 'person-add', color: '#0EA5E9' },
   { field: 'followup', label: 'Next call', icon: 'alarm', color: '#10B981' },
+  { field: 'note', label: 'Note', icon: 'create', color: '#8B5CF6' },
   { field: 'lost', label: 'Lost', icon: 'close-circle', color: '#EF4444' },
 ];
 
@@ -621,7 +622,7 @@ export default function LeadsScreen() {
                   disabled={markingAll}
                   style={({ pressed }) => [styles.actionItem, pressed && styles.actionPressed]}
                   accessibilityRole="button"
-                  accessibilityLabel={`Change ${a.label}`}
+                  accessibilityLabel={a.field === 'note' ? 'Add a note' : `Change ${a.label}`}
                 >
                   <View style={[styles.actionCircle, { backgroundColor: a.color + '1F' }]}>
                     <Ionicons name={a.icon} size={20} color={a.color} />

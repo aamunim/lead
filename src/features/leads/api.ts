@@ -360,6 +360,22 @@ export async function updateLeads(ids: string[], patch: QuickPatch): Promise<num
   return changed;
 }
 
+/**
+ * Add a note below each lead's existing notes (with today's date and the user's name).
+ * Returns how many leads got it.
+ */
+export async function addNoteToLeads(ids: string[], note: string): Promise<number> {
+  if (ids.length === 0) return 0;
+
+  let changed = 0;
+  for (const part of chunks(ids)) {
+    const { data, error } = await supabase.rpc('add_lead_note', { p_lead_ids: part, p_note: note.trim() });
+    if (error) throw toError(error);
+    changed += data ?? 0;
+  }
+  return changed;
+}
+
 /** Add tags (leads that already have a tag keep it once) */
 export async function addTagsToLeads(ids: string[], tagIds: string[]): Promise<void> {
   if (ids.length === 0 || tagIds.length === 0) return;

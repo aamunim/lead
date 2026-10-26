@@ -15,6 +15,7 @@ import {
 import { useAuth } from '@/features/auth/AuthProvider';
 import { cancelFollowUp, followUpPresets, formatDue, scheduleFollowUp } from '@/features/follow-ups/api';
 import {
+  addNoteToLeads,
   addTagsToLeads,
   listAssignableUsers,
   removeTagsFromLeads,
@@ -28,7 +29,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 
-export type QuickField = 'rating' | 'stage' | 'tags' | 'assign' | 'followup';
+export type QuickField = 'rating' | 'stage' | 'tags' | 'assign' | 'followup' | 'note';
 
 type Option = { value: string; label: string; color?: string };
 type TagMark = 'add' | 'remove';
@@ -39,6 +40,7 @@ const TITLES: Record<QuickField, string> = {
   tags: 'Tags',
   assign: 'Assign to',
   followup: 'Next call',
+  note: 'Add a note',
 };
 
 const RATINGS: { value: Rating; label: string; color: string }[] = [
@@ -89,6 +91,9 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
   const [newTag, setNewTag] = useState('');
   const [creatingTag, setCreatingTag] = useState(false);
 
+  // Note
+  const [note, setNote] = useState('');
+
   // A holiday date picked by hand, waiting for a second tap to confirm
   const [pendingHoliday, setPendingHoliday] = useState<Date | null>(null);
 
@@ -99,10 +104,11 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
     setTagSet(new Set(single ? single.lead_tags.map((t) => t.tag_id) : []));
     setTagMarks(new Map());
     setNewTag('');
+    setNote('');
     setPendingHoliday(null);
 
     const load = async () => {
-      if (field === 'rating') return;
+      if (field === 'rating' || field === 'note') return;
       setLoading(true);
       try {
         if (field === 'stage') {
@@ -182,6 +188,8 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
       }
       return count;
     });
+
+  const applyNote = () => run(() => addNoteToLeads(ids, note));
 
   const pickFollowUpDate = (date: Date) => {
     if (pendingHoliday && dayKey(pendingHoliday) === dayKey(date)) {
@@ -356,6 +364,28 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
           </View>
         );
 
+      case 'note':
+        return (
+          <View style={styles.list}>
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              placeholder="Write the note…"
+              placeholderTextColor={colors.textMuted}
+              style={styles.noteInput}
+              multiline
+              autoFocus
+              maxLength={2000}
+              editable={!saving}
+              textAlignVertical="top"
+            />
+            <Text style={styles.hint}>
+              Added below the {single ? "lead's" : "leads'"} notes, with today's date and your name. Old notes stay.
+            </Text>
+            <Button title="Save note" onPress={applyNote} loading={saving} disabled={!note.trim()} fullWidth />
+          </View>
+        );
+
       case 'tags':
         return (
           <View style={styles.list}>
@@ -450,7 +480,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             )}
-            {saving && field !== 'tags' && <ActivityIndicator color={colors.primary} />}
+            {saving && field !== 'tags' && field !== 'note' && <ActivityIndicator color={colors.primary} />}
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -586,6 +616,16 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 44,
     paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    fontSize: fontSize.body,
+    color: colors.text,
+  },
+  noteInput: {
+    minHeight: 110,
+    padding: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
