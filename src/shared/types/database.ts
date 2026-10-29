@@ -1797,6 +1797,9 @@ export type Database = {
           sync_on: boolean
           team_lead_id: string
           updated_at: string
+          wa_access: boolean | null
+          wa_on: boolean | null
+          wa_today: number
           user_id: string
           user_name: string
         }[]
@@ -2075,6 +2078,10 @@ export type Database = {
       sync_nudge_reason: { Args: { p_user: string }; Returns: string }
       sync_phone_calls: {
         Args: { p_calls: Json; p_device_id: string }
+        Returns: Json
+      }
+      sync_whatsapp_events: {
+        Args: { p_device_id: string; p_events: Json }
         Returns: Json
       }
       team_activity: {

@@ -142,6 +142,72 @@ object CallNotifier {
     }
   }
 
+  // -------------------------------------------------------------------
+  // WhatsApp (from WhatsApp's own notifications)
+  // -------------------------------------------------------------------
+  /** A lead is calling on WhatsApp */
+  fun waIncoming(context: Context, lead: LeadDirectory.Entry, video: Boolean) {
+    if (!canNotify(context)) return
+    ensureChannels(context)
+
+    val body = buildString {
+      append(details(lead).ifBlank { "Lead" })
+      lead.lastNote?.let { append("\nLast note: ").append(it) }
+    }
+
+    val n = NotificationCompat.Builder(context, CHANNEL_INCOMING)
+      .setSmallIcon(android.R.drawable.sym_call_incoming)
+      .setContentTitle("💬 WhatsApp ${if (video) "video " else ""}call: ${lead.name}")
+      .setContentText(details(lead).ifBlank { "Lead is calling on WhatsApp" })
+      .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
+      .setCategory(NotificationCompat.CATEGORY_CALL)
+      .setAutoCancel(true)
+      .setTimeoutAfter(2 * 60 * 1000)
+      .setContentIntent(openLead(context, lead.leadId, "", INCOMING_ID))
+      .build()
+
+    try {
+      NotificationManagerCompat.from(context).notify(INCOMING_ID, n)
+    } catch (_: SecurityException) {
+      // notifications not allowed
+    }
+  }
+
+  /** A WhatsApp call with a lead ended (or was missed) */
+  fun waAfterCall(context: Context, event: WhatsAppStore.Event, lead: LeadDirectory.Entry) {
+    if (!canNotify(context)) return
+    ensureChannels(context)
+
+    val missed = event.direction == "missed"
+    val kind = if (event.media == "video") "video call" else "call"
+    val title =
+      if (missed) "📵 Missed WhatsApp $kind: ${lead.name}"
+      else "💬 ${lead.name} · WhatsApp $kind · ${formatDuration(event.durationSec)}"
+    val text = when {
+      missed -> "Tap to open and call back"
+      event.connected -> "Tap to add a note and rating"
+      else -> "Not answered · tap to open"
+    }
+    val query = if (missed) "" else "?waCall=${Uri.encode(event.id)}"
+
+    val n = NotificationCompat.Builder(context, CHANNEL_AFTER)
+      .setSmallIcon(android.R.drawable.sym_action_call)
+      .setContentTitle(title)
+      .setContentText(text)
+      .setSubText(details(lead).ifBlank { null })
+      .setAutoCancel(true)
+      .setCategory(NotificationCompat.CATEGORY_REMINDER)
+      .setContentIntent(openLead(context, lead.leadId, query, event.id.hashCode()))
+      .build()
+
+    try {
+      NotificationManagerCompat.from(context).notify(event.id.hashCode(), n)
+    } catch (_: SecurityException) {
+      // notifications not allowed
+    }
+  }
+
   /** The call ended: remove the "Incoming" notification */
   fun clearIncoming(context: Context) {
     NotificationManagerCompat.from(context).cancel(INCOMING_ID)

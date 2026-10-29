@@ -14,12 +14,18 @@ import {
 } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
-import { getCallSyncSettings, markCallFromApp } from '@/features/call-sync/api';
+import {
+  getCallSyncSettings,
+  getDeviceId,
+  markCallFromApp,
+  type WhatsAppDeviceEvent,
+} from '@/features/call-sync/api';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
 import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
 import {
   channelLabel,
   directionInfo,
+  findWhatsAppCall,
   formatDuration,
   listLeadCalls,
   outcomeInfo,
@@ -98,7 +104,8 @@ function dayKey(d: Date): string {
 
 export default function LeadDetailScreen() {
   // callNote = a call-log id, when opened from the "add a note" notification
-  const { id, callNote } = useLocalSearchParams<{ id: string; callNote?: string }>();
+  // waCall = a WhatsApp call id, from the WhatsApp "add a note" notification
+  const { id, callNote, waCall } = useLocalSearchParams<{ id: string; callNote?: string; waCall?: string }>();
   const { hasPermission } = useAuth();
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
@@ -126,6 +133,7 @@ export default function LeadDetailScreen() {
   const [sheetChannel, setSheetChannel] = useState<CallChannel>('phone');
   const pendingChannel = useRef<CallChannel>('phone');
   const [askAfterWhatsApp, setAskAfterWhatsApp] = useState(true);
+  const [waEvent, setWaEvent] = useState<WhatsAppDeviceEvent | null>(null);
 
   useEffect(() => {
     getCallSyncSettings()
@@ -199,15 +207,34 @@ export default function LeadDetailScreen() {
     callStartedAt.current = null;
     setEstimatedSec(null);
     setSheetChannel('phone');
+    setWaEvent(null);
     setNoteCallId(String(callNote));
     setSheetVisible(true);
     // Clear it from the address, so the popup doesn't open again on reload
     router.setParams({ callNote: undefined });
   }, [callNote, lead, id]);
 
+  // --- opened from the WhatsApp "add a note" notification ---------------
+  useEffect(() => {
+    if (!waCall || !lead || lead.id !== id) return;
+    router.setParams({ waCall: undefined });
+    findWhatsAppCall(String(waCall), getDeviceId())
+      .then((event) => {
+        if (!event || event.leadId !== lead.id) return;
+        callStartedAt.current = null;
+        setEstimatedSec(null);
+        setNoteCallId(null);
+        setSheetChannel('whatsapp');
+        setWaEvent(event);
+        setSheetVisible(true);
+      })
+      .catch(() => undefined);
+  }, [waCall, lead, id]);
+
   const closeSheet = () => {
     setSheetVisible(false);
     setNoteCallId(null);
+    setWaEvent(null);
   };
 
   // --- after a call: open the popup when the user comes back -----------
@@ -225,6 +252,7 @@ export default function LeadDetailScreen() {
         callStartedAt.current = null;
         leftApp.current = false;
         setNoteCallId(null);
+        setWaEvent(null);
         setEstimatedSec(seconds);
         setSheetChannel(pendingChannel.current);
         setSheetVisible(true);
@@ -339,6 +367,7 @@ export default function LeadDetailScreen() {
   const logManually = (channel: CallChannel = 'phone') => {
     callStartedAt.current = null;
     setNoteCallId(null);
+    setWaEvent(null);
     setEstimatedSec(null);
     setSheetChannel(channel);
     setSheetVisible(true);
@@ -957,6 +986,7 @@ export default function LeadDetailScreen() {
         estimatedSec={estimatedSec}
         deviceCallId={noteCallId}
         channel={sheetChannel}
+        waEvent={waEvent}
         onClose={closeSheet}
         onSaved={() => {
           closeSheet();

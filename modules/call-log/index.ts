@@ -47,6 +47,36 @@ export type DirectoryEntry = {
 
 export type NotifySettings = { afterCall: boolean; incoming: boolean };
 
+/** 💬 WhatsApp sync on this phone */
+export type WhatsAppStatus = {
+  /** turned on in the app */
+  enabled: boolean;
+  /** Android "Notification access" given to this app */
+  access: boolean;
+};
+
+/** A WhatsApp call / message waiting on the phone (no names or numbers) */
+export type WhatsAppEvent = {
+  id: string;
+  lead_id: string;
+  media: 'voice' | 'video' | 'message';
+  direction: 'outgoing' | 'incoming' | 'missed';
+  duration_sec: number;
+  connected: boolean;
+  called_at: string;
+};
+
+/** One event, read for the "add a note" popup */
+export type WhatsAppDeviceEvent = {
+  id: string;
+  leadId: string;
+  media: 'voice' | 'video' | 'message';
+  direction: 'outgoing' | 'incoming' | 'missed';
+  durationSec: number;
+  connected: boolean;
+  calledAt: string;
+};
+
 type NativeCallLog = {
   getDeviceId(): string;
   getPermissions(): CallLogPermissions;
@@ -67,6 +97,15 @@ type NativeCallLog = {
   getLeadDirectorySize(): number;
   getNotifySettings(): NotifySettings;
   setNotifySettings(afterCall: boolean | null, incoming: boolean | null): void;
+  getWhatsAppStatus(): WhatsAppStatus;
+  setWhatsAppEnabled(enabled: boolean): void;
+  openNotificationAccess(): void;
+  openAppDetails(): void;
+  getWhatsAppPending(): string;
+  getWhatsAppPendingCount(): number;
+  removeWhatsAppPending(ids: string[]): void;
+  whatsAppEventById(id: string): WhatsAppDeviceEvent | null;
+  clearWhatsApp(): void;
 };
 
 // Missing in Expo Go and on iPhone; everything below then quietly does nothing.
@@ -197,4 +236,56 @@ export function getNotifySettings(): NotifySettings {
 
 export function setNotifySettings(s: Partial<NotifySettings>): void {
   if (has('setNotifySettings')) native!.setNotifySettings(s.afterCall ?? null, s.incoming ?? null);
+}
+// ---------------------------------------------------------------------
+// 💬 WhatsApp (read from WhatsApp's notifications; newer builds only)
+// ---------------------------------------------------------------------
+/** true when this build can read WhatsApp's notifications */
+export const hasWhatsAppSync = has('getWhatsAppStatus');
+
+export function getWhatsAppStatus(): WhatsAppStatus {
+  if (!hasWhatsAppSync) return { enabled: false, access: false };
+  return native!.getWhatsAppStatus();
+}
+
+export function setWhatsAppEnabled(enabled: boolean): void {
+  if (hasWhatsAppSync) native!.setWhatsAppEnabled(enabled);
+}
+
+export function openNotificationAccess(): void {
+  if (has('openNotificationAccess')) native!.openNotificationAccess();
+}
+
+export function openAppDetails(): void {
+  if (has('openAppDetails')) native!.openAppDetails();
+}
+
+export function getWhatsAppPending(): WhatsAppEvent[] {
+  if (!has('getWhatsAppPending')) return [];
+  try {
+    return JSON.parse(native!.getWhatsAppPending()) as WhatsAppEvent[];
+  } catch {
+    return [];
+  }
+}
+
+export function getWhatsAppPendingCount(): number {
+  return has('getWhatsAppPendingCount') ? native!.getWhatsAppPendingCount() : 0;
+}
+
+export function removeWhatsAppPending(ids: string[]): void {
+  if (ids.length > 0 && has('removeWhatsAppPending')) native!.removeWhatsAppPending(ids);
+}
+
+export function whatsAppEventById(id: string): WhatsAppDeviceEvent | null {
+  if (!has('whatsAppEventById')) return null;
+  try {
+    return native!.whatsAppEventById(id);
+  } catch {
+    return null;
+  }
+}
+
+export function clearWhatsApp(): void {
+  if (has('clearWhatsApp')) native!.clearWhatsApp();
 }

@@ -18,15 +18,18 @@ import {
   getDeviceId,
   isCallLogAvailable,
   type DeviceCall,
+  type WhatsAppDeviceEvent,
 } from '@/features/call-sync/api';
 import {
   addNoteToPhoneCall,
+  addNoteToWhatsAppCall,
   CALL_OUTCOMES,
   directionInfo,
   formatDuration,
   logCall,
   outcomeFromPhone,
   outcomeInfo,
+  outcomeOfWhatsApp,
   WHATSAPP_CALL_OUTCOMES,
   type AnyOutcome,
   type CallChannel,
@@ -102,6 +105,11 @@ type Props = {
   deviceCallId?: string | null;
   /** 💬 After WhatsApp: message or call, sent or received (default: phone call) */
   channel?: CallChannel;
+  /**
+   * 💬 Opened from the WhatsApp "add a note" notification: the call WhatsApp
+   * already showed (time, length). Only note, rating and next call are asked.
+   */
+  waEvent?: WhatsAppDeviceEvent | null;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -118,10 +126,11 @@ export function CallResultSheet({
   estimatedSec,
   deviceCallId,
   channel = 'phone',
+  waEvent = null,
   onClose,
   onSaved,
 }: Props) {
-  const isWa = channel === 'whatsapp';
+  const isWa = channel === 'whatsapp' || !!waEvent;
   const [waMedia, setWaMedia] = useState<WhatsAppMedia | null>(null);
   const [waDirection, setWaDirection] = useState<'outgoing' | 'incoming'>('outgoing');
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
@@ -327,7 +336,37 @@ export function CallResultSheet({
   };
 
   // --- save after WhatsApp ------------------------------------------------
+  const handleSaveWhatsAppEvent = async (event: WhatsAppDeviceEvent) => {
+    const deviceId = getDeviceId();
+    if (!deviceId) {
+      setError('Could not read this phone. Please try again.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await addNoteToWhatsAppCall({ leadId: lead.id, deviceId, event, notes });
+
+      if (chosenDate) {
+        await scheduleFollowUp(lead.id, chosenDate, notes);
+      } else if (followUpKey === NO_FOLLOW_UP) {
+        await cancelFollowUp(lead.id);
+      }
+
+      if (rating !== ((lead.rating as Rating | null) ?? null)) {
+        await updateLead(lead.id, { name: lead.name, rating });
+      }
+
+      finish(outcomeOfWhatsApp(event) === 'connected');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the note.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSaveWhatsApp = async () => {
+    if (waEvent) return handleSaveWhatsAppEvent(waEvent);
     if (!waMedia) {
       setError('Please choose: message, voice call or video call.');
       return;
@@ -510,7 +549,9 @@ export function CallResultSheet({
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <View>
               <Text style={styles.title}>
-                {isWa
+                {waEvent
+                  ? 'Add a note'
+                  : isWa
                   ? 'What happened on WhatsApp?'
                   : noteMode
                     ? 'Add a note'
@@ -531,7 +572,21 @@ export function CallResultSheet({
               {stageKind === 'cancelled' && <Text style={styles.closedMuted}>↩ Admission was cancelled</Text>}
             </View>
 
-            {isWa ? (
+            {waEvent ? (
+              <>
+                {/* 💬 The call as WhatsApp showed it */}
+                <WhatsAppResult event={waEvent} />
+                {noteField}
+                {ratingField}
+                {showFollowUp ? (
+                  followUpField
+                ) : (
+                  <Pressable onPress={() => setShowFollowUp(true)} hitSlop={8} accessibilityRole="button">
+                    <Text style={styles.link}>＋ Set next call</Text>
+                  </Pressable>
+                )}
+              </>
+            ) : isWa ? (
               <>
                 {/* 💬 WhatsApp: what it was, and which way */}
                 <View style={styles.grid}>
@@ -706,6 +761,26 @@ export function CallResultSheet({
         </View>
       </KeyboardAvoidingView>
     </Modal>
+  );
+}
+
+// =====================================================================
+// A WhatsApp call read from WhatsApp's notifications
+// =====================================================================
+function WhatsAppResult({ event }: { event: WhatsAppDeviceEvent }) {
+  const info = outcomeInfo(outcomeOfWhatsApp(event));
+  const dir = directionInfo(event.direction);
+  const time = new Date(event.calledAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const kind = event.media === 'video' ? 'WhatsApp video call' : 'WhatsApp call';
+  const length = event.connected && event.durationSec > 0 ? ` · ${formatDuration(event.durationSec)}` : '';
+  return (
+    <View style={styles.autoCard}>
+      <Text style={[styles.autoTitle, { color: info.color }]}>
+        💬 {kind} · {dir.label} · {info.label}
+        {length}
+      </Text>
+      <Text style={styles.hint}>{time} · saved from WhatsApp</Text>
+    </View>
   );
 }
 

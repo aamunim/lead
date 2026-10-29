@@ -308,6 +308,18 @@ function HealthCard({
             <Stat label="Today" value={`${row.phoneCallsToday} ${row.phoneCallsToday === 1 ? 'call' : 'calls'}`} />
           </View>
 
+          {/* 💬 WhatsApp on this phone */}
+          {row.deviceId && row.waOn != null && (
+            <Text style={[styles.waLine, row.waOn && row.waAccess === false && { color: colors.warning }]}>
+              💬 WhatsApp:{' '}
+              {!row.waOn
+                ? 'off'
+                : row.waAccess === false
+                  ? 'on, but “Notification access” is not allowed'
+                  : `on · ${row.waToday} today`}
+            </Text>
+          )}
+
           {/* What is wrong */}
           {row.problems.map((p) => (
             <Text
@@ -492,6 +504,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
 
   problem: { fontSize: fontSize.small, fontWeight: fontWeight.semibold },
+  waLine: { fontSize: fontSize.small, color: colors.textMuted },
   meta: { fontSize: 11, color: colors.textMuted },
   reminded: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.primary },
 

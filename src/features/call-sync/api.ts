@@ -9,6 +9,7 @@ import {
   callById,
   captureNow,
   clearLeadDirectory as clearNativeDirectory,
+  clearWhatsApp,
   getCallLogPermissions,
   getDeviceId,
   getLeadDirectorySize,
@@ -17,21 +18,42 @@ import {
   getPendingCount,
   getSimFilter,
   getSims,
+  getWhatsAppPending,
+  getWhatsAppPendingCount,
+  getWhatsAppStatus,
   hasCallNotifications,
+  hasWhatsAppSync,
   isCallLogAvailable,
   isCallSyncEnabled,
   latestCallFor,
   markAppCall,
+  openAppDetails,
+  openNotificationAccess,
   removePendingCalls,
+  removeWhatsAppPending,
   setCallSyncEnabled,
   setLeadDirectory,
   setNotifySettings,
+  setWhatsAppEnabled,
+  whatsAppEventById,
   type DeviceCall,
   type DirectoryEntry,
   type NotifySettings,
+  type WhatsAppDeviceEvent,
+  type WhatsAppStatus,
 } from '../../../modules/call-log';
 
-export { hasCallNotifications, isCallLogAvailable, type DeviceCall, type NotifySettings };
+export {
+  hasCallNotifications,
+  hasWhatsAppSync,
+  isCallLogAvailable,
+  openAppDetails,
+  openNotificationAccess,
+  type DeviceCall,
+  type NotifySettings,
+  type WhatsAppDeviceEvent,
+  type WhatsAppStatus,
+};
 
 // =====================================================================
 // Admin setting (Settings → Call log sync)
@@ -156,7 +178,32 @@ export function setPhoneCallSync(enabled: boolean): void {
     refreshLeadDirectory(true).catch(() => undefined);
   } else {
     clearNativeDirectory();
+    setWhatsAppEnabled(false); // WhatsApp needs the lead directory too
   }
+}
+
+// =====================================================================
+// 💬 WhatsApp sync on this phone (reads WhatsApp's notifications)
+//   Needs: call log sync on (for the lead directory) and Android's
+//   "Notification access" for this app.
+// =====================================================================
+export function whatsAppStatus(): WhatsAppStatus {
+  return getWhatsAppStatus();
+}
+
+/** Turn WhatsApp sync on/off on this phone; returns the new status */
+export function setWhatsAppSync(enabled: boolean): WhatsAppStatus {
+  setWhatsAppEnabled(enabled && isCallSyncEnabled());
+  return getWhatsAppStatus();
+}
+
+export function whatsAppPendingCount(): number {
+  return getWhatsAppPendingCount();
+}
+
+/** A WhatsApp call still on the phone (for "add a note" from its notification) */
+export function getWhatsAppEvent(id: string): WhatsAppDeviceEvent | null {
+  return whatsAppEventById(id);
 }
 
 // =====================================================================
@@ -191,6 +238,7 @@ export async function clearPhoneCallData(): Promise<void> {
   if (!isCallLogAvailable) return;
   clearNativeDirectory();
   setCallSyncEnabled(false);
+  clearWhatsApp();
   await AsyncStorage.multiRemove([DIR_REFRESH_KEY, LAST_SYNC_KEY]).catch(() => undefined);
 }
 
@@ -213,8 +261,9 @@ export async function reportSyncStatus(error?: string | null): Promise<void> {
     permission_ok: callPermissionState() === 'granted',
     sync_on: isCallSyncEnabled(),
     sim_label: simLabel(),
-    pending_count: getPendingCount(),
+    pending_count: getPendingCount() + getWhatsAppPendingCount(),
     error: error ?? null,
+    ...(hasWhatsAppSync ? { wa_on: getWhatsAppStatus().enabled, wa_access: getWhatsAppStatus().access } : {}),
   };
 
   await supabase
@@ -239,7 +288,7 @@ async function uploadQueue(): Promise<SyncResult> {
 
   const deviceId = getDeviceId();
   const pending = getPendingCalls();
-  if (!deviceId || pending.length === 0) return total;
+  if (!deviceId || (pending.length === 0 && getWhatsAppPendingCount() === 0)) return total;
 
   for (let i = 0; i < pending.length; i += CHUNK) {
     const part = pending.slice(i, i + CHUNK);
@@ -257,6 +306,22 @@ async function uploadQueue(): Promise<SyncResult> {
 
     // The server has handled these (stored, matched, or ignored as non-leads)
     removePendingCalls(part.map((c) => c.id));
+  }
+
+  // 💬 WhatsApp calls and messages (already matched to leads on the phone)
+  const waEvents = getWhatsAppPending();
+  for (let i = 0; i < waEvents.length; i += CHUNK) {
+    const part = waEvents.slice(i, i + CHUNK);
+    const { data, error } = await supabase.rpc('sync_whatsapp_events', {
+      p_device_id: deviceId,
+      p_events: part as unknown as Json,
+    });
+    if (error) throw new Error(error.message);
+    const r = data as unknown as { added: number; ignored: number };
+    total.sent += part.length;
+    total.added += r.added;
+    total.ignored += r.ignored;
+    removeWhatsAppPending(part.map((e) => e.id));
   }
   return total;
 }
