@@ -6,6 +6,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
 import { colors } from '@/shared/theme';
+import { OfflineBanner } from '@/shared/ui/OfflineBanner';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -56,6 +57,8 @@ function RootNavigator() {
           <Stack.Screen name="(app)" />
         </Stack.Protected>
       </Stack>
+      {/* 📵 No internet: shown over every screen */}
+      <OfflineBanner />
     </>
   );
 }
