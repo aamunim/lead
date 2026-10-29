@@ -8,6 +8,7 @@ import {
     setPhoneCallSync,
     syncCallsNow,
 } from '@/features/call-sync/api';
+import { onNetworkChange } from '@/shared/lib/network';
 
 const MIN_GAP_MS = 60 * 1000; // never more than once a minute
 
@@ -43,6 +44,14 @@ export function useAutoCallSync(active: boolean) {
   // When the user becomes active (app opened / signed in)
   useEffect(() => {
     run(true);
+  }, [run]);
+
+  // Internet is back: send the calls that waited on the phone
+  useEffect(() => {
+    const off = onNetworkChange((online) => {
+      if (online) run(true);
+    });
+    return off;
   }, [run]);
 
   // Whenever the app comes back to the front

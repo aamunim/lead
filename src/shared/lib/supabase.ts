@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
+import { trackedFetch } from '@/shared/lib/network';
 import type { Database } from '@/shared/types/database';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -21,6 +22,8 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: false,
   },
+  // Every request tells the "No internet" banner whether the server answered
+  global: { fetch: trackedFetch },
 });
 
 // App samne thakle login token nijei refresh hobe,
