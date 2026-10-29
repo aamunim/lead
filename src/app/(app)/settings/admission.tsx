@@ -4,13 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
@@ -155,7 +155,12 @@ export default function AdmissionSettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'Admission rules' }} />
 
       <Text style={styles.intro}>Rules for marking leads Admitted or Lost, papers, and student IDs.</Text>
@@ -306,7 +311,7 @@ export default function AdmissionSettingsScreen() {
       )}
 
       <Button title="Save" onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

@@ -2,15 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { listMissingPapers } from '@/features/papers/api';
 import {
@@ -207,7 +206,7 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
   // --- render ---------------------------------------------------------------
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={done ? () => onSaved(done) : onClose}>
-      <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.backdrop} behavior="padding">
         <Pressable
           style={styles.flex}
           onPress={saving ? undefined : done ? () => onSaved(done) : onClose}

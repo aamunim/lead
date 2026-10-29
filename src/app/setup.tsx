@@ -1,13 +1,11 @@
 import { useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   View,
   type TextInput,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { completeFirstRunSetup, signIn, signUp } from '@/features/auth/api';
@@ -127,11 +125,9 @@ export default function SetupScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
+      <View style={styles.flex}>
+        <KeyboardAwareScrollView
+          bottomOffset={spacing.xl}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
@@ -239,8 +235,8 @@ export default function SetupScreen() {
             loading={saving}
             fullWidth
           />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </View>
     </SafeAreaView>
   );
 }

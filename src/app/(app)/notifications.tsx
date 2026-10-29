@@ -1,9 +1,10 @@
 import { Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { KIND_INFO, listNotifications, markRead, type AppNotification } from '@/features/notifications/api';
 import { openNotificationTarget } from '@/features/notifications/open';
+import { getPushPermission, registerForPush, type PushPermission } from '@/features/notifications/push';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -27,10 +28,14 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [permission, setPermission] = useState<PushPermission>('granted');
 
   const load = useCallback(async () => {
     try {
       setError(null);
+      getPushPermission()
+        .then(setPermission)
+        .catch(() => undefined);
       setItems(await listNotifications());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the notifications.');
@@ -54,6 +59,16 @@ export default function NotificationsScreen() {
       markRead([n.id]).catch(() => undefined);
     }
     openNotificationTarget(n.data);
+  };
+
+  // Phone notifications are off: ask again, or open the phone's settings
+  const turnOnPush = async () => {
+    if (permission === 'denied') {
+      Linking.openSettings();
+      return;
+    }
+    if (await registerForPush()) setPermission('granted');
+    else setPermission(await getPushPermission());
   };
 
   const readAll = () => {
@@ -87,7 +102,28 @@ export default function NotificationsScreen() {
             }}
           />
         }
-        ListHeaderComponent={error ? <Text style={styles.error}>{error}</Text> : undefined}
+        ListHeaderComponent={
+          <>
+            {permission !== 'granted' && (
+              <Pressable
+                onPress={turnOnPush}
+                style={({ pressed }) => [styles.pushOff, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.icon}>📵</Text>
+                <View style={styles.flex}>
+                  <Text style={styles.title}>Phone notifications are off</Text>
+                  <Text style={styles.body}>
+                    {permission === 'denied'
+                      ? 'Tap to open the phone settings and allow notifications.'
+                      : 'Tap to turn them on, so you know when a lead is given to you.'}
+                  </Text>
+                </View>
+              </Pressable>
+            )}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+          </>
+        }
         ListEmptyComponent={
           loading ? (
             <ActivityIndicator color={colors.primary} style={styles.loader} />
@@ -140,6 +176,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  pushOff: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.danger,
     backgroundColor: colors.surface,
   },
   rowNew: { borderColor: colors.primary, backgroundColor: colors.primarySoft },

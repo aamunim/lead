@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
 import { colors } from '@/shared/theme';
@@ -10,9 +11,12 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootNavigator />
-    </AuthProvider>
+    // Keeps the field you type in above the keyboard (all screens and sheets)
+    <KeyboardProvider>
+      <AuthProvider>
+        <RootNavigator />
+      </AuthProvider>
+    </KeyboardProvider>
   );
 }
 

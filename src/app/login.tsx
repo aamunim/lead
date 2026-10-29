@@ -1,14 +1,12 @@
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
     StyleSheet,
     Text,
     View,
     type TextInput,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { signIn } from '@/features/auth/api';
@@ -57,11 +55,9 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
+      <View style={styles.flex}>
+        <KeyboardAwareScrollView
+          bottomOffset={spacing.xl}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
@@ -129,8 +125,8 @@ export default function LoginScreen() {
               onPress={() => router.push('/sign-up')}
             />
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </View>
     </SafeAreaView>
   );
 }

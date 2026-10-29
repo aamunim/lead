@@ -4,11 +4,11 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { listAssignableUsers } from '@/features/leads/api';
@@ -200,7 +200,12 @@ export default function UserEditScreen() {
   const selectedRole = roles.find((r) => r.key === form.roleKey);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: user.full_name || 'User' }} />
 
       {/* Summary */}
@@ -314,7 +319,7 @@ export default function UserEditScreen() {
           )}
         </View>
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

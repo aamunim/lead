@@ -1,3 +1,4 @@
+import { unregisterPush } from '@/features/notifications/push';
 import { supabase } from '@/shared/lib/supabase';
 import type { Tables } from '@/shared/types/database';
 
@@ -98,6 +99,8 @@ export async function signIn(input: SignInInput) {
 }
 
 export async function signOut() {
+  // This phone stops getting this user's pushes (while still signed in)
+  await unregisterPush();
   const { error } = await supabase.auth.signOut();
   if (error) throw new Error(friendlyAuthError(error.message));
 }

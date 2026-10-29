@@ -1,12 +1,15 @@
 import { Stack } from 'expo-router';
 
 import { ActivityTracker } from '@/features/activity/ActivityTracker';
+import { PushSetup } from '@/features/notifications/PushSetup';
 import { colors, fontWeight } from '@/shared/theme';
 
 export default function AppLayout() {
   return (
     // Time spent in the app (Settings → Team activity)
     <ActivityTracker>
+      {/* Phone push: token, taps, app icon number */}
+      <PushSetup />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: colors.primary },

@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { countLeadsForExport, exportLeads, type ExportFilters } from '@/features/import-export/api';
@@ -133,7 +134,12 @@ export default function ExportScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'Export leads' }} />
 
       <View style={styles.notice}>
@@ -245,7 +251,7 @@ export default function ExportScreen() {
         disabled={!count}
         fullWidth
       />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

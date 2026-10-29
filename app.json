@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lead Management",
     "slug": "lead-management",
-    "version": "2.0.0-beta",
+    "version": "2.1.0-beta",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "leadmanagement",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.abamunim.leads",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -34,6 +34,13 @@
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#208AEF",
+          "defaultChannel": "leads"
         }
       ],
       "expo-sharing",
