@@ -35,6 +35,11 @@ export type HealthRow = {
   phoneCallsToday: number;
   lastPhoneCallAt: Date | null;
 
+  // 💬 WhatsApp on this phone (null = app version without it)
+  waOn: boolean | null;
+  waAccess: boolean | null;
+  waToday: number;
+
   // Last reminder from the Super Admin
   nudgeAt: Date | null;
   nudgeSeenAt: Date | null;
@@ -67,6 +72,9 @@ type RawRow = {
   nudge_at: string | null;
   nudge_seen_at: string | null;
   nudge_open: boolean | null;
+  wa_on: boolean | null;
+  wa_access: boolean | null;
+  wa_today: number | null;
 };
 
 // =====================================================================
@@ -174,6 +182,9 @@ export async function listSyncHealth(): Promise<HealthRow[]> {
       nudgeAt: toDate(r.nudge_at),
       nudgeSeenAt: toDate(r.nudge_seen_at),
       nudgeOpen: !!r.nudge_open,
+      waOn: r.wa_on,
+      waAccess: r.wa_access,
+      waToday: r.wa_today ?? 0,
     };
     return { ...base, ...workOut(base) };
   });

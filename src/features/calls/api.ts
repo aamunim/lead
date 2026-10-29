@@ -1,4 +1,9 @@
-import { syncCallsNow, type DeviceCall } from '@/features/call-sync/api';
+import {
+  getWhatsAppEvent,
+  syncCallsNow,
+  type DeviceCall,
+  type WhatsAppDeviceEvent,
+} from '@/features/call-sync/api';
 import { supabase } from '@/shared/lib/supabase';
 import { colors } from '@/shared/theme';
 import type { Tables } from '@/shared/types/database';
@@ -116,6 +121,9 @@ export type NewCall = {
   channel?: CallChannel;
   media?: WhatsAppMedia | null;
 
+  /** 'whatsapp' when it was read from WhatsApp's notifications */
+  source?: 'app' | 'whatsapp';
+
   // When the call was found in the phone's call log
   direction?: CallDirection;
   deviceId?: string | null;
@@ -163,6 +171,7 @@ export async function logCall(input: NewCall): Promise<string> {
       ...(input.calledAt ? { called_at: input.calledAt } : {}),
       ...(input.direction ? { direction: input.direction } : {}),
       ...(input.channel === 'whatsapp' ? { channel: 'whatsapp', media: input.media ?? 'message' } : {}),
+      ...(input.source === 'whatsapp' ? { source: 'whatsapp' } : {}),
       ...(fromPhone
         ? {
             device_id: input.deviceId,
@@ -230,6 +239,97 @@ export async function addNoteToPhoneCall(input: {
     deviceId: input.deviceId,
     deviceCallId: input.call.id,
     simLabel: input.call.simLabel,
+  });
+}
+
+// =====================================================================
+// Add a note to a WhatsApp call read from WhatsApp's notifications
+//   Same steps as addNoteToPhoneCall: sync first, then add the note to
+//   the saved call, or save it now with the phone's id (sync then skips it)
+// =====================================================================
+/** The result of a WhatsApp call from WhatsApp's notifications */
+export function outcomeOfWhatsApp(e: WhatsAppDeviceEvent): AnyOutcome {
+  if (e.media === 'message') return 'message';
+  if (e.direction === 'missed') return 'missed';
+  if (e.connected) return 'connected';
+  return e.direction === 'incoming' ? 'missed' : 'no_answer';
+}
+
+/**
+ * The WhatsApp call behind an "add a note" notification: from the phone's
+ * queue, or (already uploaded) from the saved call
+ */
+export async function findWhatsAppCall(eventId: string, deviceId: string | null): Promise<WhatsAppDeviceEvent | null> {
+  const onPhone = getWhatsAppEvent(eventId);
+  if (onPhone) return onPhone;
+  if (!deviceId) return null;
+
+  const { data } = await supabase
+    .from('call_logs')
+    .select('lead_id, media, direction, outcome, duration_sec, called_at')
+    .eq('device_id', deviceId)
+    .eq('device_call_id', `wa:${eventId}`)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    id: eventId,
+    leadId: data.lead_id,
+    media: (data.media ?? 'voice') as WhatsAppDeviceEvent['media'],
+    direction: (data.direction === 'missed' || data.direction === 'rejected'
+      ? 'missed'
+      : data.direction) as WhatsAppDeviceEvent['direction'],
+    durationSec: data.duration_sec ?? 0,
+    connected: data.outcome === 'connected',
+    calledAt: data.called_at,
+  };
+}
+
+export async function addNoteToWhatsAppCall(input: {
+  leadId: string;
+  deviceId: string;
+  event: WhatsAppDeviceEvent;
+  notes: string;
+}): Promise<void> {
+  const notes = input.notes.trim() || null;
+  const deviceCallId = `wa:${input.event.id}`;
+
+  try {
+    await syncCallsNow();
+  } catch {
+    // offline: handled below
+  }
+
+  const { data: existing, error: findError } = await supabase
+    .from('call_logs')
+    .select('id, notes')
+    .eq('lead_id', input.leadId)
+    .eq('device_id', input.deviceId)
+    .eq('device_call_id', deviceCallId)
+    .maybeSingle();
+  if (findError) throw toError(findError);
+
+  if (existing) {
+    if (!notes) return;
+    if (existing.notes) throw new Error('This call already has a note.');
+    const { error } = await supabase.from('call_logs').update({ notes }).eq('id', existing.id);
+    if (error) throw toError(error);
+    return;
+  }
+
+  const outcome = outcomeOfWhatsApp(input.event);
+  const missed = outcome === 'missed';
+  await logCall({
+    leadId: input.leadId,
+    outcome,
+    notes,
+    durationSec: outcome === 'connected' ? input.event.durationSec : null,
+    calledAt: input.event.calledAt,
+    direction: missed ? 'missed' : input.event.direction,
+    channel: 'whatsapp',
+    media: input.event.media,
+    source: 'whatsapp',
+    deviceId: input.deviceId,
+    deviceCallId,
   });
 }
 

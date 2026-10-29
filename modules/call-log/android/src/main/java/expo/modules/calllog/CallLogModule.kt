@@ -1,6 +1,9 @@
 package expo.modules.calllog
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -119,6 +122,53 @@ class CallLogModule : Module() {
     Function("setNotifySettings") { afterCall: Boolean?, incoming: Boolean? ->
       CallLogStore.setNotify(context, afterCall, incoming)
       if (incoming == false) CallNotifier.clearIncoming(context)
+    }
+
+    // ---------------------------------------------------------------
+    // 💬 WhatsApp (read from WhatsApp's notifications)
+    // ---------------------------------------------------------------
+    Function("getWhatsAppStatus") {
+      mapOf(
+        "enabled" to WhatsAppStore.isEnabled(context),
+        "access" to WhatsAppStore.hasAccess(context),
+      )
+    }
+
+    Function("setWhatsAppEnabled") { enabled: Boolean ->
+      WhatsAppStore.setEnabled(context, enabled)
+    }
+
+    // Android's "Notification access" list, where the user allows this app
+    Function("openNotificationAccess") {
+      val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      context.startActivity(intent)
+    }
+
+    // This app's info page (⋮ → "Allow restricted settings" on Android 13+)
+    Function("openAppDetails") {
+      val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      context.startActivity(intent)
+    }
+
+    Function("getWhatsAppPending") {
+      WhatsAppStore.pendingJson(context)
+    }
+
+    Function("getWhatsAppPendingCount") {
+      WhatsAppStore.pendingCount(context)
+    }
+
+    Function("removeWhatsAppPending") { ids: List<String> ->
+      WhatsAppStore.removePending(context, ids)
+    }
+
+    Function("whatsAppEventById") { id: String ->
+      WhatsAppStore.eventById(context, id)
+    }
+
+    Function("clearWhatsApp") {
+      WhatsAppStore.clear(context)
     }
   }
 }

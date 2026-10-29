@@ -49,6 +49,17 @@ object LeadDirectory {
     return find(context, CallLogStore.sha256Hex(number))
   }
 
+  /** Find a lead by a directory key: a number ("01711…", "+971…") or "u:<username>" */
+  fun findKey(context: Context, key: String): Entry? = find(context, CallLogStore.sha256Hex(key))
+
+  /** The one lead with exactly this name (case does not matter); null if none or several */
+  fun findUniqueByName(context: Context, name: String): Entry? {
+    val wanted = name.trim().lowercase()
+    if (wanted.isEmpty()) return null
+    val hits = load(context).values.filter { it.name.trim().lowercase() == wanted }.distinctBy { it.leadId }
+    return hits.singleOrNull()
+  }
+
   @Synchronized
   private fun load(context: Context): Map<String, Entry> {
     cache?.let { return it }

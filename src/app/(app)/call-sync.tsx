@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   AppState,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,18 +22,25 @@ import {
   directorySize,
   getCallNotifySettings,
   hasCallNotifications,
+  hasWhatsAppSync,
   isCallLogAvailable,
   isCallSyncEnabled,
   lastSyncAt,
   notificationPermissionState,
+  openAppDetails,
+  openNotificationAccess,
   pendingCount,
   refreshLeadDirectory,
   setCallNotifySettings,
   setPhoneCallSync,
+  setWhatsAppSync,
   syncCallsNow,
+  whatsAppPendingCount,
+  whatsAppStatus,
   type CallPermissionState,
   type NotifySettings,
   type SyncResult,
+  type WhatsAppStatus,
 } from '@/features/call-sync/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -67,6 +75,10 @@ export default function CallSyncScreen() {
   const [notify, setNotify] = useState<NotifySettings>(getCallNotifySettings());
   const [savedLeads, setSavedLeads] = useState(0);
 
+  // 💬 WhatsApp (read from WhatsApp's notifications)
+  const [wa, setWa] = useState<WhatsAppStatus>(whatsAppStatus());
+  const [waWaiting, setWaWaiting] = useState(0);
+
   const refreshStatus = useCallback(async () => {
     setPermission(callPermissionState());
     setEnabled(isCallSyncEnabled());
@@ -76,6 +88,8 @@ export default function CallSyncScreen() {
     setNotifyPermission(notificationPermissionState());
     setNotify(getCallNotifySettings());
     setSavedLeads(directorySize());
+    setWa(whatsAppStatus());
+    setWaWaiting(whatsAppPendingCount());
     setLastSync(await lastSyncAt());
   }, []);
 
@@ -117,6 +131,12 @@ export default function CallSyncScreen() {
       await refreshLeadDirectory(true).catch(() => undefined);
       refreshStatus();
     }
+  };
+
+  const toggleWhatsApp = (on: boolean) => {
+    setWa(setWhatsAppSync(on));
+    // Without access nothing can be read: take the user to the steps right away
+    if (on && !whatsAppStatus().access) openNotificationAccess();
   };
 
   const changeNotify = (change: Partial<NotifySettings>) => {
@@ -292,6 +312,57 @@ export default function CallSyncScreen() {
             </>
           )}
 
+          {/* 💬 WhatsApp */}
+          {hasWhatsAppSync && (
+            <>
+              <Text style={styles.sectionLabel}>💬 WHATSAPP CALLS</Text>
+              <View style={styles.card}>
+                <View style={styles.row}>
+                  <View style={styles.flex}>
+                    <Text style={styles.rowTitle}>Save WhatsApp calls with leads</Text>
+                    <Text style={styles.rowText}>
+                      WhatsApp and WhatsApp Business calls (incoming, outgoing, missed) and when a lead sends a
+                      message. Read from WhatsApp’s notifications; message text is never read.
+                    </Text>
+                  </View>
+                  <Switch value={wa.enabled} onValueChange={toggleWhatsApp} />
+                </View>
+
+                {wa.enabled && !wa.access && (
+                  <>
+                    <View style={styles.divider} />
+                    <Text style={styles.warnText}>⚠ One more step: allow “Notification access”.</Text>
+                    {Number(Platform.Version) >= 33 && (
+                      <>
+                        <Text style={styles.helpText}>
+                          Android may say “Restricted setting” (the app is not from the Play Store). Then first:
+                        </Text>
+                        <Text style={styles.helpStep}>1. Open app info below</Text>
+                        <Text style={styles.helpStep}>2. Tap ⋮ (top right) → “Allow restricted settings”</Text>
+                        <Text style={styles.helpStep}>3. Come back and tap “Notification access”</Text>
+                        <Button title="Open app info" variant="ghost" onPress={openAppDetails} fullWidth />
+                      </>
+                    )}
+                    <Text style={styles.helpText}>Find “Lead Management” in the list and turn it on.</Text>
+                    <Button title="Notification access" onPress={openNotificationAccess} fullWidth />
+                  </>
+                )}
+
+                {wa.enabled && wa.access && (
+                  <Text style={styles.hint}>
+                    ✓ On. WhatsApp calls are saved with the lead, and you get the same “add a note” and “lead is
+                    calling” notifications as phone calls.
+                    {waWaiting > 0 ? ` ${waWaiting} waiting to upload.` : ''}
+                  </Text>
+                )}
+                <Text style={styles.hint}>
+                  Works for leads whose phone, WhatsApp number or username is saved, or whose name in your contacts
+                  matches. WhatsApp’s own notifications must be on.
+                </Text>
+              </View>
+            </>
+          )}
+
           {/* SIM */}
           <Text style={styles.sectionLabel}>WHICH SIM</Text>
           <View style={styles.card}>
@@ -432,6 +503,7 @@ const styles = StyleSheet.create({
   radioOn: { borderColor: colors.primary },
   radioDot: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.primary },
   hint: { fontSize: fontSize.caption, color: colors.textMuted },
+  warnText: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.warning },
   statusRow: { flexDirection: 'row', gap: spacing.md },
   stat: {
     flex: 1,
