@@ -112,6 +112,10 @@ export type TeamMember = {
   admitted: number;
   first_at: string | null;
   last_at: string | null;
+  /** 💬 WhatsApp, counted apart from phone calls */
+  wa_calls: number;
+  wa_connected: number;
+  wa_messages: number;
 };
 
 export async function listTeamActivity(from: string, to: string): Promise<TeamMember[]> {
@@ -168,7 +172,7 @@ export async function countActivity(q: FeedQuery): Promise<Map<string, number>> 
   return new Map((data ?? []).map((r) => [r.action, r.n]));
 }
 
-export type ActivityDay = { day: string; app_sec: number; actions: number; calls: number };
+export type ActivityDay = { day: string; app_sec: number; actions: number; calls: number; wa: number };
 
 export async function listUserDays(userId: string, days = 14): Promise<ActivityDay[]> {
   const { data, error } = await supabase.rpc('user_activity_days', { p_user_id: userId, p_days: days });
@@ -292,6 +296,13 @@ export function describeChange(
     case 'course_removed':
       return { text: `Course − ${q(d.course)}`, warn: false };
     case 'call_logged':
+      if (d.channel === 'whatsapp') {
+        const what = d.media === 'message' ? 'message' : d.media === 'video' ? 'video call' : 'call';
+        return {
+          text: `💬 WhatsApp ${what}${String(d.direction ?? '') === 'incoming' ? ' · incoming' : ''}${d.outcome === 'message' ? '' : ` · ${q(d.outcome).replace(/_/g, ' ')}`}`,
+          warn: false,
+        };
+      }
       return { text: `${String(d.direction ?? '') === 'incoming' ? 'Incoming · ' : ''}${q(d.outcome).replace(/_/g, ' ')}`, warn: false };
     case 'note_added':
       return { text: `“${q(d.note)}”`, warn: false };

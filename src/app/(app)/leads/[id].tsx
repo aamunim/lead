@@ -14,14 +14,16 @@ import {
 } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
-import { markCallFromApp } from '@/features/call-sync/api';
+import { getCallSyncSettings, markCallFromApp } from '@/features/call-sync/api';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
 import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
 import {
+  channelLabel,
   directionInfo,
   formatDuration,
   listLeadCalls,
   outcomeInfo,
+  type CallChannel,
   type CallLog,
 } from '@/features/calls/api';
 import {
@@ -120,6 +122,16 @@ export default function LeadDetailScreen() {
   const callStartedAt = useRef<number | null>(null); // when the user tapped Call
   const leftApp = useRef(false); // did the phone app actually open?
   const [noteCallId, setNoteCallId] = useState<string | null>(null); // from a notification
+  // 📞 phone call or 💬 WhatsApp: which one the popup asks about
+  const [sheetChannel, setSheetChannel] = useState<CallChannel>('phone');
+  const pendingChannel = useRef<CallChannel>('phone');
+  const [askAfterWhatsApp, setAskAfterWhatsApp] = useState(true);
+
+  useEffect(() => {
+    getCallSyncSettings()
+      .then((s) => setAskAfterWhatsApp(s.whatsapp_ask_after))
+      .catch(() => undefined);
+  }, []);
 
   // Short message after a pipeline change (admitted, lost, moved…)
   const [toast, setToast] = useState<string | null>(null);
@@ -186,6 +198,7 @@ export default function LeadDetailScreen() {
     if (!callNote || !lead || lead.id !== id) return;
     callStartedAt.current = null;
     setEstimatedSec(null);
+    setSheetChannel('phone');
     setNoteCallId(String(callNote));
     setSheetVisible(true);
     // Clear it from the address, so the popup doesn't open again on reload
@@ -213,6 +226,7 @@ export default function LeadDetailScreen() {
         leftApp.current = false;
         setNoteCallId(null);
         setEstimatedSec(seconds);
+        setSheetChannel(pendingChannel.current);
         setSheetVisible(true);
       }
     });
@@ -301,6 +315,7 @@ export default function LeadDetailScreen() {
   const call = async (phone: string) => {
     callStartedAt.current = Date.now();
     leftApp.current = false;
+    pendingChannel.current = 'phone';
     // The app shows its own popup for this call: no "add a note" notification
     markCallFromApp(phone);
     const ok = await open(`tel:${phone}`);
@@ -308,11 +323,24 @@ export default function LeadDetailScreen() {
   };
   const sms = (phone: string) => open(`sms:${phone}`);
 
+  // 💬 WhatsApp: when the user comes back, ask what happened (Settings → Calls)
+  const whatsapp = async () => {
+    if (!lead) return;
+    if (askAfterWhatsApp) {
+      callStartedAt.current = Date.now();
+      leftApp.current = false;
+      pendingChannel.current = 'whatsapp';
+    }
+    const ok = await openWhatsApp(lead);
+    if (!ok) callStartedAt.current = null;
+  };
+
   // For calls made from another phone: log without timing
-  const logManually = () => {
+  const logManually = (channel: CallChannel = 'phone') => {
     callStartedAt.current = null;
     setNoteCallId(null);
     setEstimatedSec(null);
+    setSheetChannel(channel);
     setSheetVisible(true);
   };
 
@@ -357,6 +385,12 @@ export default function LeadDetailScreen() {
       case 'details_changed':
         return 'Name or phone updated';
       case 'call_logged': {
+        if (d.channel === 'whatsapp') {
+          const wa = channelLabel(d.channel, d.media);
+          if (d.outcome === 'message') return `💬 ${wa} ${d.direction === 'incoming' ? 'received' : 'sent'}`;
+          if (d.direction === 'missed' || d.direction === 'rejected') return `💬 Missed ${wa}`;
+          return `💬 ${d.direction === 'incoming' ? 'Incoming ' : ''}${wa}: ${outcomeInfo(d.outcome ?? '').label}`;
+        }
         const fromPhone = d.source === 'phone' ? ' 📱' : '';
         if (d.direction === 'missed' || d.direction === 'rejected') return `Missed call from lead${fromPhone}`;
         if (d.direction === 'incoming') return `Incoming call: ${outcomeInfo(d.outcome ?? '').label}${fromPhone}`;
@@ -433,8 +467,19 @@ export default function LeadDetailScreen() {
   const lastCall = feed.find((f) => f.kind === 'call')?.call ?? null;
   const lastNote = feed.find((f) => f.kind === 'note')?.note ?? null;
 
+  // Calls & notes: everything, only phone, or only WhatsApp
+  const [feedFilter, setFeedFilter] = useState<'all' | CallChannel>('all');
+  const hasWhatsApp = calls.some((c) => c.channel === 'whatsapp');
+  const shownFeed = useMemo(
+    () =>
+      feedFilter === 'all'
+        ? feed
+        : feed.filter((f) => f.kind === 'call' && (f.call.channel ?? 'phone') === feedFilter),
+    [feed, feedFilter],
+  );
+
   // Long lists show the newest few until "View more"
-  const feedMore = useShowMore(feed, 3);
+  const feedMore = useShowMore(shownFeed, 3);
   const activityMore = useShowMore(activity, 5);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -555,7 +600,7 @@ export default function LeadDetailScreen() {
             {!!lead.phone && (
               <ActionButton label="Call" icon="📞" color={colors.success} onPress={() => call(lead.phone!)} />
             )}
-            <ActionButton label="WhatsApp" icon="💬" color="#1F7A57" onPress={() => openWhatsApp(lead)} />
+            <ActionButton label="WhatsApp" icon="💬" color="#1F7A57" onPress={whatsapp} />
             {!!lead.phone && (
               <ActionButton label="SMS" icon="✉️" color={colors.info} onPress={() => sms(lead.phone!)} />
             )}
@@ -566,10 +611,11 @@ export default function LeadDetailScreen() {
             <View style={styles.recent}>
               {lastCall && (
                 <View style={styles.recentRow}>
-                  <Text style={styles.recentIcon}>📞</Text>
+                  <Text style={styles.recentIcon}>{lastCall.channel === 'whatsapp' ? '💬' : '📞'}</Text>
                   <View style={styles.flex}>
                     <Text style={styles.recentTitle} numberOfLines={1}>
-                      Last call:{' '}
+                      {lastCall.channel === 'whatsapp' ? `Last ${channelLabel(lastCall.channel, lastCall.media)}` : 'Last call'}
+                      :{' '}
                       <Text style={{ color: outcomeInfo(lastCall.outcome).color }}>
                         {lastCall.direction === 'incoming' && lastCall.outcome === 'connected' ? 'Incoming · ' : ''}
                         {outcomeInfo(lastCall.outcome).label}
@@ -722,8 +768,34 @@ export default function LeadDetailScreen() {
           title={`Calls & notes${feed.length > 0 ? ` (${feed.length})` : ''}`}
           right={talkSec > 0 ? `Talk time ${formatDuration(talkSec)}` : undefined}
         >
-          {feed.length === 0 ? (
-            <Text style={styles.muted}>No calls or notes yet. Tap Call above to start.</Text>
+          {hasWhatsApp && (
+            <View style={styles.feedFilters}>
+              {(
+                [
+                  ['all', 'All'],
+                  ['phone', '📞 Phone'],
+                  ['whatsapp', '💬 WhatsApp'],
+                ] as const
+              ).map(([value, label]) => {
+                const on = feedFilter === value;
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => setFeedFilter(value)}
+                    style={[styles.feedChip, on && styles.feedChipOn]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: on }}
+                  >
+                    <Text style={[styles.feedChipText, on && styles.feedChipTextOn]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          {shownFeed.length === 0 ? (
+            <Text style={styles.muted}>
+              {feed.length === 0 ? 'No calls or notes yet. Tap Call above to start.' : 'Nothing here yet.'}
+            </Text>
           ) : (
             feedMore.visible.map((item) => {
               if (item.kind === 'note') {
@@ -750,6 +822,11 @@ export default function LeadDetailScreen() {
               const dir = directionInfo(c.direction);
               const duration = c.duration_sec && c.duration_sec > 0 ? formatDuration(c.duration_sec) : null;
               const fromPhone = c.source === 'phone' || c.phone_verified === true;
+              const wa = channelLabel(c.channel, c.media);
+              const title =
+                c.outcome === 'message'
+                  ? `💬 ${wa} · ${c.direction === 'incoming' ? 'received' : 'sent'}`
+                  : `${wa ? `💬 ${wa} · ` : ''}${c.direction === 'incoming' && c.outcome === 'connected' ? 'Incoming · ' : ''}${info.label}`;
               return (
                 <View key={item.key} style={styles.callRow}>
                   <View style={[styles.dirBadge, { backgroundColor: dir.color + '1A' }]}>
@@ -758,8 +835,7 @@ export default function LeadDetailScreen() {
                   <View style={styles.flex}>
                     <View style={styles.callTop}>
                       <Text style={[styles.callOutcome, { color: info.color }]}>
-                        {c.direction === 'incoming' && c.outcome === 'connected' ? 'Incoming · ' : ''}
-                        {info.label}
+                        {title}
                       </Text>
                       {duration && <Text style={styles.callDuration}>{duration}</Text>}
                       {fromPhone && (
@@ -780,7 +856,10 @@ export default function LeadDetailScreen() {
             })
           )}
           <ShowMoreButton {...feedMore} />
-          <Button title="+ Log a call made from another phone" variant="ghost" onPress={logManually} />
+          {!!lead.phone && (
+            <Button title="+ Log a call made from another phone" variant="ghost" onPress={() => logManually('phone')} />
+          )}
+          <Button title="+ WhatsApp log (call or message)" variant="ghost" onPress={() => logManually('whatsapp')} />
           {calls.some((c) => c.source === 'phone' || c.phone_verified) && (
             <Text style={styles.hint}>📱 = taken from the phone’s call log (real time and length)</Text>
           )}
@@ -877,6 +956,7 @@ export default function LeadDetailScreen() {
         lead={{ id: lead.id, name: lead.name, phone: lead.phone, rating: lead.rating }}
         estimatedSec={estimatedSec}
         deviceCallId={noteCallId}
+        channel={sheetChannel}
         onClose={closeSheet}
         onSaved={() => {
           closeSheet();
@@ -1051,6 +1131,17 @@ const styles = StyleSheet.create({
   tagText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold },
   noteIcon: { fontSize: 14 },
   moreLink: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary, marginTop: 2 },
+  feedFilters: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
+  feedChip: {
+    paddingVertical: 4,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  feedChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  feedChipText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.text },
+  feedChipTextOn: { color: colors.textOnPrimary },
   callRow: {
     flexDirection: 'row',
     gap: spacing.md,

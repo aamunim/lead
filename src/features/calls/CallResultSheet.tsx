@@ -27,8 +27,11 @@ import {
   logCall,
   outcomeFromPhone,
   outcomeInfo,
+  WHATSAPP_CALL_OUTCOMES,
   type AnyOutcome,
+  type CallChannel,
   type CallOutcome,
+  type WhatsAppMedia,
 } from '@/features/calls/api';
 import { cancelFollowUp, followUpPresets, formatDue, scheduleFollowUp } from '@/features/follow-ups/api';
 import { updateLead, type Rating } from '@/features/leads/api';
@@ -97,11 +100,30 @@ type Props = {
    * The sheet then only asks for a note and rating (the call itself is already known).
    */
   deviceCallId?: string | null;
+  /** 💬 After WhatsApp: message or call, sent or received (default: phone call) */
+  channel?: CallChannel;
   onClose: () => void;
   onSaved: () => void;
 };
 
-export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onClose, onSaved }: Props) {
+const WA_MEDIA: { value: WhatsAppMedia; label: string; icon: string }[] = [
+  { value: 'message', label: 'Message', icon: '💬' },
+  { value: 'voice', label: 'Voice call', icon: '📞' },
+  { value: 'video', label: 'Video call', icon: '🎥' },
+];
+
+export function CallResultSheet({
+  visible,
+  lead,
+  estimatedSec,
+  deviceCallId,
+  channel = 'phone',
+  onClose,
+  onSaved,
+}: Props) {
+  const isWa = channel === 'whatsapp';
+  const [waMedia, setWaMedia] = useState<WhatsAppMedia | null>(null);
+  const [waDirection, setWaDirection] = useState<'outgoing' | 'incoming'>('outgoing');
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
   const [notes, setNotes] = useState('');
   const [rating, setRating] = useState<Rating | null>((lead.rating as Rating | null) ?? null);
@@ -137,6 +159,15 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
   );
   const presetKeys = presets.map((p) => p.key);
 
+  const chooseMedia = (value: WhatsAppMedia) => {
+    setWaMedia(value);
+    setError(null);
+    if (value === 'message') {
+      setOutcome(null);
+      setFollowUpKey((current) => (current === CUSTOM ? current : defaultFollowUp('connected', presetKeys)));
+    }
+  };
+
   const chooseOutcome = (value: CallOutcome) => {
     setOutcome(value);
     setError(null);
@@ -148,6 +179,8 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
   useEffect(() => {
     if (!visible) return;
     setOutcome(null);
+    setWaMedia(null);
+    setWaDirection('outgoing');
     setNotes('');
     setRating((lead.rating as Rating | null) ?? null);
     setFollowUpKey(null);
@@ -176,7 +209,9 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
       .catch(() => setHolidays([])); // without holidays the dates still work
 
     // From the notification: read that exact call from the phone
-    if (deviceCallId) {
+    if (isWa) {
+      // WhatsApp: nothing on the phone's call log to look up
+    } else if (deviceCallId) {
       setLookingUp(true);
       Promise.all([getCallById(deviceCallId), getCallSyncSettings()])
         .then(([call, settings]) => {
@@ -212,7 +247,7 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
         .finally(() => setLookingUp(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, lead.rating, deviceCallId]);
+  }, [visible, lead.rating, deviceCallId, isWa]);
 
   // Duration: the phone's real one, else our estimate (only for Connected)
   const realDuration = deviceCall?.durationSec ?? null;
@@ -291,8 +326,51 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
     }
   };
 
+  // --- save after WhatsApp ------------------------------------------------
+  const handleSaveWhatsApp = async () => {
+    if (!waMedia) {
+      setError('Please choose: message, voice call or video call.');
+      return;
+    }
+    const result: AnyOutcome | null = waMedia === 'message' ? 'message' : outcome;
+    if (!result) {
+      setError('Please choose what happened on the call.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await logCall({
+        leadId: lead.id,
+        outcome: result,
+        notes,
+        durationSec: result === 'connected' ? estimatedSec ?? null : null,
+        direction: waDirection,
+        channel: 'whatsapp',
+        media: waMedia,
+      });
+
+      if (chosenDate) {
+        await scheduleFollowUp(lead.id, chosenDate, notes);
+      } else if (followUpKey === NO_FOLLOW_UP) {
+        await cancelFollowUp(lead.id);
+      }
+
+      if (rating !== ((lead.rating as Rating | null) ?? null)) {
+        await updateLead(lead.id, { name: lead.name, rating });
+      }
+
+      finish(result === 'connected' || (result === 'message' && waDirection === 'incoming'));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     if (noteMode) return handleSaveNote();
+    if (isWa) return handleSaveWhatsApp();
     if (!outcome) {
       setError('Please choose what happened on the call.');
       return;
@@ -432,7 +510,13 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <View>
               <Text style={styles.title}>
-                {noteMode ? 'Add a note' : auto ? 'Call saved from your phone' : 'How did the call go?'}
+                {isWa
+                  ? 'What happened on WhatsApp?'
+                  : noteMode
+                    ? 'Add a note'
+                    : auto
+                      ? 'Call saved from your phone'
+                      : 'How did the call go?'}
               </Text>
               <Text style={styles.subtitle}>
                 {lead.name}
@@ -447,7 +531,82 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
               {stageKind === 'cancelled' && <Text style={styles.closedMuted}>↩ Admission was cancelled</Text>}
             </View>
 
-            {lookingUp ? (
+            {isWa ? (
+              <>
+                {/* 💬 WhatsApp: what it was, and which way */}
+                <View style={styles.grid}>
+                  {WA_MEDIA.map((m) => {
+                    const on = waMedia === m.value;
+                    return (
+                      <Pressable
+                        key={m.value}
+                        onPress={() => chooseMedia(m.value)}
+                        style={[styles.outcome, on && styles.waOn]}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: on }}
+                      >
+                        <Text style={styles.outcomeIcon}>{m.icon}</Text>
+                        <Text style={[styles.outcomeText, on && styles.textOn]}>{m.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.chips}>
+                  {(['outgoing', 'incoming'] as const).map((d) => {
+                    const on = waDirection === d;
+                    const label =
+                      waMedia === 'message'
+                        ? d === 'outgoing'
+                          ? '↗ I sent'
+                          : '↙ They sent'
+                        : d === 'outgoing'
+                          ? '↗ I called'
+                          : '↙ They called';
+                    return (
+                      <Pressable
+                        key={d}
+                        onPress={() => setWaDirection(d)}
+                        style={[styles.chip, on && styles.chipOn]}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: on }}
+                      >
+                        <Text style={[styles.chipText, on && styles.textOn]}>{label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {waMedia && waMedia !== 'message' && (
+                  <>
+                    {estimatedSec != null && estimatedSec > 0 && (
+                      <Text style={styles.hint}>Time on WhatsApp (about): {formatDuration(estimatedSec)}</Text>
+                    )}
+                    <View style={styles.grid}>
+                      {CALL_OUTCOMES.filter((o) => WHATSAPP_CALL_OUTCOMES.includes(o.value)).map((o) => {
+                        const on = outcome === o.value;
+                        return (
+                          <Pressable
+                            key={o.value}
+                            onPress={() => chooseOutcome(o.value)}
+                            style={[styles.outcome, on && { backgroundColor: o.color, borderColor: o.color }]}
+                            accessibilityRole="radio"
+                            accessibilityState={{ checked: on }}
+                          >
+                            <Text style={styles.outcomeIcon}>{o.icon}</Text>
+                            <Text style={[styles.outcomeText, on && styles.textOn]}>{o.label}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
+
+                {(waMedia === 'message' || outcome) && followUpField}
+                {ratingField}
+                {noteField}
+              </>
+            ) : lookingUp ? (
               <View style={styles.lookingUp}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={styles.hint}>Checking the call on your phone…</Text>
@@ -632,6 +791,7 @@ const styles = StyleSheet.create({
   outcomeIcon: { fontSize: 18 },
   outcomeText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
   textOn: { color: colors.textOnPrimary },
+  waOn: { backgroundColor: '#1F7A57', borderColor: '#1F7A57' },
   hint: { fontSize: fontSize.caption, color: colors.textMuted },
   hintStrong: { color: colors.primary, fontWeight: fontWeight.bold },
   warn: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.warning },

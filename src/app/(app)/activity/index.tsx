@@ -212,6 +212,7 @@ export default function TeamActivityScreen() {
               <View style={styles.stats}>
                 <Stat value={formatDuration(m.app_sec)} label="app" />
                 <Stat value={String(m.calls)} label="calls" />
+                <Stat value={String((m.wa_calls ?? 0) + (m.wa_messages ?? 0))} label="💬 WA" />
                 <Stat value={String(m.actions)} label="changes" />
                 <Stat value={String(m.admitted)} label="🎓" />
               </View>

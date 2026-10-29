@@ -22,6 +22,7 @@ import {
   getCallHeatmap,
   getLeadReport,
   getReportSettings,
+  getWhatsAppReport,
   pct,
   periodRange,
   type HeatCell,
@@ -29,6 +30,7 @@ import {
   type PipelineStep,
   type Period,
   type ReportSettings,
+  type WhatsAppReport,
 } from '@/features/reports/api';
 import { BarList, Heatmap, PipelineBars, StatTile } from '@/features/reports/charts';
 import { listCourses } from '@/features/settings/api';
@@ -56,6 +58,7 @@ export default function ReportsScreen() {
 
   const [report, setReport] = useState<LeadReport | null>(null);
   const [heat, setHeat] = useState<HeatCell[]>([]);
+  const [wa, setWa] = useState<WhatsAppReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,19 +85,21 @@ export default function ReportsScreen() {
     const q = { ...periodRange(period), userId: person?.id ?? null, courseId: course?.id ?? null };
     try {
       setError(null);
-      const [r, h] = await Promise.all([
+      const [r, h, w] = await Promise.all([
         getLeadReport(q, show.team),
         show.heatmap ? getCallHeatmap(q) : Promise.resolve([]),
+        show.whatsapp ? getWhatsAppReport(q) : Promise.resolve(null),
       ]);
       setReport(r);
       setHeat(h);
+      setWa(w);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the report.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [period, person, course, show.team, show.heatmap]);
+  }, [period, person, course, show.team, show.heatmap, show.whatsapp]);
 
   useEffect(() => {
     if (!ready) return;
@@ -335,6 +340,57 @@ export default function ReportsScreen() {
               </Card>
             )}
 
+            {/* 💬 WhatsApp (apart from phone calls) */}
+            {show.whatsapp && wa && (
+              <Card title="💬 WhatsApp" subtitle="WhatsApp calls and messages in this period (not in the phone call numbers)">
+                {wa.totals.calls + wa.totals.messages_sent + wa.totals.messages_received === 0 ? (
+                  <Text style={styles.empty}>No WhatsApp calls or messages saved in this period.</Text>
+                ) : (
+                  <>
+                    <View style={styles.tiles}>
+                      <StatTile
+                        label="Calls"
+                        value={String(wa.totals.calls)}
+                        hint={`${wa.totals.outgoing} out · ${wa.totals.incoming} in${wa.totals.video ? ` · ${wa.totals.video} video` : ''}`}
+                      />
+                      <StatTile
+                        label="Answered"
+                        value={pct(wa.totals.connected, wa.totals.calls)}
+                        hint={`${wa.totals.connected} of ${wa.totals.calls}`}
+                      />
+                      <StatTile label="Talk time" value={formatTalk(wa.totals.talk_sec)} />
+                      <StatTile label="Missed" value={String(wa.totals.missed)} />
+                      <StatTile
+                        label="Messages"
+                        value={String(wa.totals.messages_sent + wa.totals.messages_received)}
+                        hint={`${wa.totals.messages_sent} sent · ${wa.totals.messages_received} received`}
+                      />
+                      <StatTile label="Leads" value={String(wa.totals.leads)} hint="talked to on WhatsApp" />
+                    </View>
+
+                    {seesOthers &&
+                      wa.people.map((p) => (
+                        <View key={p.user_id} style={styles.person}>
+                          <View style={styles.personTop}>
+                            <Text style={styles.personName} numberOfLines={1}>
+                              {p.full_name ?? 'No name'}
+                            </Text>
+                          </View>
+                          <Text style={styles.personLine}>
+                            💬 {p.calls} calls ({pct(p.connected, p.calls)} answered) · ⏱ {formatTalk(p.talk_sec)} ·{' '}
+                            {p.messages} messages · {p.leads} leads
+                          </Text>
+                        </View>
+                      ))}
+
+                    <Pressable onPress={() => router.push('/whatsapp' as Href)} hitSlop={8} accessibilityRole="link">
+                      <Text style={styles.waLink}>See every WhatsApp call and message ›</Text>
+                    </Pressable>
+                  </>
+                )}
+              </Card>
+            )}
+
             {/* ⑥ Lost */}
             {show.lost && (
               <Card title="✕ Why leads are lost" subtitle="Lost in this period">
@@ -528,6 +584,7 @@ const styles = StyleSheet.create({
   cardSubtitle: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
   subTitle: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text, marginTop: spacing.sm },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  waLink: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary, marginTop: spacing.sm },
   segment: {
     flexDirection: 'row',
     borderRadius: radius.pill,

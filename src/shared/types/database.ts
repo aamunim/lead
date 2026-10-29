@@ -286,6 +286,7 @@ export type Database = {
       call_logs: {
         Row: {
           called_at: string
+          channel: string
           created_at: string
           device_call_id: string | null
           device_id: string | null
@@ -293,6 +294,7 @@ export type Database = {
           duration_sec: number | null
           id: string
           lead_id: string
+          media: string | null
           notes: string | null
           outcome: string
           phone_verified: boolean | null
@@ -302,6 +304,7 @@ export type Database = {
         }
         Insert: {
           called_at?: string
+          channel?: string
           created_at?: string
           device_call_id?: string | null
           device_id?: string | null
@@ -309,6 +312,7 @@ export type Database = {
           duration_sec?: number | null
           id?: string
           lead_id: string
+          media?: string | null
           notes?: string | null
           outcome: string
           phone_verified?: boolean | null
@@ -318,6 +322,7 @@ export type Database = {
         }
         Update: {
           called_at?: string
+          channel?: string
           created_at?: string
           device_call_id?: string | null
           device_id?: string | null
@@ -325,6 +330,7 @@ export type Database = {
           duration_sec?: number | null
           id?: string
           lead_id?: string
+          media?: string | null
           notes?: string | null
           outcome?: string
           phone_verified?: boolean | null
@@ -2087,13 +2093,20 @@ export type Database = {
           sessions: number
           talk_sec: number
           user_id: string
+          wa_calls: number
+          wa_connected: number
+          wa_messages: number
         }[]
       }
       undo_contacts_save: { Args: { p_lead_ids: string[] }; Returns: number }
       undo_import: { Args: { p_batch_id: string }; Returns: number }
       user_activity_days: {
         Args: { p_days?: number; p_user_id: string }
-        Returns: { actions: number; app_sec: number; calls: number; day: string }[]
+        Returns: { actions: number; app_sec: number; calls: number; day: string; wa: number }[]
+      }
+      whatsapp_report: {
+        Args: { p_from: string; p_to: string; p_user_id?: string }
+        Returns: Json
       }
     }
     Enums: {

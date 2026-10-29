@@ -123,6 +123,8 @@ export default function UserActivityScreen() {
               label="answered"
             />
             <Tile value={formatDuration(member.talk_sec)} label="talk time" />
+            <Tile value={String(member.wa_calls ?? 0)} label="💬 WA calls" />
+            <Tile value={String(member.wa_messages ?? 0)} label="💬 WA messages" />
             <Tile value={String(member.actions)} label="changes" />
             <Tile value={String(member.admitted)} label="admitted" />
           </View>
@@ -147,7 +149,8 @@ export default function UserActivityScreen() {
                 </View>
                 <Text style={styles.dayValue}>{formatDuration(d.app_sec)}</Text>
                 <Text style={styles.dayMeta}>
-                  📞{d.calls} ✎{d.actions}
+                  📞{d.calls}
+                  {d.wa ? ` 💬${d.wa}` : ''} ✎{d.actions}
                 </Text>
               </View>
             ))}
