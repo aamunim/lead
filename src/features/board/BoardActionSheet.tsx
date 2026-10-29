@@ -1,6 +1,7 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { LeadListItem } from '@/features/leads/api';
+import { contactLabel } from '@/features/leads/contact';
 import type { PipelineStage } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
@@ -39,7 +40,7 @@ export function BoardActionSheet({ lead, stages, canEdit, canAdmit, canHandOver,
               {lead?.name}
             </Text>
             <Text style={styles.subtitle}>
-              {lead?.phone}
+              {lead ? contactLabel(lead) : ''}
               {lead?.stage ? ` · ${lead.stage.name}` : ''}
             </Text>
           </View>
@@ -88,7 +89,7 @@ export function BoardActionSheet({ lead, stages, canEdit, canAdmit, canHandOver,
               {canEdit && isOpen && (
                 <Row icon="✕" label="Mark lost" color={colors.danger} onPress={() => onPick({ type: 'lost' })} />
               )}
-              <Row icon="📞" label="Call" onPress={() => onPick({ type: 'call' })} />
+              {!!lead?.phone && <Row icon="📞" label="Call" onPress={() => onPick({ type: 'call' })} />}
               {canEdit && <Row icon="⏰" label="Next call" onPress={() => onPick({ type: 'followup' })} />}
               {canEdit && canHandOver && (
                 <Row icon="👥" label="Give to someone (hand over)" onPress={() => onPick({ type: 'handover' })} />

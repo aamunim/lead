@@ -89,7 +89,7 @@ function holidayName(holidays: Holiday[], d: Date): string | null {
 
 type Props = {
   visible: boolean;
-  lead: { id: string; name: string; phone: string; rating: string | null };
+  lead: { id: string; name: string; phone: string | null; rating: string | null };
   /** About how long the user was away in the phone app (seconds), if known */
   estimatedSec?: number | null;
   /**
@@ -195,7 +195,10 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
     else if (isCallLogAvailable && estimatedSec != null) {
       const sinceMs = Date.now() - (estimatedSec + 15) * 1000;
       setLookingUp(true);
-      Promise.all([findDeviceCall(lead.phone, sinceMs), getCallSyncSettings()])
+      Promise.all([
+        lead.phone ? findDeviceCall(lead.phone, sinceMs) : Promise.resolve(null),
+        getCallSyncSettings(),
+      ])
         .then(([call, settings]) => {
           if (!call) return;
           setDeviceCall(call);
@@ -277,7 +280,7 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
 
       // 3. Rating, only if it changed
       if (rating !== ((lead.rating as Rating | null) ?? null)) {
-        await updateLead(lead.id, { name: lead.name, phone: lead.phone, rating });
+        await updateLead(lead.id, { name: lead.name, rating });
       }
 
       finish(noteOutcome === 'connected');
@@ -323,7 +326,7 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
 
       // 3. Rating, only if it changed
       if (rating !== ((lead.rating as Rating | null) ?? null)) {
-        await updateLead(lead.id, { name: lead.name, phone: lead.phone, rating });
+        await updateLead(lead.id, { name: lead.name, rating });
       }
 
       finish(outcome === 'connected');
@@ -432,7 +435,8 @@ export function CallResultSheet({ visible, lead, estimatedSec, deviceCallId, onC
                 {noteMode ? 'Add a note' : auto ? 'Call saved from your phone' : 'How did the call go?'}
               </Text>
               <Text style={styles.subtitle}>
-                {lead.name} · {lead.phone}
+                {lead.name}
+                {lead.phone ? ` · ${lead.phone}` : ''}
               </Text>
               {stageKind === 'won' && <Text style={styles.closedWon}>🎓 Admitted student</Text>}
               {stageKind === 'lost' && (

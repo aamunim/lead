@@ -9,6 +9,8 @@ import * as XLSX from 'xlsx';
 export type ImportFieldKey =
   | 'name'
   | 'phone'
+  | 'whatsapp_number'
+  | 'whatsapp_username'
   | 'alt_phone'
   | 'email'
   | 'area'
@@ -26,7 +28,8 @@ export type ImportField = {
   aliases: string[]; // lower-case column names that mean this field
 };
 
-// Order matters: more specific fields first (guardian phone before phone)
+// Order matters: more specific fields first (guardian phone before phone).
+// A row needs a name and one of: phone, WhatsApp number, WhatsApp username.
 export const IMPORT_FIELDS: ImportField[] = [
   {
     key: 'guardian_phone',
@@ -50,9 +53,19 @@ export const IMPORT_FIELDS: ImportField[] = [
     aliases: ['alt phone', 'alternative phone', 'alternate phone', 'phone 2', 'mobile 2', 'other phone', 'second phone'],
   },
   {
+    key: 'whatsapp_username',
+    label: 'WhatsApp username',
+    aliases: ['whatsapp username', 'wa username', 'whatsapp user', 'whatsapp id', 'username', 'user name'],
+  },
+  {
+    key: 'whatsapp_number',
+    label: 'WhatsApp number',
+    aliases: ['whatsapp', 'whatsapp number', 'whatsapp no', 'whatsapp mobile', 'wa number', 'wa',
+      'হোয়াটসঅ্যাপ'],
+  },
+  {
     key: 'phone',
     label: 'Phone',
-    required: true,
     aliases: ['phone', 'mobile', 'mobile no', 'mobile number', 'phone no', 'phone number', 'contact',
       'contact no', 'contact number', 'cell', 'number', 'মোবাইল', 'ফোন'],
   },
@@ -224,6 +237,8 @@ export async function shareImportTemplate(): Promise<void> {
   const example: Record<ImportFieldKey, string> = {
     name: 'Nusrat Akter',
     phone: '01711234567',
+    whatsapp_number: '',
+    whatsapp_username: '',
     alt_phone: '',
     email: 'nusrat@example.com',
     area: 'Mirpur',

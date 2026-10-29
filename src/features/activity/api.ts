@@ -127,7 +127,7 @@ export type FeedItem = {
   details: Record<string, unknown> | null;
   lead_id: string;
   lead_name: string;
-  lead_phone: string;
+  lead_phone: string | null;
   user_id: string;
   user_name: string | null;
 };

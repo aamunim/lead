@@ -11,6 +11,12 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
+  isValidWaNumber,
+  isValidWaUsername,
+  normalizeWaNumber,
+  normalizeWaUsername,
+} from '@/features/leads/contact';
+import {
   createLead,
   findDuplicates,
   getLead,
@@ -36,6 +42,8 @@ const UNASSIGNED = '__none__';
 type Form = {
   name: string;
   phone: string;
+  waNumber: string;
+  waUsername: string;
   altPhone: string;
   email: string;
   area: string;
@@ -58,6 +66,8 @@ type Form = {
 const EMPTY: Form = {
   name: '',
   phone: '',
+  waNumber: '',
+  waUsername: '',
   altPhone: '',
   email: '',
   area: '',
@@ -150,7 +160,9 @@ export default function LeadFormScreen() {
         setOriginalAssignee(lead.assigned_to);
         setForm({
           name: lead.name,
-          phone: lead.phone,
+          phone: lead.phone ?? '',
+          waNumber: lead.whatsapp_number ?? '',
+          waUsername: lead.whatsapp_username ? '@' + lead.whatsapp_username : '',
           altPhone: lead.alt_phone ?? '',
           email: lead.email ?? '',
           area: lead.area ?? '',
@@ -180,18 +192,23 @@ export default function LeadFormScreen() {
     load();
   }, [load]);
 
-  // --- duplicate check while typing the phone -------------------------
+  // --- duplicate check while typing the phone / WhatsApp -------------
   useEffect(() => {
     setConfirmDuplicate(false);
     const timer = setTimeout(async () => {
       try {
-        setDuplicates(await findDuplicates(form.phone, isNew ? undefined : id));
+        setDuplicates(
+          await findDuplicates(
+            { phone: form.phone, whatsapp_number: form.waNumber, whatsapp_username: form.waUsername },
+            isNew ? undefined : id,
+          ),
+        );
       } catch {
         setDuplicates([]);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [form.phone, id, isNew]);
+  }, [form.phone, form.waNumber, form.waUsername, id, isNew]);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -230,8 +247,20 @@ export default function LeadFormScreen() {
   const handleSave = async () => {
     const found: Partial<Record<keyof Form, string>> = {};
     if (!form.name.trim()) found.name = 'Please enter the name.';
-    if (!form.phone.trim()) found.phone = 'Please enter the phone number.';
-    else if (!isValidBdMobile(form.phone)) found.phone = 'Enter an 11-digit mobile number, e.g. 01711234567.';
+    const hasPhone = !!form.phone.trim();
+    const hasWaNumber = !!form.waNumber.trim();
+    const hasWaUsername = !!form.waUsername.trim();
+    if (!hasPhone && !hasWaNumber && !hasWaUsername) {
+      found.phone = 'Enter a phone number, or a WhatsApp number / username below.';
+    } else if (hasPhone && !isValidBdMobile(form.phone)) {
+      found.phone = 'Enter an 11-digit mobile number, e.g. 01711234567.';
+    }
+    if (hasWaNumber && !isValidWaNumber(form.waNumber)) {
+      found.waNumber = 'Not a valid WhatsApp number. Other countries: start with +, e.g. +971501234567.';
+    }
+    if (hasWaUsername && !isValidWaUsername(form.waUsername)) {
+      found.waUsername = '3–35 letters, numbers, “.” or “_”.';
+    }
     if (form.altPhone.trim() && !isValidBdMobile(form.altPhone)) found.altPhone = 'Not a valid mobile number.';
     if (form.guardianPhone.trim() && !isValidBdMobile(form.guardianPhone)) {
       found.guardianPhone = 'Not a valid mobile number.';
@@ -244,13 +273,15 @@ export default function LeadFormScreen() {
     }
 
     if (duplicates.length > 0 && !confirmDuplicate) {
-      setFormError('This number already belongs to another lead. Check below, or tap “Save anyway”.');
+      setFormError('This number or username already belongs to another lead. Check below, or tap “Save anyway”.');
       return;
     }
 
     const input: LeadInput = {
       name: form.name,
       phone: form.phone,
+      whatsapp_number: form.waNumber.trim() ? normalizeWaNumber(form.waNumber) : null,
+      whatsapp_username: form.waUsername.trim() ? normalizeWaUsername(form.waUsername) : null,
       alt_phone: form.altPhone,
       email: form.email,
       area: form.area,
@@ -333,7 +364,6 @@ export default function LeadFormScreen() {
           />
           <TextField
             label="Phone"
-            required
             value={form.phone}
             onChangeText={(v) => set('phone', v)}
             error={errors.phone}
@@ -341,9 +371,40 @@ export default function LeadFormScreen() {
             placeholder="01711234567"
           />
 
+          {/* WhatsApp: for leads with no phone, or a different WhatsApp number */}
+          <View style={styles.waRow}>
+            <View style={styles.flex}>
+              <TextField
+                label="💬 WhatsApp number"
+                value={form.waNumber}
+                onChangeText={(v) => set('waNumber', v)}
+                error={errors.waNumber}
+                keyboardType="phone-pad"
+                placeholder="If not the phone"
+              />
+            </View>
+            <View style={styles.flex}>
+              <TextField
+                label="💬 WhatsApp username"
+                value={form.waUsername}
+                onChangeText={(v) => set('waUsername', v)}
+                error={errors.waUsername}
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="@username"
+              />
+            </View>
+          </View>
+          <Text style={styles.hint}>Phone, WhatsApp number or WhatsApp username: at least one is needed.</Text>
+
           {duplicates.length > 0 && (
             <View style={styles.dupBox}>
-              <Text style={styles.dupTitle}>⚠️ This number is already a lead</Text>
+              <Text style={styles.dupTitle}>
+                ⚠️{' '}
+                {duplicates.some((d) => d.matched === 'whatsapp_username')
+                  ? 'This WhatsApp username is already a lead'
+                  : 'This number is already a lead'}
+              </Text>
               {duplicates.map((d) => (
                 <View key={d.id} style={styles.dupRow}>
                   <View style={styles.flex}>
@@ -596,6 +657,7 @@ const styles = StyleSheet.create({
   field: { gap: spacing.sm },
   fieldLabel: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
   hint: { fontSize: fontSize.caption, color: colors.textMuted },
+  waRow: { flexDirection: 'row', gap: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     flexDirection: 'row',

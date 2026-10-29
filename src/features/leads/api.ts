@@ -37,6 +37,8 @@ export type LeadListItem = Pick<
   | 'id'
   | 'name'
   | 'phone'
+  | 'whatsapp_number'
+  | 'whatsapp_username'
   | 'rating'
   | 'next_follow_up_at'
   | 'last_contacted_at'
@@ -75,7 +77,10 @@ export type LeadDetail = Tables<'leads'> & {
 
 export type LeadInput = {
   name: string;
-  phone: string;
+  /** At least one of phone, whatsapp_number, whatsapp_username */
+  phone?: string | null;
+  whatsapp_number?: string | null;
+  whatsapp_username?: string | null;
   alt_phone?: string | null;
   email?: string | null;
   area?: string | null;
@@ -153,10 +158,12 @@ export type LeadQuery = {
 export type DuplicateLead = {
   id: string;
   name: string;
+  /** Phone, else WhatsApp number, else @username */
   phone: string;
   stage_name: string;
   assigned_to_name: string | null;
   can_open: boolean;
+  matched?: 'phone' | 'whatsapp_number' | 'whatsapp_username';
 };
 
 export type ActivityItem = Tables<'lead_activity'> & { user_name: string | null };
@@ -175,7 +182,7 @@ function toError(error: { message: string }): Error {
 }
 
 const LIST_SELECT = `
-  id, name, phone, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
+  id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
   stage:pipeline_stages(id, key, name, color, kind),
@@ -222,14 +229,20 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
     .select(LIST_SELECT + filterSelect(filters), withCount ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
 
-  // Search by name or phone
+  // Search by name, phone, WhatsApp number or WhatsApp username
   const text = search.replace(/[%,()*"]/g, ' ').trim();
   if (text) {
     const digits = normalizePhone(text);
-    query =
-      digits.length >= 3
-        ? query.or(`name.ilike.%${text}%,phone.ilike.%${digits}%,alt_phone.ilike.%${digits}%`)
-        : query.ilike('name', `%${text}%`);
+    const username = text.replace(/^@+/, '').toLowerCase();
+    const parts = [`name.ilike.%${text}%`, `whatsapp_username.ilike.%${username}%`];
+    if (digits.length >= 3) {
+      parts.push(
+        `phone.ilike.%${digits}%`,
+        `alt_phone.ilike.%${digits}%`,
+        `whatsapp_number.ilike.%${text.replace(/\D/g, '')}%`,
+      );
+    }
+    query = query.or(parts.join(','));
   }
 
   // Quick filters
@@ -493,11 +506,25 @@ export async function removeTagsFromLeads(ids: string[], tagIds: string[]): Prom
 // =====================================================================
 // Duplicate check
 // =====================================================================
-export async function findDuplicates(phone: string, excludeId?: string): Promise<DuplicateLead[]> {
-  if (normalizePhone(phone).length < 11) return [];
+export async function findDuplicates(
+  contact: { phone?: string | null; whatsapp_number?: string | null; whatsapp_username?: string | null },
+  excludeId?: string,
+): Promise<DuplicateLead[]> {
+  const phone = contact.phone && normalizePhone(contact.phone).length >= 11 ? contact.phone : undefined;
+  const waNumber =
+    contact.whatsapp_number && contact.whatsapp_number.replace(/\D/g, '').length >= 8
+      ? contact.whatsapp_number
+      : undefined;
+  const username =
+    contact.whatsapp_username && contact.whatsapp_username.replace(/^@+/, '').trim().length >= 3
+      ? contact.whatsapp_username
+      : undefined;
+  if (!phone && !waNumber && !username) return [];
 
-  const { data, error } = await supabase.rpc('find_leads_by_phone', {
-    p_phone: phone,
+  const { data, error } = await supabase.rpc('find_leads_by_contact', {
+    ...(phone ? { p_phone: phone } : {}),
+    ...(waNumber ? { p_whatsapp_number: waNumber } : {}),
+    ...(username ? { p_whatsapp_username: username } : {}),
     ...(excludeId ? { p_exclude_id: excludeId } : {}),
   });
 

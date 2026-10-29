@@ -16,6 +16,7 @@ import {
 import { useAuth } from '@/features/auth/AuthProvider';
 import { markCallFromApp } from '@/features/call-sync/api';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
+import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
 import {
   directionInfo,
   formatDuration,
@@ -56,9 +57,6 @@ const RATING_COLOR: Record<string, string> = {
   warm: colors.warm,
   cold: colors.cold,
 };
-
-// 01711234567 → 8801711234567 (for WhatsApp)
-const toInternational = (phone: string) => (phone.startsWith('0') ? `88${phone}` : phone);
 
 /** One line in "Calls & notes" */
 type FeedItem =
@@ -309,8 +307,6 @@ export default function LeadDetailScreen() {
     if (!ok) callStartedAt.current = null;
   };
   const sms = (phone: string) => open(`sms:${phone}`);
-  const whatsapp = (phone: string) =>
-    open(`whatsapp://send?phone=${toInternational(phone)}`, `https://wa.me/${toInternational(phone)}`);
 
   // For calls made from another phone: log without timing
   const logManually = () => {
@@ -521,7 +517,10 @@ export default function LeadDetailScreen() {
             </View>
             <View style={styles.flex}>
               <Text style={styles.name}>{lead.name}</Text>
-              <Text style={styles.phone}>{lead.phone}</Text>
+              <Text style={styles.phone}>
+                {whatsAppOnly(lead) ? '💬 ' : ''}
+                {contactLabel(lead)}
+              </Text>
             </View>
           </View>
 
@@ -553,9 +552,13 @@ export default function LeadDetailScreen() {
 
           {/* Contact buttons */}
           <View style={styles.actions}>
-            <ActionButton label="Call" icon="📞" color={colors.success} onPress={() => call(lead.phone)} />
-            <ActionButton label="WhatsApp" icon="💬" color="#1F7A57" onPress={() => whatsapp(lead.phone)} />
-            <ActionButton label="SMS" icon="✉️" color={colors.info} onPress={() => sms(lead.phone)} />
+            {!!lead.phone && (
+              <ActionButton label="Call" icon="📞" color={colors.success} onPress={() => call(lead.phone!)} />
+            )}
+            <ActionButton label="WhatsApp" icon="💬" color="#1F7A57" onPress={() => openWhatsApp(lead)} />
+            {!!lead.phone && (
+              <ActionButton label="SMS" icon="✉️" color={colors.info} onPress={() => sms(lead.phone!)} />
+            )}
           </View>
 
           {/* Last call and last note at a glance */}
@@ -799,7 +802,9 @@ export default function LeadDetailScreen() {
 
         {/* Contact, guardian and source: the main lines, the rest under "More details" */}
         <Section title="Details">
-          <PhoneRow label="Phone" phone={lead.phone} onCall={call} />
+          {lead.phone && <PhoneRow label="Phone" phone={lead.phone} onCall={call} />}
+          <InfoRow label="WhatsApp" value={lead.whatsapp_number} />
+          <InfoRow label="WhatsApp username" value={lead.whatsapp_username ? '@' + lead.whatsapp_username : null} />
           <InfoRow label="Area" value={lead.area} />
           <InfoRow label="Source" value={lead.source?.name ?? null} />
           {detailsOpen && (
