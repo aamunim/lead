@@ -1,4 +1,4 @@
-import { Alert, Linking } from 'react-native';
+import { Alert, Linking, Platform, ToastAndroid } from 'react-native';
 
 // =====================================================================
 // 📇 How to reach a lead
@@ -82,23 +82,23 @@ function waDigits(n: string): string {
 // =====================================================================
 // Opening WhatsApp
 // =====================================================================
-async function openUrl(url: string, fallback?: string): Promise<boolean> {
-  try {
-    await Linking.openURL(url);
-    return true;
-  } catch {
-    if (fallback) {
-      try {
-        await Linking.openURL(fallback);
-        return true;
-      } catch {
-        // fall through
-      }
+// Tries each link in turn; false when none opened
+async function openFirst(urls: string[]): Promise<boolean> {
+  for (const url of urls) {
+    try {
+      await Linking.openURL(url);
+      return true;
+    } catch {
+      // try the next one
     }
-    Alert.alert('Could not open', 'WhatsApp is not available on this phone.');
-    return false;
   }
+  Alert.alert('Could not open', 'WhatsApp is not available on this phone.');
+  return false;
 }
+
+// WhatsApp only answers links with "send" in them; a bare whatsapp:// does
+// nothing. With no number, "send" opens WhatsApp's chat list (with search).
+const OPEN_WHATSAPP = ['whatsapp://send?text=', 'https://wa.me/'];
 
 /**
  * Open the lead's WhatsApp chat: the WhatsApp number, else the phone.
@@ -109,7 +109,7 @@ export async function openWhatsApp(lead: LeadContact): Promise<boolean> {
   const number = lead.whatsapp_number || lead.phone;
   if (number) {
     const d = waDigits(number);
-    return openUrl(`whatsapp://send?phone=${d}`, `https://wa.me/${d}`);
+    return openFirst([`whatsapp://send?phone=${d}`, `https://wa.me/${d}`]);
   }
 
   const username = lead.whatsapp_username;
@@ -122,15 +122,22 @@ export async function openWhatsApp(lead: LeadContact): Promise<boolean> {
     copied = false;
   }
 
+  // Copied: go straight to WhatsApp, with a short reminder
+  if (copied) {
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(`@${username} copied. In WhatsApp, search and paste it.`, ToastAndroid.LONG);
+    }
+    return openFirst(OPEN_WHATSAPP);
+  }
+
+  // Not copied (older app build): show the username first
   return new Promise((resolve) => {
     Alert.alert(
       `@${username}`,
-      copied
-        ? 'Username copied. In WhatsApp, tap search and paste it to find the chat.'
-        : 'In WhatsApp, tap search and type this username to find the chat.',
+      'In WhatsApp, tap search and type this username to find the chat.',
       [
         { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Open WhatsApp', onPress: () => openUrl('whatsapp://', 'https://wa.me/').then(resolve) },
+        { text: 'Open WhatsApp', onPress: () => openFirst(OPEN_WHATSAPP).then(resolve) },
       ],
       { cancelable: true, onDismiss: () => resolve(false) },
     );
