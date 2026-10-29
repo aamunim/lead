@@ -1,10 +1,11 @@
 // Adds what app.json can't hold:
-//   1. The Firebase file for Android push.
-//      - EAS build: the file env var GOOGLE_SERVICES_JSON (eas env:create … --type file)
-//      - your PC:   ./google-services.json (never committed, see .gitignore)
+//   1. The Firebase file for Android push: only from the EAS file env var
+//      GOOGLE_SERVICES_JSON (eas env:create … --type file). The copy on your PC
+//      (./google-services.json, never committed) is not used, so EAS does not
+//      warn that it "won't be uploaded". To build on the PC itself, run with
+//      GOOGLE_SERVICES_JSON=./google-services.json.
 //   2. Android 11+ only lets the app open other apps it names here
 //      (WhatsApp and WhatsApp Business, for leads with only a username).
-const fs = require('fs');
 const { withAndroidManifest } = require('expo/config-plugins');
 
 const OTHER_APPS = ['com.whatsapp', 'com.whatsapp.w4b'];
@@ -25,9 +26,7 @@ function withWhatsAppQueries(config) {
 }
 
 module.exports = ({ config }) => {
-  const googleServicesFile =
-    process.env.GOOGLE_SERVICES_JSON ??
-    (fs.existsSync('./google-services.json') ? './google-services.json' : undefined);
+  const googleServicesFile = process.env.GOOGLE_SERVICES_JSON;
 
   return withWhatsAppQueries({
     ...config,
