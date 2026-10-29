@@ -12,13 +12,21 @@ export type LeadContact = {
   whatsapp_username?: string | null;
 };
 
-// expo-clipboard is only in newer app builds; older ones just show the username
+// expo-clipboard and expo-intent-launcher are only in newer app builds;
+// older ones fall back to a WhatsApp link
 let clipboard: { setStringAsync: (text: string) => Promise<boolean> } | null = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   clipboard = require('expo-clipboard');
 } catch {
   clipboard = null;
+}
+let launcher: { openApplication: (packageName: string) => void } | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  launcher = require('expo-intent-launcher');
+} catch {
+  launcher = null;
 }
 
 // =====================================================================
@@ -96,9 +104,25 @@ async function openFirst(urls: string[]): Promise<boolean> {
   return false;
 }
 
-// WhatsApp only answers links with "send" in them; a bare whatsapp:// does
-// nothing. With no number, "send" opens WhatsApp's chat list (with search).
-const OPEN_WHATSAPP = ['whatsapp://send?text=', 'https://wa.me/'];
+/**
+ * Open WhatsApp itself (its chat list), for a lead with only a username.
+ *   - newer builds: start the app (WhatsApp, else WhatsApp Business)
+ *   - older builds: a share link with the username as text; WhatsApp then
+ *     shows "Send to…" with search (an empty link says "couldn't open")
+ */
+async function openWhatsAppHome(username: string): Promise<boolean> {
+  if (launcher && Platform.OS === 'android') {
+    for (const pkg of ['com.whatsapp', 'com.whatsapp.w4b']) {
+      try {
+        launcher.openApplication(pkg);
+        return true;
+      } catch {
+        // not installed: try the next one
+      }
+    }
+  }
+  return openFirst([`whatsapp://send?text=${encodeURIComponent('@' + username)}`]);
+}
 
 /**
  * Open the lead's WhatsApp chat: the WhatsApp number, else the phone.
@@ -127,7 +151,7 @@ export async function openWhatsApp(lead: LeadContact): Promise<boolean> {
     if (Platform.OS === 'android') {
       ToastAndroid.show(`@${username} copied. In WhatsApp, search and paste it.`, ToastAndroid.LONG);
     }
-    return openFirst(OPEN_WHATSAPP);
+    return openWhatsAppHome(username);
   }
 
   // Not copied (older app build): show the username first
@@ -137,7 +161,7 @@ export async function openWhatsApp(lead: LeadContact): Promise<boolean> {
       'In WhatsApp, tap search and type this username to find the chat.',
       [
         { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Open WhatsApp', onPress: () => openFirst(OPEN_WHATSAPP).then(resolve) },
+        { text: 'Open WhatsApp', onPress: () => openWhatsAppHome(username).then(resolve) },
       ],
       { cancelable: true, onDismiss: () => resolve(false) },
     );
