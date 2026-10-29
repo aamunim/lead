@@ -8,6 +8,7 @@ import { canImportContacts } from '@/features/contacts/api';
 import { TodayList } from '@/features/follow-ups/TodayList';
 import { getMyOpenNudge, markNudgeSeen, nudgeTitle, type Nudge } from '@/features/nudges/api';
 import { SyncSetupSheet } from '@/features/nudges/SyncSetupSheet';
+import { countUnread } from '@/features/notifications/api';
 import { ReportHomeCard } from '@/features/reports/ReportHomeCard';
 import { TodayVisits } from '@/features/visits/TodayVisits';
 import { countPendingUsers } from '@/features/users/api';
@@ -23,6 +24,7 @@ function greeting(): string {
 export default function HomeScreen() {
   const { profile, hasPermission } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
+  const [unread, setUnread] = useState(0);
   const [contactsAllowed, setContactsAllowed] = useState(false);
 
   // Reminder from the Super Admin (e.g. "turn on call log sync")
@@ -67,6 +69,7 @@ export default function HomeScreen() {
         .catch(() => setContactsAllowed(false));
 
       checkNudge();
+      countUnread().then(setUnread);
 
       if (!canManageUsers) return;
       countPendingUsers()
@@ -87,9 +90,26 @@ export default function HomeScreen() {
     <View style={styles.screen}>
       {/* Blue top area */}
       <SafeAreaView edges={['top']} style={styles.top}>
-        <Text style={styles.greeting}>
-          {greeting()}, {firstName}
-        </Text>
+        <View style={styles.topRow}>
+          <Text style={[styles.greeting, styles.flex]}>
+            {greeting()}, {firstName}
+          </Text>
+          {/* 🔔 Notifications */}
+          <Pressable
+            onPress={() => router.push('/notifications' as Href)}
+            hitSlop={10}
+            style={({ pressed }) => [styles.bell, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={unread > 0 ? `Notifications, ${unread} new` : 'Notifications'}
+          >
+            <Text style={styles.bellIcon}>🔔</Text>
+            {unread > 0 && (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>{unread > 99 ? '99+' : unread}</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
         <Text style={styles.date}>{today}</Text>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{profile?.role?.name ?? 'No role'}</Text>
@@ -224,6 +244,29 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   greeting: { fontSize: fontSize.heading, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  bell: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  bellIcon: { fontSize: 18 },
+  bellBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellBadgeText: { fontSize: 10, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
   date: { fontSize: fontSize.small, color: colors.primarySoft },
   badge: {
     alignSelf: 'flex-start',

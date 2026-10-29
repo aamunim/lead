@@ -142,6 +142,8 @@ export type LeadQuery = {
   search?: string;
   quick?: QuickFilter;
   stageId?: string | null;
+  /** Only these leads (opened from a notification about many leads) */
+  ids?: string[] | null;
   userId?: string;       // the signed-in user, for "mine"
   filters?: LeadFilters;
   closedMode?: ClosedMode;
@@ -159,7 +161,7 @@ export type DuplicateLead = {
 
 export type ActivityItem = Tables<'lead_activity'> & { user_name: string | null };
 
-export type AssignableUser = Person & { role_key: string; is_active: boolean };
+export type AssignableUser = Person & { role_key: string; is_active: boolean; team_lead_id: string | null };
 
 // =====================================================================
 // Errors
@@ -212,6 +214,7 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
     filters = {},
     closedMode = 'hide',
     sort = DEFAULT_SORT,
+    ids = null,
   } = options;
 
   let query = supabase
@@ -236,7 +239,9 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
   if (quick === 'new') query = query.is('last_contacted_at', null);
 
   // Closed leads (Admitted / Lost / Cancelled)
-  const wantsClosed = !!stageId || needsClosedLeads(filters);
+  if (ids && ids.length > 0) query = query.in('id', ids);
+
+  const wantsClosed = !!stageId || needsClosedLeads(filters) || !!(ids && ids.length > 0);
   if (quick === 'closed') query = query.not('closed_at', 'is', null);
   else if (closedMode === 'hide' && !wantsClosed) query = query.is('closed_at', null);
 
@@ -536,7 +541,7 @@ export async function listAssignableUsers(
 ): Promise<AssignableUser[]> {
   let query = supabase
     .from('profiles')
-    .select('id, full_name, role_key, is_active')
+    .select('id, full_name, role_key, is_active, team_lead_id')
     .order('full_name');
 
   if (!options.includeInactive) {

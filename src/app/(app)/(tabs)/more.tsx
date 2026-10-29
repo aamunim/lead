@@ -97,6 +97,13 @@ export default function MoreScreen() {
         </View>
       </View>
 
+      {/* Notifications */}
+      <View style={styles.section}>
+        <View style={styles.group}>
+          <Row icon="🔔" title="Notifications" subtitle="Leads given to you, reminders, visits" href="/notifications" />
+        </View>
+      </View>
+
       {/* Reports (Settings → Reports decides who) */}
       {reportsAllowed && (
         <View style={styles.section}>

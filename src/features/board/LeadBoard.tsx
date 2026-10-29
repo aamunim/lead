@@ -15,6 +15,7 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { BoardActionSheet, type BoardAction } from '@/features/board/BoardActionSheet';
 import { BoardCard, CARD_HEIGHT } from '@/features/board/BoardCard';
 import { LeadQuickSheet } from '@/features/leads/LeadQuickSheet';
+import { canHandOver } from '@/features/settings/assignment';
 import { listLeads, type LeadListItem, type LeadQuery } from '@/features/leads/api';
 import { AdmitSheet } from '@/features/pipeline/AdmitSheet';
 import { LostSheet } from '@/features/pipeline/LostSheet';
@@ -65,7 +66,7 @@ type Props = {
 type Sheet =
   | { type: 'actions'; lead: LeadListItem }
   | { type: 'move'; lead: LeadListItem; stage: PipelineStage }
-  | { type: 'admit' | 'lost' | 'followup' | 'note'; lead: LeadListItem };
+  | { type: 'admit' | 'lost' | 'followup' | 'note' | 'handover'; lead: LeadListItem };
 
 export function LeadBoard({
   query,
@@ -77,7 +78,7 @@ export function LeadBoard({
   onSms,
   onChanged,
 }: Props) {
-  const { profile, hasPermission, sharedMode } = useAuth();
+  const { profile, hasPermission, sharedMode, assignment } = useAuth();
   const { width } = useWindowDimensions();
   const colWidth = Math.min(320, Math.round(width - spacing.lg * 2 - 36)); // the next column peeks in
 
@@ -338,6 +339,7 @@ export function LeadBoard({
         stages={openStages}
         canEdit={!!active && canEdit(active)}
         canAdmit={mayAdmit}
+        canHandOver={canHandOver(assignment, hasPermission)}
         onClose={() => setSheet(null)}
         onPick={(a) => active && pick(active, a)}
       />
@@ -387,10 +389,10 @@ export function LeadBoard({
         />
       )}
 
-      {active && (sheet?.type === 'followup' || sheet?.type === 'note') && (
+      {active && (sheet?.type === 'followup' || sheet?.type === 'note' || sheet?.type === 'handover') && (
         <LeadQuickSheet
           visible
-          field={sheet.type}
+          field={sheet.type === 'handover' ? 'assign' : sheet.type}
           leads={[active]}
           onClose={() => setSheet(null)}
           onSaved={(message) => {

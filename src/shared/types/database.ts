@@ -116,6 +116,57 @@ export type Database = {
           },
         ]
       }
+      notification_prefs: {
+        Row: { muted: string[]; user_id: string }
+        Insert: { muted?: string[]; user_id: string }
+        Update: { muted?: string[]; user_id?: string }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          data: Json
+          dedupe: string | null
+          deliver_after: string
+          id: string
+          kind: string
+          push_status: string | null
+          read_at: string | null
+          sent_at: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          data?: Json
+          dedupe?: string | null
+          deliver_after?: string
+          id?: string
+          kind: string
+          push_status?: string | null
+          read_at?: string | null
+          sent_at?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          data?: Json
+          dedupe?: string | null
+          deliver_after?: string
+          id?: string
+          kind?: string
+          push_status?: string | null
+          read_at?: string | null
+          sent_at?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       app_sessions: {
         Row: {
           active_sec: number
@@ -1798,6 +1849,10 @@ export type Database = {
       is_active_user: { Args: never; Returns: boolean }
       is_setup_complete: { Args: never; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      hand_over_leads: {
+        Args: { p_lead_ids: string[]; p_note?: string; p_to: string }
+        Returns: Json
+      }
       lead_report: {
         Args: { p_course_id?: string; p_from: string; p_to: string; p_user_id?: string }
         Returns: Json
@@ -1849,6 +1904,7 @@ export type Database = {
         Returns: undefined
       }
       mark_nudge_seen: { Args: { p_id: string }; Returns: undefined }
+      mark_notifications_read: { Args: { p_ids?: string[] }; Returns: undefined }
       move_lead_stage: {
         Args: {
           p_due_at?: string
@@ -1910,6 +1966,11 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      register_push_token: {
+        Args: { p_device_id?: string; p_platform?: string; p_token: string }
+        Returns: undefined
+      }
+      remove_push_token: { Args: { p_token: string }; Returns: undefined }
       report_app_session: {
         Args: {
           p_active_sec: number
@@ -1972,6 +2033,7 @@ export type Database = {
         Args: { p_kept_at: string; p_lead_id: string }
         Returns: undefined
       }
+      set_my_muted_notifications: { Args: { p_kinds: string[] }; Returns: undefined }
       stage_lead_counts: {
         Args: never
         Returns: {

@@ -10,7 +10,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 export type BoardAction =
   | { type: 'move'; stage: PipelineStage }
-  | { type: 'admit' | 'lost' | 'call' | 'followup' | 'note' | 'open' };
+  | { type: 'admit' | 'lost' | 'call' | 'followup' | 'note' | 'open' | 'handover' };
 
 type Props = {
   lead: LeadListItem | null;
@@ -19,11 +19,13 @@ type Props = {
   /** May change this lead (move, admit, lost, next call) */
   canEdit: boolean;
   canAdmit: boolean;
+  /** May give the lead to someone (hand over) */
+  canHandOver: boolean;
   onClose: () => void;
   onPick: (action: BoardAction) => void;
 };
 
-export function BoardActionSheet({ lead, stages, canEdit, canAdmit, onClose, onPick }: Props) {
+export function BoardActionSheet({ lead, stages, canEdit, canAdmit, canHandOver, onClose, onPick }: Props) {
   const isOpen = (lead?.stage?.kind ?? 'open') === 'open';
 
   return (
@@ -88,6 +90,9 @@ export function BoardActionSheet({ lead, stages, canEdit, canAdmit, onClose, onP
               )}
               <Row icon="📞" label="Call" onPress={() => onPick({ type: 'call' })} />
               {canEdit && <Row icon="⏰" label="Next call" onPress={() => onPick({ type: 'followup' })} />}
+              {canEdit && canHandOver && (
+                <Row icon="👥" label="Give to someone (hand over)" onPress={() => onPick({ type: 'handover' })} />
+              )}
               <Row icon="📝" label="Add a note" onPress={() => onPick({ type: 'note' })} />
               <Row icon="👁" label="Open lead" onPress={() => onPick({ type: 'open' })} />
             </View>
