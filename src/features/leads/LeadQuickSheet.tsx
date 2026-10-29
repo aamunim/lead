@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { cancelFollowUp, followUpPresets, formatDue, scheduleFollowUp } from '@/features/follow-ups/api';
@@ -543,7 +542,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
       <Modal visible={visible && !moveStage} transparent animationType="slide" onRequestClose={onClose}>
         <KeyboardAvoidingView
           style={styles.backdrop}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
         >
           <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
 

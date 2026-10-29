@@ -4,9 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    KeyboardAvoidingView,
     Modal,
-    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -15,6 +13,7 @@ import {
     TextInput,
     View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
@@ -339,7 +338,7 @@ function StageSheet({
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.backdrop} behavior="padding">
         <Pressable style={styles.flex} onPress={saving ? undefined : onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />

@@ -2,9 +2,7 @@ import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    KeyboardAvoidingView,
     Modal,
-    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -13,6 +11,7 @@ import {
     TextInput,
     View,
 } from 'react-native';
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -179,13 +178,14 @@ export default function CourseEditScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={styles.screen}>
       <Stack.Screen options={{ title: isNew ? 'New course' : form.name || 'Course' }} />
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={spacing.xl}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Details */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Course details</Text>
@@ -330,7 +330,7 @@ export default function CourseEditScreen() {
             </>
           )}
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {batchDraft && !isNew && id && (
         <BatchModal
@@ -343,7 +343,7 @@ export default function CourseEditScreen() {
           }}
         />
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -409,7 +409,7 @@ function BatchModal({
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={styles.sheetWrap}
         >
           <SafeAreaView edges={['bottom']} style={styles.sheet}>

@@ -3,9 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    KeyboardAvoidingView,
     Modal,
-    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -13,6 +11,7 @@ import {
     TextInput,
     View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { formatDue, scheduleFollowUp } from '@/features/follow-ups/api';
 import {
@@ -569,7 +568,7 @@ function PlaceSheet({
 function Sheet({ onClose, children }: { onClose?: () => void; children: React.ReactNode }) {
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.backdrop} behavior="padding">
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />

@@ -2,9 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -412,7 +411,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.screen} behavior="padding">
         {/* Header: starts below the phone's status bar */}
         <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
           <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">

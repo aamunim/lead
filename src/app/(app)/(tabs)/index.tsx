@@ -1,4 +1,5 @@
 import { router, useFocusEffect, type Href } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -81,9 +82,17 @@ export default function HomeScreen() {
   // ...and when the app comes back to the front
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') checkNudge();
+      if (state === 'active') {
+        checkNudge();
+        countUnread().then(setUnread);
+      }
     });
-    return () => sub.remove();
+    // A push came in while the app is open: the 🔔 number goes up
+    const push = Notifications.addNotificationReceivedListener(() => countUnread().then(setUnread));
+    return () => {
+      sub.remove();
+      push.remove();
+    };
   }, [checkNudge]);
 
   return (
