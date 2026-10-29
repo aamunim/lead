@@ -127,7 +127,11 @@ export default function ImportScreen() {
     });
   };
 
-  const missingRequired = IMPORT_FIELDS.filter((f) => f.required && mapping[f.key] == null);
+  // Name is always needed; then a phone, WhatsApp number or WhatsApp username column
+  const missingRequired: { label: string }[] = IMPORT_FIELDS.filter((f) => f.required && mapping[f.key] == null);
+  if (mapping.phone == null && mapping.whatsapp_number == null && mapping.whatsapp_username == null) {
+    missingRequired.push({ label: 'Phone (or WhatsApp number / username)' });
+  }
 
   const preview = useMemo(() => {
     if (!sheet) return [];
@@ -299,7 +303,8 @@ export default function ImportScreen() {
             <Text style={styles.title}>Preview</Text>
             {preview.map((r) => (
               <Text key={r.row} style={styles.previewRow}>
-                Row {r.row}: {r.name || '—'} · {r.phone || '—'}
+                Row {r.row}: {r.name || '—'} ·{' '}
+                {r.phone || r.whatsapp_number || (r.whatsapp_username ? `@${r.whatsapp_username.replace(/^@+/, '')}` : '—')}
                 {r.course ? ` · ${r.course}` : ''}
               </Text>
             ))}
@@ -332,7 +337,7 @@ export default function ImportScreen() {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.fieldLabel}>If the phone number already exists</Text>
+            <Text style={styles.fieldLabel}>If the phone number (or WhatsApp) already exists</Text>
             {DUPLICATE_CHOICES.map((c) => (
               <Radio
                 key={c.value}

@@ -164,7 +164,8 @@ function GroupRow({
                 {i.lead_name}
               </Text>
               <Text style={styles.subMeta}>
-                {i.lead_phone} · {time(i.created_at)} ›
+                {i.lead_phone ? `${i.lead_phone} · ` : ''}
+                {time(i.created_at)} ›
               </Text>
             </Pressable>
           ))}

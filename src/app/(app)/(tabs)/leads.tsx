@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
+import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
 import { markCallFromApp } from '@/features/call-sync/api';
 import {
   canUseBoard,
@@ -87,9 +88,6 @@ const CLOSED_BADGE: Record<string, { label: string; color: string }> = {
   lost: { label: '✕ Lost', color: colors.danger },
   cancelled: { label: '↩ Cancelled', color: colors.textMuted },
 };
-
-// 01711234567 → 8801711234567 (for WhatsApp)
-const toInternational = (phone: string) => (phone.startsWith('0') ? `88${phone}` : phone);
 
 function followUpLabel(iso: string | null): { text: string; overdue: boolean } | null {
   if (!iso) return null;
@@ -432,6 +430,7 @@ export default function LeadsScreen() {
   };
 
   const call = async (lead: LeadListItem) => {
+    if (!lead.phone) return;
     setCallLead(lead);
     callStartedAt.current = Date.now();
     leftApp.current = false;
@@ -441,13 +440,11 @@ export default function LeadsScreen() {
     if (!ok) callStartedAt.current = null;
   };
 
-  const whatsapp = (lead: LeadListItem) =>
-    open(
-      `whatsapp://send?phone=${toInternational(lead.phone)}`,
-      `https://wa.me/${toInternational(lead.phone)}`,
-    );
+  const whatsapp = (lead: LeadListItem) => openWhatsApp(lead);
 
-  const sms = (lead: LeadListItem) => open(`sms:${lead.phone}`);
+  const sms = (lead: LeadListItem) => {
+    if (lead.phone) open(`sms:${lead.phone}`);
+  };
 
   // --- marking ------------------------------------------------------------
   const toggleSelect = (id: string) => {
@@ -901,7 +898,11 @@ function LeadCard({
   const closed = kind !== 'open' ? CLOSED_BADGE[kind] : null;
   const faded = kind === 'lost' || kind === 'cancelled';
 
-  const metaParts = [lead.phone, kind === 'won' ? lead.student_ref : null, courses].filter(Boolean);
+  const metaParts = [
+    whatsAppOnly(lead) ? `💬 ${contactLabel(lead)}` : lead.phone,
+    kind === 'won' ? lead.student_ref : null,
+    courses,
+  ].filter(Boolean);
 
   // 📄 3/5: open leads and admitted students (not lost / cancelled)
   const papers =
@@ -1000,14 +1001,18 @@ function LeadCard({
 
       {!selecting && (
         <View style={styles.contact}>
-          <ContactButton icon="call" color={colors.success} label={`Call ${lead.name}`} onPress={onCall} />
+          {!!lead.phone && (
+            <ContactButton icon="call" color={colors.success} label={`Call ${lead.name}`} onPress={onCall} />
+          )}
           <ContactButton
             icon="logo-whatsapp"
             color={WHATSAPP_GREEN}
             label={`WhatsApp ${lead.name}`}
             onPress={onWhatsApp}
           />
-          <ContactButton icon="chatbubble-ellipses" color={colors.info} label={`SMS ${lead.name}`} onPress={onSms} />
+          {!!lead.phone && (
+            <ContactButton icon="chatbubble-ellipses" color={colors.info} label={`SMS ${lead.name}`} onPress={onSms} />
+          )}
         </View>
       )}
     </Pressable>

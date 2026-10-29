@@ -2,6 +2,7 @@ import { router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { contactLabel } from '@/features/leads/contact';
 import { formatVisitTime, listTodayVisits, type TodayVisit } from '@/features/visits/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
@@ -55,7 +56,7 @@ export function TodayVisits() {
               </Text>
               <Text style={[styles.time, isLate && styles.timeLate]}>
                 {isLate ? '⚠ ' : ''}
-                {formatVisitTime(v.plannedAt)} · {v.lead.phone}
+                {formatVisitTime(v.plannedAt)} · {contactLabel(v.lead)}
               </Text>
             </View>
             <Text style={styles.chevron}>›</Text>

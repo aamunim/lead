@@ -79,7 +79,7 @@ export async function listLeadVisits(leadId: string): Promise<Visit[]> {
 export type TodayVisit = {
   id: string;
   plannedAt: string;
-  lead: { id: string; name: string; phone: string };
+  lead: { id: string; name: string; phone: string | null; whatsapp_number: string | null; whatsapp_username: string | null };
 };
 
 /** Planned visits from the start of today until the end of today (overdue ones too) */
@@ -88,7 +88,7 @@ export async function listTodayVisits(): Promise<TodayVisit[]> {
   end.setHours(23, 59, 59, 999);
   const { data, error } = await supabase
     .from('lead_visits')
-    .select('id, planned_at, lead:leads!inner(id, name, phone, deleted_at)')
+    .select('id, planned_at, lead:leads!inner(id, name, phone, whatsapp_number, whatsapp_username, deleted_at)')
     .eq('status', 'planned')
     .lte('planned_at', end.toISOString())
     .is('lead.deleted_at', null)

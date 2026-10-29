@@ -1229,7 +1229,7 @@ export type Database = {
           papers_originals_held: number
           papers_received: number
           papers_required: number
-          phone: string
+          phone: string | null
           rating: string | null
           referred_by: string | null
           score: number
@@ -1240,6 +1240,8 @@ export type Database = {
           updated_at: string
           visit_at: string | null
           visit_status: string | null
+          whatsapp_number: string | null
+          whatsapp_username: string | null
         }
         Insert: {
           admission_note?: string | null
@@ -1281,7 +1283,7 @@ export type Database = {
           papers_originals_held?: number
           papers_received?: number
           papers_required?: number
-          phone: string
+          phone?: string | null
           rating?: string | null
           referred_by?: string | null
           score?: number
@@ -1292,6 +1294,8 @@ export type Database = {
           updated_at?: string
           visit_at?: string | null
           visit_status?: string | null
+          whatsapp_number?: string | null
+          whatsapp_username?: string | null
         }
         Update: {
           admission_note?: string | null
@@ -1333,7 +1337,7 @@ export type Database = {
           papers_originals_held?: number
           papers_received?: number
           papers_required?: number
-          phone?: string
+          phone?: string | null
           rating?: string | null
           referred_by?: string | null
           score?: number
@@ -1344,6 +1348,8 @@ export type Database = {
           updated_at?: string
           visit_at?: string | null
           visit_status?: string | null
+          whatsapp_number?: string | null
+          whatsapp_username?: string | null
         }
         Relationships: [
           {
@@ -1812,6 +1818,23 @@ export type Database = {
       }
       current_role_key: { Args: never; Returns: string }
       existing_lead_phones: { Args: { p_phones: string[] }; Returns: string[] }
+      find_leads_by_contact: {
+        Args: {
+          p_exclude_id?: string
+          p_phone?: string
+          p_whatsapp_number?: string
+          p_whatsapp_username?: string
+        }
+        Returns: {
+          assigned_to_name: string
+          can_open: boolean
+          id: string
+          matched: string
+          name: string
+          phone: string
+          stage_name: string
+        }[]
+      }
       find_leads_by_phone: {
         Args: { p_exclude_id?: string; p_phone: string }
         Returns: {

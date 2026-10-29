@@ -128,7 +128,7 @@ export function canUndo(batch: ImportBatch): boolean {
 // Export
 // =====================================================================
 const EXPORT_SELECT = `
-  name, phone, alt_phone, email, area,
+  name, phone, whatsapp_number, whatsapp_username, alt_phone, email, area,
   guardian_name, guardian_phone, guardian_relation,
   rating, notes, referred_by, created_at, next_follow_up_at, last_contacted_at, visit_status, visit_at,
   stage:pipeline_stages(name),
@@ -142,7 +142,9 @@ const EXPORT_SELECT = `
 
 type ExportLead = {
   name: string;
-  phone: string;
+  phone: string | null;
+  whatsapp_number: string | null;
+  whatsapp_username: string | null;
   alt_phone: string | null;
   email: string | null;
   area: string | null;
@@ -167,7 +169,7 @@ type ExportLead = {
 };
 
 const EXPORT_HEADERS = [
-  'Name', 'Phone', 'Alternative phone', 'Email', 'Area',
+  'Name', 'Phone', 'WhatsApp number', 'WhatsApp username', 'Alternative phone', 'Email', 'Area',
   'Guardian name', 'Guardian phone', 'Guardian relation',
   'Courses', 'Stage', 'Rating', 'Source', 'Campaign', 'Referred by', 'Lead type', 'Tags',
   'Assigned to', 'Created', 'Next follow-up', 'Last contacted', 'Campus visit', 'Notes',
@@ -235,6 +237,8 @@ export async function exportLeads(filters: ExportFilters, userId: string): Promi
   const rows = leads.map((l) => [
     l.name,
     l.phone,
+    l.whatsapp_number,
+    l.whatsapp_username ? '@' + l.whatsapp_username : null,
     l.alt_phone,
     l.email,
     l.area,

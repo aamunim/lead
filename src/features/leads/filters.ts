@@ -26,6 +26,12 @@ export type PapersFilter = 'complete' | 'missing' | 'none_yet' | 'originals' | '
  *   visited = came at least once · missed = didn't come (no new plan) · none = never planned
  */
 export type VisitFilter = 'planned' | 'today' | 'overdue' | 'visited' | 'missed' | 'none';
+/**
+ * 📇 How the lead can be reached:
+ *   phone = has a phone · whatsapp_only = no phone, only WhatsApp
+ *   wa_number = has a WhatsApp number · username = has a WhatsApp username
+ */
+export type ContactFilter = 'phone' | 'whatsapp_only' | 'wa_number' | 'username';
 
 export type LeadFilters = {
   ratings?: string[];        // 'hot' | 'warm' | 'cold' | 'none'
@@ -43,6 +49,7 @@ export type LeadFilters = {
   lostReasonIds?: string[];
   papers?: PapersFilter;     // open and admitted leads (lost / cancelled left out)
   visit?: VisitFilter;
+  contact?: ContactFilter;
 };
 
 export type FilterKey =
@@ -60,7 +67,8 @@ export type FilterKey =
   | 'admitted'
   | 'lost_reason'
   | 'papers'
-  | 'visit';
+  | 'visit'
+  | 'contact';
 
 export const NONE = 'none';
 
@@ -83,6 +91,7 @@ export const FILTER_FIELDS: Record<FilterKey, { label: string; icon: string }> =
   lost_reason: { label: 'Lost reason', icon: 'close-circle' },
   papers: { label: 'Papers', icon: 'document-text' },
   visit: { label: 'Campus visit', icon: 'business' },
+  contact: { label: 'Contact by', icon: 'logo-whatsapp' },
 };
 
 export const FOLLOW_UP_OPTIONS: { value: FollowUpFilter; label: string }[] = [
@@ -123,6 +132,13 @@ export const PAPERS_OPTIONS: { value: PapersFilter; label: string }[] = [
   { value: 'no_place', label: 'Place not written' },
 ];
 
+export const CONTACT_OPTIONS: { value: ContactFilter; label: string }[] = [
+  { value: 'phone', label: '📞 Has phone' },
+  { value: 'whatsapp_only', label: '💬 Only WhatsApp' },
+  { value: 'wa_number', label: 'WhatsApp number' },
+  { value: 'username', label: 'WhatsApp username' },
+];
+
 export const VISIT_OPTIONS: { value: VisitFilter; label: string }[] = [
   { value: 'planned', label: 'Planned' },
   { value: 'today', label: 'Today' },
@@ -155,6 +171,7 @@ export function countActiveFilters(f: LeadFilters): number {
     list(f.lostReasonIds),
     f.papers,
     f.visit,
+    f.contact,
   ].filter(Boolean).length;
 }
 
@@ -369,6 +386,22 @@ export function applyLeadFilters<Q extends { [k: string]: any }>(query: Q, f: Le
       break;
   }
 
+  // How the lead can be reached
+  switch (f.contact) {
+    case 'phone':
+      q = q.not('phone', 'is', null);
+      break;
+    case 'whatsapp_only':
+      q = q.is('phone', null);
+      break;
+    case 'wa_number':
+      q = q.not('whatsapp_number', 'is', null);
+      break;
+    case 'username':
+      q = q.not('whatsapp_username', 'is', null);
+      break;
+  }
+
   return q as Q;
 }
 
@@ -457,6 +490,7 @@ export const DEFAULT_FILTER_CONFIG: FilterConfig = {
     { key: 'papers', enabled: true },
     { key: 'visit', enabled: true },
     { key: 'lost_reason', enabled: true },
+    { key: 'contact', enabled: true },
   ],
 };
 

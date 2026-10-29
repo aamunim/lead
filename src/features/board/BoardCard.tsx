@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { LeadListItem } from '@/features/leads/api';
+import { contactLabel, whatsAppOnly } from '@/features/leads/contact';
 import { papersBadge } from '@/features/papers/api';
 import { visitBadge } from '@/features/visits/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -151,10 +152,10 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
           delayLongPress={350}
           style={({ pressed }) => [styles.body, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={`${lead.name}, ${lead.phone}`}
+          accessibilityLabel={`${lead.name}, ${contactLabel(lead)}`}
         >
           <Text style={styles.phone} numberOfLines={1}>
-            📞 {lead.phone}
+            {whatsAppOnly(lead) ? '💬' : '📞'} {contactLabel(lead)}
           </Text>
           <Text style={styles.line} numberOfLines={1}>
             {courses ? `🎓 ${courses}` : '🎓 No course yet'}
@@ -165,9 +166,13 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
           </Text>
 
           <View style={styles.contact}>
-            <ContactButton icon="call" color={colors.success} label={`Call ${lead.name}`} onPress={onCall} />
+            {!!lead.phone && (
+              <ContactButton icon="call" color={colors.success} label={`Call ${lead.name}`} onPress={onCall} />
+            )}
             <ContactButton icon="logo-whatsapp" color={WHATSAPP_GREEN} label={`WhatsApp ${lead.name}`} onPress={onWhatsApp} />
-            <ContactButton icon="chatbubble-ellipses" color={colors.info} label={`SMS ${lead.name}`} onPress={onSms} />
+            {!!lead.phone && (
+              <ContactButton icon="chatbubble-ellipses" color={colors.info} label={`SMS ${lead.name}`} onPress={onSms} />
+            )}
           </View>
         </Pressable>
         {flipButton}
