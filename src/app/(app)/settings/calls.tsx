@@ -220,6 +220,17 @@ export default function CallSyncSettingsScreen() {
         </View>
       </View>
 
+      {/* 💬 WhatsApp */}
+      <Text style={styles.sectionLabel}>💬 WHATSAPP</Text>
+      <View style={styles.card}>
+        <SwitchRow
+          title="Ask after WhatsApp"
+          text="When someone opens WhatsApp from the app and comes back, ask: message or call, and what happened."
+          value={settings.whatsapp_ask_after}
+          onChange={(v) => set('whatsapp_ask_after', v)}
+        />
+      </View>
+
       <View style={styles.privacy}>
         <Ionicons name="shield-checkmark" size={18} color={colors.success} />
         <Text style={styles.privacyText}>

@@ -48,6 +48,8 @@ export type CallSyncSettings = {
   connected_min_sec: number;
   unreachable_after: number;
   unreachable_retry_days: number;
+  /** 💬 After WhatsApp is opened from the app, ask what happened */
+  whatsapp_ask_after: boolean;
 };
 
 export const DEFAULT_CALL_SYNC: CallSyncSettings = {
@@ -60,6 +62,7 @@ export const DEFAULT_CALL_SYNC: CallSyncSettings = {
   connected_min_sec: 5,
   unreachable_after: 5,
   unreachable_retry_days: 7,
+  whatsapp_ask_after: true,
 };
 
 export async function getCallSyncSettings(): Promise<CallSyncSettings> {

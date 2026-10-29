@@ -9,7 +9,15 @@ import type { Json } from '@/shared/types/database';
 //   The database only counts leads / calls the person can see.
 // =====================================================================
 
-export type ReportSection = 'summary' | 'funnel' | 'visits' | 'sources' | 'team' | 'lost' | 'heatmap';
+export type ReportSection =
+  | 'summary'
+  | 'funnel'
+  | 'visits'
+  | 'sources'
+  | 'team'
+  | 'whatsapp'
+  | 'lost'
+  | 'heatmap';
 
 export const SECTION_LABELS: Record<ReportSection, { title: string; text: string }> = {
   summary: { title: 'Summary', text: 'New leads, contacted, admitted, conversion, lost' },
@@ -17,11 +25,21 @@ export const SECTION_LABELS: Record<ReportSection, { title: string; text: string
   visits: { title: 'Campus visits', text: 'Visited / didn’t come, and admissions with or without a visit' },
   sources: { title: 'Sources & campaigns', text: 'Where leads and admissions come from' },
   team: { title: 'Team', text: 'Leads, calls, talk time and admissions per person' },
+  whatsapp: { title: 'WhatsApp', text: 'WhatsApp calls and messages, apart from phone calls' },
   lost: { title: 'Why leads are lost', text: 'Lost reasons, and the stage they left from' },
   heatmap: { title: 'Best time to call', text: 'Which days and hours calls get answered' },
 };
 
-export const SECTION_ORDER: ReportSection[] = ['summary', 'funnel', 'visits', 'sources', 'team', 'lost', 'heatmap'];
+export const SECTION_ORDER: ReportSection[] = [
+  'summary',
+  'funnel',
+  'visits',
+  'sources',
+  'team',
+  'whatsapp',
+  'lost',
+  'heatmap',
+];
 
 export type ReportSettings = {
   /** Who can open Reports (admins always can) */
@@ -35,7 +53,16 @@ export type ReportSettings = {
 export const DEFAULT_REPORTS: ReportSettings = {
   who: { mode: 'all', roles: [], user_ids: [] },
   home_card: true,
-  sections: { summary: true, funnel: true, visits: true, sources: true, team: true, lost: true, heatmap: true },
+  sections: {
+    summary: true,
+    funnel: true,
+    visits: true,
+    sources: true,
+    team: true,
+    whatsapp: true,
+    lost: true,
+    heatmap: true,
+  },
 };
 
 export async function getReportSettings(): Promise<ReportSettings> {
@@ -220,6 +247,44 @@ const pickCalls = (c?: { calls: number; connected: number; talk_sec: number }) =
   connected: c?.connected ?? 0,
   talk_sec: c?.talk_sec ?? 0,
 });
+
+// =====================================================================
+// 💬 WhatsApp (never mixed with phone calls)
+// =====================================================================
+export type WhatsAppReport = {
+  totals: {
+    calls: number;
+    outgoing: number;
+    incoming: number;
+    missed: number;
+    connected: number;
+    talk_sec: number;
+    video: number;
+    messages_sent: number;
+    messages_received: number;
+    leads: number;
+  };
+  people: {
+    user_id: string;
+    full_name: string | null;
+    calls: number;
+    connected: number;
+    talk_sec: number;
+    messages: number;
+    leads: number;
+  }[];
+  days: { day: string; calls: number; messages: number }[];
+};
+
+export async function getWhatsAppReport(q: ReportQuery): Promise<WhatsAppReport> {
+  const { data, error } = await supabase.rpc('whatsapp_report', {
+    p_from: q.from,
+    p_to: q.to,
+    p_user_id: q.userId ?? undefined,
+  });
+  if (error) throw toError(error);
+  return data as unknown as WhatsAppReport;
+}
 
 export async function getCallHeatmap(q: ReportQuery): Promise<HeatCell[]> {
   const { data, error } = await supabase.rpc('call_heatmap', {

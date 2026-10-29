@@ -16,7 +16,15 @@ export type CallOutcome =
   | 'wrong_number'
   | 'call_back';
 
-export type AnyOutcome = CallOutcome | 'missed' | 'rejected';
+export type AnyOutcome = CallOutcome | 'missed' | 'rejected' | 'message';
+
+/** 📞 phone call, or 💬 WhatsApp (call or message) */
+export type CallChannel = 'phone' | 'whatsapp';
+/** WhatsApp only: what it was */
+export type WhatsAppMedia = 'voice' | 'video' | 'message';
+
+/** Results you can choose for a WhatsApp call (no SIM, so no "switched off") */
+export const WHATSAPP_CALL_OUTCOMES: CallOutcome[] = ['connected', 'no_answer', 'busy', 'call_back'];
 
 export type CallDirection = 'outgoing' | 'incoming' | 'missed' | 'rejected';
 
@@ -36,7 +44,16 @@ export const CALL_OUTCOMES: (OutcomeInfo & { value: CallOutcome })[] = [
 const PHONE_ONLY: OutcomeInfo[] = [
   { value: 'missed', label: 'Missed call', icon: '📵', color: colors.danger },
   { value: 'rejected', label: 'Rejected', icon: '🚫', color: colors.danger },
+  { value: 'message', label: 'Message', icon: '💬', color: '#1F7A57' },
 ];
+
+/** "WhatsApp call", "WhatsApp video", "WhatsApp message", or "" for a phone call */
+export function channelLabel(channel: string | null | undefined, media: string | null | undefined): string {
+  if (channel !== 'whatsapp') return '';
+  if (media === 'message') return 'WhatsApp message';
+  if (media === 'video') return 'WhatsApp video';
+  return 'WhatsApp call';
+}
 
 export function outcomeInfo(value: string): OutcomeInfo {
   return (
@@ -95,6 +112,10 @@ export type NewCall = {
   notes?: string | null;
   calledAt?: string; // ISO time; default = now
 
+  /** Default phone. WhatsApp needs media (voice / video / message). */
+  channel?: CallChannel;
+  media?: WhatsAppMedia | null;
+
   // When the call was found in the phone's call log
   direction?: CallDirection;
   deviceId?: string | null;
@@ -141,6 +162,7 @@ export async function logCall(input: NewCall): Promise<string> {
       notes,
       ...(input.calledAt ? { called_at: input.calledAt } : {}),
       ...(input.direction ? { direction: input.direction } : {}),
+      ...(input.channel === 'whatsapp' ? { channel: 'whatsapp', media: input.media ?? 'message' } : {}),
       ...(fromPhone
         ? {
             device_id: input.deviceId,
@@ -236,4 +258,44 @@ export function formatDuration(sec: number | null | undefined): string | null {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return s === 0 ? `${m}m` : `${m}m ${s}s`;
+}
+// =====================================================================
+// 💬 WhatsApp calls and messages (the WhatsApp calls screen)
+//   Only leads I may see (row security on call_logs)
+// =====================================================================
+export type WhatsAppKind = 'all' | 'calls' | 'messages';
+
+export type WhatsAppLog = CallLog & {
+  lead: {
+    id: string;
+    name: string;
+    phone: string | null;
+    whatsapp_number: string | null;
+    whatsapp_username: string | null;
+  } | null;
+};
+
+export const WHATSAPP_PAGE = 40;
+
+export async function listWhatsAppLogs(options: {
+  since: Date;
+  kind: WhatsAppKind;
+  /** Load the page older than this time */
+  before?: string | null;
+}): Promise<WhatsAppLog[]> {
+  let query = supabase
+    .from('call_logs')
+    .select(`${CALL_SELECT}, lead:leads(id, name, phone, whatsapp_number, whatsapp_username)`)
+    .eq('channel', 'whatsapp')
+    .gte('called_at', options.since.toISOString())
+    .order('called_at', { ascending: false })
+    .limit(WHATSAPP_PAGE);
+
+  if (options.kind === 'calls') query = query.neq('outcome', 'message');
+  if (options.kind === 'messages') query = query.eq('outcome', 'message');
+  if (options.before) query = query.lt('called_at', options.before);
+
+  const { data, error } = await query;
+  if (error) throw toError(error);
+  return (data ?? []) as unknown as WhatsAppLog[];
 }

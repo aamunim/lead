@@ -101,6 +101,13 @@ export default function MoreScreen() {
       <View style={styles.section}>
         <View style={styles.group}>
           <Row icon="🔔" title="Notifications" subtitle="Leads given to you, reminders, visits" href="/notifications" />
+          <Row
+            icon="💬"
+            title="WhatsApp calls"
+            subtitle="WhatsApp calls and messages with leads"
+            href={'/whatsapp' as Href}
+            divider
+          />
         </View>
       </View>
 

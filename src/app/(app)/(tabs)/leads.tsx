@@ -18,7 +18,8 @@ import {
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
-import { markCallFromApp } from '@/features/call-sync/api';
+import { getCallSyncSettings, markCallFromApp } from '@/features/call-sync/api';
+import type { CallChannel } from '@/features/calls/api';
 import {
   canUseBoard,
   getBoardSettings,
@@ -206,6 +207,16 @@ export default function LeadsScreen() {
   const [estimatedSec, setEstimatedSec] = useState<number | null>(null);
   const callStartedAt = useRef<number | null>(null);
   const leftApp = useRef(false);
+  // 📞 phone call or 💬 WhatsApp: which one the popup asks about
+  const [callChannel, setCallChannel] = useState<CallChannel>('phone');
+  const pendingChannel = useRef<CallChannel>('phone');
+  const [askAfterWhatsApp, setAskAfterWhatsApp] = useState(true);
+
+  useEffect(() => {
+    getCallSyncSettings()
+      .then((s) => setAskAfterWhatsApp(s.whatsapp_ask_after))
+      .catch(() => undefined);
+  }, []);
 
   // Short message after saving
   const [toast, setToast] = useState<string | null>(null);
@@ -325,6 +336,7 @@ export default function LeadsScreen() {
         callStartedAt.current = null;
         leftApp.current = false;
         setEstimatedSec(seconds);
+        setCallChannel(pendingChannel.current);
         setCallSheetVisible(true);
       }
     });
@@ -434,13 +446,24 @@ export default function LeadsScreen() {
     setCallLead(lead);
     callStartedAt.current = Date.now();
     leftApp.current = false;
+    pendingChannel.current = 'phone';
     // The app shows its own popup for this call: no "add a note" notification
     markCallFromApp(lead.phone);
     const ok = await open(`tel:${lead.phone}`);
     if (!ok) callStartedAt.current = null;
   };
 
-  const whatsapp = (lead: LeadListItem) => openWhatsApp(lead);
+  // 💬 WhatsApp: when the user comes back, ask what happened (Settings → Calls)
+  const whatsapp = async (lead: LeadListItem) => {
+    if (askAfterWhatsApp) {
+      setCallLead(lead);
+      callStartedAt.current = Date.now();
+      leftApp.current = false;
+      pendingChannel.current = 'whatsapp';
+    }
+    const ok = await openWhatsApp(lead);
+    if (!ok) callStartedAt.current = null;
+  };
 
   const sms = (lead: LeadListItem) => {
     if (lead.phone) open(`sms:${lead.phone}`);
@@ -853,10 +876,11 @@ export default function LeadsScreen() {
           visible={callSheetVisible}
           lead={{ id: callLead.id, name: callLead.name, phone: callLead.phone, rating: callLead.rating }}
           estimatedSec={estimatedSec}
+          channel={callChannel}
           onClose={() => setCallSheetVisible(false)}
           onSaved={() => {
             setCallSheetVisible(false);
-            showToast('Call saved.');
+            showToast(callChannel === 'whatsapp' ? 'WhatsApp saved.' : 'Call saved.');
             loadFirstPage();
           }}
         />
