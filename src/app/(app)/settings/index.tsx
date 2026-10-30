@@ -126,6 +126,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/export' as Href,
       },
       {
+        title: 'Google Drive',
+        description: 'Where lead files are saved, who sees them',
+        icon: '📎',
+        href: '/settings/drive' as Href,
+      },
+      {
         title: 'Message templates',
         description: 'WhatsApp / SMS templates, who can use them',
         icon: '💬',

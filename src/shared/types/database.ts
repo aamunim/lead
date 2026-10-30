@@ -263,6 +263,57 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_files: {
+        Row: {
+          call_id: string | null
+          created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
+          drive_file_id: string
+          duration_sec: number | null
+          id: string
+          kind: string
+          lead_id: string
+          mime_type: string | null
+          name: string
+          paper_id: string | null
+          size_bytes: number | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          call_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
+          drive_file_id: string
+          duration_sec?: number | null
+          id?: string
+          kind: string
+          lead_id: string
+          mime_type?: string | null
+          name: string
+          paper_id?: string | null
+          size_bytes?: number | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          call_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
+          drive_file_id?: string
+          duration_sec?: number | null
+          id?: string
+          kind?: string
+          lead_id?: string
+          mime_type?: string | null
+          name?: string
+          paper_id?: string | null
+          size_bytes?: number | null
+          uploaded_by?: string | null
+        }
+        Relationships: []
+      }
       lead_negotiations: {
         Row: {
           course_id: string
@@ -2423,6 +2474,9 @@ export type Database = {
         Args: { p_discount_id: string; p_approve: boolean; p_note?: string }
         Returns: undefined
       }
+      delete_lead_file: { Args: { p_file_id: string }; Returns: undefined }
+      drive_disconnect: { Args: never; Returns: undefined }
+      drive_status: { Args: never; Returns: Json }
       discounts_to_answer: { Args: never; Returns: number }
       discount_limit: {
         Args: { p_user?: string }
