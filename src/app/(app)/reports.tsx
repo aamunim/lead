@@ -21,6 +21,7 @@ import {
   formatTalk,
   getCallHeatmap,
   getLeadReport,
+  getCollectionReport,
   getReportSettings,
   getTemplateReport,
   getWhatsAppReport,
@@ -30,6 +31,7 @@ import {
   type LeadReport,
   type PipelineStep,
   type Period,
+  type CollectionReport,
   type ReportSettings,
   type TemplateReport,
   type WhatsAppReport,
@@ -39,6 +41,8 @@ import { listCourses } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 type Option = { id: string; name: string };
+
+const taka = (n: number) => `৳${Math.round(n).toLocaleString('en-IN')}`;
 
 export default function ReportsScreen() {
   const { profile, hasPermission, sharedMode } = useAuth();
@@ -62,6 +66,7 @@ export default function ReportsScreen() {
   const [heat, setHeat] = useState<HeatCell[]>([]);
   const [wa, setWa] = useState<WhatsAppReport | null>(null);
   const [tpl, setTpl] = useState<TemplateReport | null>(null);
+  const [money, setMoney] = useState<CollectionReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,13 +93,15 @@ export default function ReportsScreen() {
     const q = { ...periodRange(period), userId: person?.id ?? null, courseId: course?.id ?? null };
     try {
       setError(null);
-      const [r, h, w, t] = await Promise.all([
+      const [r, h, w, t, c] = await Promise.all([
         getLeadReport(q, show.team),
         show.heatmap ? getCallHeatmap(q) : Promise.resolve([]),
         show.whatsapp ? getWhatsAppReport(q) : Promise.resolve(null),
         // An older database without the report: just leave the card out
         show.templates ? getTemplateReport(q).catch(() => null) : Promise.resolve(null),
+        show.collection ? getCollectionReport(q).catch(() => null) : Promise.resolve(null),
       ]);
+      setMoney(c);
       setReport(r);
       setHeat(h);
       setWa(w);
@@ -105,7 +112,7 @@ export default function ReportsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [period, person, course, show.team, show.heatmap, show.whatsapp, show.templates]);
+  }, [period, person, course, show.team, show.heatmap, show.whatsapp, show.templates, show.collection]);
 
   useEffect(() => {
     if (!ready) return;
@@ -394,6 +401,91 @@ export default function ReportsScreen() {
                     </Pressable>
                   </>
                 )}
+              </Card>
+            )}
+
+            {/* 💵 Collection */}
+            {show.collection && money && (
+              <Card title="💵 Collection" subtitle="Money taken in this period; due and late are as of now">
+                <View style={styles.tiles}>
+                  <StatTile
+                    label="Collected"
+                    value={taka(money.totals.collected)}
+                    hint={`${money.totals.receipts} receipts · ${money.totals.students} students`}
+                  />
+                  {money.totals.refunded > 0 && <StatTile label="Refunded" value={taka(money.totals.refunded)} />}
+                  {money.totals.refunded > 0 && <StatTile label="Net" value={taka(money.totals.net)} />}
+                  <StatTile label="Due now" value={taka(money.due_now.due)} hint={`${money.due_now.with_due} students`} />
+                  <StatTile
+                    label="Late"
+                    value={taka(money.due_now.late_amount)}
+                    hint={`${money.due_now.late} students`}
+                  />
+                  <StatTile
+                    label="Discounts"
+                    value={taka(money.discounts.amount)}
+                    hint={`${money.discounts.given} given · ${money.discounts.admitted}/${money.discounts.leads} admitted`}
+                  />
+                </View>
+
+                {money.by_method.length > 0 && (
+                  <>
+                    <Text style={styles.subTitle}>By method</Text>
+                    <BarList
+                      empty=""
+                      rows={money.by_method.map((m) => ({
+                        key: m.method,
+                        name: m.method,
+                        value: Math.round(Number(m.amount)),
+                        right: `${m.receipts}×`,
+                      }))}
+                    />
+                  </>
+                )}
+
+                {seesOthers && money.by_person.length > 0 && (
+                  <>
+                    <Text style={styles.subTitle}>Taken by</Text>
+                    <BarList
+                      empty=""
+                      rows={money.by_person.map((p) => ({
+                        key: p.user_id ?? 'none',
+                        name: p.full_name ?? 'No name',
+                        value: Math.round(Number(p.amount)),
+                        right: `${p.receipts}×`,
+                      }))}
+                    />
+                  </>
+                )}
+
+                {money.discount_by.length > 0 && (
+                  <>
+                    <Text style={styles.subTitle}>Discounts approved by</Text>
+                    {money.discount_by.map((d) => (
+                      <Text key={d.user_id ?? 'none'} style={styles.personLine}>
+                        {d.full_name ?? 'No name'}: {d.given} · {taka(Number(d.amount))}
+                      </Text>
+                    ))}
+                  </>
+                )}
+
+                {money.voided.length > 0 && (
+                  <>
+                    <Text style={styles.subTitle}>✕ Void in this period</Text>
+                    {money.voided.map((v) => (
+                      <Pressable key={v.receipt_no} onPress={() => router.push(`/leads/${v.lead_id}` as Href)}>
+                        <Text style={styles.personLine}>
+                          {v.receipt_no} · {taka(Number(v.amount))} · {v.lead_name}
+                          {v.void_reason ? ` · ${v.void_reason}` : ''}
+                          {v.voided_by ? ` · by ${v.voided_by}` : ''}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </>
+                )}
+                <Pressable onPress={() => router.push('/students' as Href)} hitSlop={8} accessibilityRole="link">
+                  <Text style={styles.waLink}>See students with money due ›</Text>
+                </Pressable>
               </Card>
             )}
 

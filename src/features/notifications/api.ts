@@ -18,7 +18,8 @@ export type NotificationKind =
   | 'signup'
   | 'sync_nudge'
   | 'missed_call'
-  | 'discount';
+  | 'discount'
+  | 'payment';
 
 export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; text: string }[] = [
   { kind: 'assigned', icon: '👥', title: 'Lead given to you', text: 'Someone hands you a lead (with their note)' },
@@ -31,6 +32,7 @@ export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; t
   { kind: 'sync_nudge', icon: '📞', title: 'Turn on call sync', text: 'When an admin sends the reminder' },
   { kind: 'missed_call', icon: '📵', title: 'Missed call from a lead', text: 'To the lead’s person, when another phone missed it' },
   { kind: 'discount', icon: '💰', title: 'Discounts', text: 'Requests to approve, answers, and approved ones running out' },
+  { kind: 'payment', icon: '📅', title: 'Installments', text: 'Before and on the date; late ones to Team Lead and admins' },
 ];
 
 export type NotificationSettings = {
@@ -51,6 +53,7 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
     sync_nudge: true,
     missed_call: true,
     discount: true,
+    payment: true,
   },
   assigned_in_quiet_hours: true,
 };

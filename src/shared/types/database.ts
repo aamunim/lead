@@ -160,6 +160,7 @@ export type Database = {
           note: string | null
           paid_at: string
           receipt_no: string
+          kind: string
           received_by: string | null
           txn_id: string | null
           void_reason: string | null
@@ -176,6 +177,7 @@ export type Database = {
           note?: string | null
           paid_at?: string
           receipt_no: string
+          kind?: string
           received_by?: string | null
           txn_id?: string | null
           void_reason?: string | null
@@ -192,6 +194,7 @@ export type Database = {
           note?: string | null
           paid_at?: string
           receipt_no?: string
+          kind?: string
           received_by?: string | null
           txn_id?: string | null
           void_reason?: string | null
@@ -2427,6 +2430,14 @@ export type Database = {
       }
       discount_queue: {
         Args: never
+        Returns: Json
+      }
+      collection_report: {
+        Args: { p_from: string; p_to: string; p_user_id?: string }
+        Returns: Json
+      }
+      record_refund: {
+        Args: { p_lead_id: string; p_amount: number; p_method: string; p_reason: string; p_txn_id?: string }
         Returns: Json
       }
       record_payment: {

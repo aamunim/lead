@@ -52,6 +52,15 @@ export type PaymentSettings = {
   /** a payment date may go this many days back (admins: any) */
   backdate_days: number;
   receipt: { fields: Record<ReceiptField, boolean>; footer: string };
+  /** Installment reminders (Settings → Fee & discount) */
+  reminders: {
+    enabled: boolean;
+    /** days before the installment date (0 = no early reminder) */
+    days_before: number;
+    on_day: boolean;
+    /** days late → the Team Lead and admins are told (0 = never) */
+    late_after: number;
+  };
 };
 
 export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
@@ -68,6 +77,7 @@ export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   ],
   min_on_admit: 0,
   backdate_days: 7,
+  reminders: { enabled: true, days_before: 1, on_day: true, late_after: 3 },
   receipt: {
     fields: Object.fromEntries(RECEIPT_FIELDS.map((f) => [f.key, true])) as Record<ReceiptField, boolean>,
     footer: 'Thank you.',
@@ -211,6 +221,7 @@ export async function getFeeSettings(): Promise<FeeSettings> {
         who: { ...DEFAULT_PAYMENT_SETTINGS.who, ...(saved?.payments?.who ?? {}) },
         void_who: { ...DEFAULT_PAYMENT_SETTINGS.void_who, ...(saved?.payments?.void_who ?? {}) },
         methods: saved?.payments?.methods ?? DEFAULT_PAYMENT_SETTINGS.methods,
+        reminders: { ...DEFAULT_PAYMENT_SETTINGS.reminders, ...(saved?.payments?.reminders ?? {}) },
         receipt: {
           fields: { ...DEFAULT_PAYMENT_SETTINGS.receipt.fields, ...(saved?.payments?.receipt?.fields ?? {}) },
           footer: saved?.payments?.receipt?.footer ?? DEFAULT_PAYMENT_SETTINGS.receipt.footer,
@@ -398,6 +409,8 @@ export type Payment = {
   voided_at: string | null;
   voided_by: string | null;
   void_reason: string | null;
+  /** 'refund' = money given back (its own number RFD-…) */
+  kind: 'payment' | 'refund';
 };
 
 export type Installment = { id: string; seq: number; due_date: string; amount: number };
@@ -429,8 +442,28 @@ export async function listPayments(leadId: string): Promise<{ payments: Payment[
   return { payments: (p.data ?? []) as unknown as Payment[], installments: (i.data ?? []) as unknown as Installment[] };
 }
 
+/** Payments − refunds (void ones left out) */
 export const paidTotal = (payments: Payment[]) =>
-  payments.filter((p) => !p.voided_at).reduce((t, p) => t + Number(p.amount), 0);
+  payments.filter((p) => !p.voided_at).reduce((t, p) => t + (p.kind === 'refund' ? -1 : 1) * Number(p.amount), 0);
+
+/** Give money back (after a cancelled admission); people who may void payments */
+export async function recordRefund(input: {
+  leadId: string;
+  amount: number;
+  method: string;
+  reason: string;
+  txnId: string;
+}): Promise<{ id: string; receipt_no: string }> {
+  const { data, error } = await supabase.rpc('record_refund', {
+    p_lead_id: input.leadId,
+    p_amount: input.amount,
+    p_method: input.method,
+    p_reason: input.reason.trim(),
+    p_txn_id: input.txnId.trim() || undefined,
+  });
+  if (error) throw toError(error);
+  return data as unknown as { id: string; receipt_no: string };
+}
 
 export async function recordPayment(input: {
   leadId: string;
@@ -542,7 +575,7 @@ export function receiptText(d: ReceiptData, s: PaymentSettings): string {
     f.phone && d.institute.phone ? `📞 ${d.institute.phone}` : null,
     '',
     p.voided_at ? '✕ *VOID* — this receipt is cancelled' : null,
-    `🧾 *Money receipt* ${p.receipt_no}`,
+    p.kind === 'refund' ? `↩ *Refund* ${p.receipt_no}` : `🧾 *Money receipt* ${p.receipt_no}`,
     `Date: ${when}`,
     '',
     `Student: ${d.student.name}`,
@@ -551,9 +584,9 @@ export function receiptText(d: ReceiptData, s: PaymentSettings): string {
     f.batch && d.student.batch ? `Batch: ${d.student.batch}` : null,
     '',
     `*Amount: ${money(Number(p.amount))}*`,
-    f.method ? `Paid by: ${p.method}` : null,
+    f.method ? `${p.kind === 'refund' ? 'Returned by' : 'Paid by'}: ${p.method}` : null,
     f.txn && p.txn_id ? `Transaction ID: ${p.txn_id}` : null,
-    f.note && p.note ? `Note: ${p.note}` : null,
+    p.kind === 'refund' && p.note ? `Reason: ${p.note}` : f.note && p.note ? `Note: ${p.note}` : null,
     f.paid_due ? '' : null,
     f.paid_due ? `Total fee: ${money(d.finalFee)}` : null,
     f.paid_due ? `Paid so far: ${money(d.paidSoFar)}` : null,

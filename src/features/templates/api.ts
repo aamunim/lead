@@ -145,6 +145,10 @@ export const VARIABLES: { key: string; label: string }[] = [
   { key: 'full_fee', label: 'Full fee' },
   { key: 'discount', label: 'Discount' },
   { key: 'final_fee', label: 'Fee to pay' },
+  { key: 'paid', label: 'Paid so far' },
+  { key: 'due', label: 'Still due' },
+  { key: 'next_installment', label: 'Next installment' },
+  { key: 'next_due_date', label: 'Next installment date' },
   { key: 'visit_time', label: 'Visit time' },
   { key: 'next_call', label: 'Next call' },
   { key: 'papers_missing', label: 'Papers missing' },
@@ -193,7 +197,7 @@ export async function loadTemplateContext(
   const { data: lead } = await supabase
     .from('leads')
     .select(
-      'name, student_ref, next_follow_up_at, visit_at, visit_status, admitted_course_id, admitted_batch_id, fee_full, fee_discount, fee_final, lead_courses(course_id)',
+      'name, student_ref, next_follow_up_at, visit_at, visit_status, admitted_course_id, admitted_batch_id, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, lead_courses(course_id)',
     )
     .eq('id', leadId)
     .maybeSingle();
@@ -209,6 +213,9 @@ export async function loadTemplateContext(
     fee_full: number | null;
     fee_discount: number | null;
     fee_final: number | null;
+    fee_paid: number | null;
+    fee_due: number | null;
+    fee_next_due: string | null;
     lead_courses: { course_id: string }[];
   } | null;
 
@@ -218,7 +225,7 @@ export async function loadTemplateContext(
   ].filter((v, i, a) => a.indexOf(v) === i);
   const courseId = courseIds[0] ?? null;
 
-  const [course, batch, papers] = await Promise.all([
+  const [course, batch, papers, inst] = await Promise.all([
     courseId
       ? supabase.from('courses').select('name, course_fees(name, amount, sort_order)').eq('id', courseId).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -226,7 +233,23 @@ export async function loadTemplateContext(
       ? supabase.from('batches').select('name, start_date').eq('id', l.admitted_batch_id).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.rpc('lead_missing_papers', { p_lead_id: leadId }),
+    l?.fee_next_due
+      ? supabase.from('fee_installments').select('seq, amount').eq('lead_id', leadId).order('seq')
+      : Promise.resolve({ data: null }),
   ]);
+
+  // What is left of the next installment (payments fill the earliest first)
+  let nextLeft: number | null = null;
+  if (inst.data && l) {
+    let upto = 0;
+    for (const i of inst.data as { seq: number; amount: number }[]) {
+      upto += Number(i.amount);
+      if (upto > Number(l.fee_paid ?? 0)) {
+        nextLeft = Math.min(upto - Number(l.fee_paid ?? 0), Number(l.fee_due ?? 0));
+        break;
+      }
+    }
+  }
 
   const c = course.data as unknown as { name: string; course_fees: { name: string; amount: number; sort_order: number }[] } | null;
   const fees = (c?.course_fees ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
@@ -247,6 +270,10 @@ export async function loadTemplateContext(
     full_fee: l?.fee_full != null ? money(Number(l.fee_full)) : '',
     discount: l?.fee_discount ? money(Number(l.fee_discount)) : '',
     final_fee: l?.fee_final != null ? money(Number(l.fee_final)) : '',
+    paid: l?.fee_paid ? money(Number(l.fee_paid)) : '',
+    due: l?.fee_due ? money(Number(l.fee_due)) : '',
+    next_installment: nextLeft ? money(nextLeft) : '',
+    next_due_date: l?.fee_next_due ? dateText(l.fee_next_due) : '',
     visit_time: l?.visit_status === 'planned' ? dateText(l.visit_at, true) : '',
     next_call: dateText(l?.next_follow_up_at, true),
     papers_missing: missing.join('\n'),
