@@ -1,6 +1,5 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 
 import type { MyProfile } from '@/features/auth/api';
@@ -12,7 +11,8 @@ import type { Json } from '@/shared/types/database';
 // =====================================================================
 // 📎 Lead files in the institute's Google Drive
 //   Upload and open go through the server (Edge Functions drive-*), which
-//   holds the Google connection. The app never sees Drive links or tokens.
+//   talks to a small Google Apps Script in the Drive owner's account
+//   (docs/drive-script.gs). The app never sees Drive links or the key.
 //   Who sees a file: the person who added it, plus admins and the people
 //   allowed in Settings → Google Drive.
 // =====================================================================
@@ -40,7 +40,6 @@ export type LeadFile = {
 export type DriveStatus = { connected: boolean; email: string | null; connected_at: string | null; connected_by: string | null };
 
 const FUNCTIONS = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
-const APP_LINK = 'leadmanagement://drive-connected';
 
 function toError(error: { message: string }): Error {
   const m = error.message.toLowerCase();
@@ -93,21 +92,27 @@ export async function getDriveStatus(): Promise<DriveStatus> {
   return data as unknown as DriveStatus;
 }
 
-/** Admin: sign in to Google in the browser and allow access; back in the app afterwards */
-export async function connectDrive(): Promise<{ ok: boolean; message: string }> {
-  const res = await fetch(`${FUNCTIONS}/drive-connect`, { method: 'POST', headers: await authHeaders() });
+/** Admin: the Apps Script's Web app URL and secret key; the server checks them and keeps them */
+export async function connectDrive(url: string, secret: string): Promise<{ email: string | null }> {
+  let res: Response;
+  try {
+    res = await fetch(`${FUNCTIONS}/drive-connect`, {
+      method: 'POST',
+      headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url.trim(), secret: secret.trim() }),
+    });
+  } catch {
+    throw new Error('No internet connection. Please try again.');
+  }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.url) {
+  if (!res.ok) {
     throw new Error(
-      res.status === 404
+      res.status === 404 && !body.error
         ? 'The Google Drive server part is not set up yet (Edge Functions not deployed).'
-        : body.error ?? 'Could not start.',
+        : body.error ?? 'Could not connect.',
     );
   }
-  const result = await WebBrowser.openAuthSessionAsync(body.url, APP_LINK);
-  if (result.type !== 'success') return { ok: false, message: '' };
-  const url = new URL(result.url);
-  return { ok: url.searchParams.get('ok') === '1', message: url.searchParams.get('message') ?? '' };
+  return { email: body.email ?? null };
 }
 
 export async function disconnectDrive(): Promise<void> {

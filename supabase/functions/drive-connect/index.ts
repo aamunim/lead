@@ -1,9 +1,9 @@
 // =====================================================================
-// 🔗 Start connecting the institute's Google Drive (admins only)
-//   POST → { url }: the app opens it, the admin signs in to Google and
-//   allows access, Google sends them to drive-callback.
+// 🔗 Connect the Google Drive script (admins only)
+//   POST { url, secret }: checks the script answers with that secret,
+//   keeps both on the server, makes the "Lead Management" folder.
 // =====================================================================
-import { GOOGLE_CLIENT_ID, REDIRECT_URI, SCOPES, admin, asUser, cors, currentUser, json } from '../_shared/drive.ts';
+import { admin, asUser, callScript, cors, currentUser, json, rootFolder } from '../_shared/drive.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -12,24 +12,35 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: 'Please sign in again.' }, 401);
     const { data: isAdmin } = await asUser(req).rpc('has_permission', { perm: 'settings.manage' });
     if (!isAdmin) return json({ error: 'Only an admin can connect Google Drive.' }, 403);
-    if (!GOOGLE_CLIENT_ID) return json({ error: 'GOOGLE_CLIENT_ID is not set on the server.' }, 500);
 
-    const state = crypto.randomUUID();
-    await admin.from('drive_oauth_states').delete().lt('created_at', new Date(Date.now() - 3600_000).toISOString());
-    await admin.from('drive_oauth_states').insert({ state, user_id: user.id });
+    const { url, secret } = (await req.json().catch(() => ({}))) as { url?: string; secret?: string };
+    const scriptUrl = (url ?? '').trim();
+    const scriptSecret = (secret ?? '').trim();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(scriptUrl)) {
+      return json({ error: 'Paste the Web app URL (https://script.google.com/macros/s/…/exec).' }, 400);
+    }
+    if (scriptSecret.length < 16) return json({ error: 'The secret key must be at least 16 characters.' }, 400);
 
-    const url =
-      'https://accounts.google.com/o/oauth2/v2/auth?' +
-      new URLSearchParams({
-        client_id: GOOGLE_CLIENT_ID,
-        redirect_uri: REDIRECT_URI,
-        response_type: 'code',
-        scope: SCOPES,
-        access_type: 'offline',
-        prompt: 'consent', // always get a refresh token
-        state,
-      });
-    return json({ url });
+    const ping = await callScript<{ ok: boolean; email?: string }>({ url: scriptUrl, secret: scriptSecret }, 'ping');
+
+    const { data: before } = await admin.from('google_drive_connection').select('email').eq('id', 1).maybeSingle();
+    const sameAccount = !!before && before.email === (ping.email ?? null);
+    if (!sameAccount) await admin.from('lead_drive_folders').delete().neq('lead_id', '00000000-0000-0000-0000-000000000000');
+
+    const { error } = await admin.from('google_drive_connection').upsert({
+      id: 1,
+      email: ping.email ?? null,
+      script_url: scriptUrl,
+      script_secret: scriptSecret,
+      refresh_token: null,
+      ...(sameAccount ? {} : { root_folder_id: null }),
+      connected_by: user.id,
+      connected_at: new Date().toISOString(),
+    });
+    if (error) throw new Error(error.message);
+    await rootFolder();
+
+    return json({ ok: true, email: ping.email ?? null });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }

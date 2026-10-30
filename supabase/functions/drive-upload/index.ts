@@ -7,7 +7,7 @@
 // =====================================================================
 import { admin, asUser, cors, currentUser, json, leadFolder, uploadFile } from '../_shared/drive.ts';
 
-const MAX_BYTES = 50 * 1024 * 1024;
+const MAX_BYTES = 35 * 1024 * 1024; // the script takes ~50 MB of base64
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     const kind = String(form.get('kind') ?? 'paper') as 'paper' | 'voice' | 'other';
     if (!(file instanceof File)) return json({ error: 'No file.' }, 400);
     if (!['paper', 'voice', 'other'].includes(kind)) return json({ error: 'Unknown kind.' }, 400);
-    if (file.size > MAX_BYTES) return json({ error: 'The file is bigger than 50 MB.' }, 400);
+    if (file.size > MAX_BYTES) return json({ error: 'The file is bigger than 35 MB.' }, 400);
 
     // Can this person see the lead? (their own client: row security)
     const { data: lead } = await asUser(req).from('leads').select('id, name, phone').eq('id', leadId).maybeSingle();
