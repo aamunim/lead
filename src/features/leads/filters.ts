@@ -32,6 +32,12 @@ export type VisitFilter = 'planned' | 'today' | 'overdue' | 'visited' | 'missed'
  *   wa_number = has a WhatsApp number · username = has a WhatsApp username
  */
 export type ContactFilter = 'phone' | 'whatsapp_only' | 'wa_number' | 'username';
+/**
+ * 💰 Fee & discount (leads.fee_status, kept by the database):
+ *   talking = fee talk going on (not admitted) · waiting = a discount waits for approval
+ *   given = has a discount in force · final = admitted, fee locked · none = no fee talk yet
+ */
+export type FeeFilter = 'talking' | 'waiting' | 'given' | 'final' | 'none';
 
 export type LeadFilters = {
   ratings?: string[];        // 'hot' | 'warm' | 'cold' | 'none'
@@ -50,6 +56,7 @@ export type LeadFilters = {
   papers?: PapersFilter;     // open and admitted leads (lost / cancelled left out)
   visit?: VisitFilter;
   contact?: ContactFilter;
+  fee?: FeeFilter;
 };
 
 export type FilterKey =
@@ -68,7 +75,8 @@ export type FilterKey =
   | 'lost_reason'
   | 'papers'
   | 'visit'
-  | 'contact';
+  | 'contact'
+  | 'fee';
 
 export const NONE = 'none';
 
@@ -92,6 +100,7 @@ export const FILTER_FIELDS: Record<FilterKey, { label: string; icon: string }> =
   papers: { label: 'Papers', icon: 'document-text' },
   visit: { label: 'Campus visit', icon: 'business' },
   contact: { label: 'Contact by', icon: 'logo-whatsapp' },
+  fee: { label: 'Fee / discount', icon: 'cash' },
 };
 
 export const FOLLOW_UP_OPTIONS: { value: FollowUpFilter; label: string }[] = [
@@ -148,6 +157,14 @@ export const VISIT_OPTIONS: { value: VisitFilter; label: string }[] = [
   { value: 'none', label: 'Never planned' },
 ];
 
+export const FEE_OPTIONS: { value: FeeFilter; label: string }[] = [
+  { value: 'talking', label: '💰 Negotiating' },
+  { value: 'waiting', label: '⏳ Discount waiting' },
+  { value: 'given', label: 'Discount given' },
+  { value: 'final', label: '🔒 Final fee (admitted)' },
+  { value: 'none', label: 'No fee talk yet' },
+];
+
 // =====================================================================
 // Small helpers
 // =====================================================================
@@ -172,6 +189,7 @@ export function countActiveFilters(f: LeadFilters): number {
     f.papers,
     f.visit,
     f.contact,
+    f.fee,
   ].filter(Boolean).length;
 }
 
@@ -181,7 +199,7 @@ export function countActiveFilters(f: LeadFilters): number {
  * (Papers keeps only open and admitted leads itself.)
  */
 export function needsClosedLeads(f: LeadFilters): boolean {
-  return !!(list(f.stageIds) || f.admitted || list(f.lostReasonIds) || f.papers);
+  return !!(list(f.stageIds) || f.admitted || list(f.lostReasonIds) || f.papers || f.fee === 'final');
 }
 
 /** Drop empty parts so saved filters stay small */
@@ -386,6 +404,25 @@ export function applyLeadFilters<Q extends { [k: string]: any }>(query: Q, f: Le
       break;
   }
 
+  // Fee & discount
+  switch (f.fee) {
+    case 'talking':
+      q = q.in('fee_status', ['negotiating', 'discount_waiting', 'discount_given']);
+      break;
+    case 'waiting':
+      q = q.eq('fee_status', 'discount_waiting');
+      break;
+    case 'given':
+      q = q.in('fee_status', ['discount_given', 'final']).gt('fee_discount', 0);
+      break;
+    case 'final':
+      q = q.eq('fee_status', 'final');
+      break;
+    case 'none':
+      q = q.is('fee_status', null);
+      break;
+  }
+
   // How the lead can be reached
   switch (f.contact) {
     case 'phone':
@@ -489,6 +526,7 @@ export const DEFAULT_FILTER_CONFIG: FilterConfig = {
     { key: 'admitted', enabled: true },
     { key: 'papers', enabled: true },
     { key: 'visit', enabled: true },
+    { key: 'fee', enabled: true },
     { key: 'lost_reason', enabled: true },
     { key: 'contact', enabled: true },
   ],

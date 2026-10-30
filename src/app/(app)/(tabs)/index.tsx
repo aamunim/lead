@@ -10,6 +10,7 @@ import { TodayList } from '@/features/follow-ups/TodayList';
 import { getMyOpenNudge, markNudgeSeen, nudgeTitle, type Nudge } from '@/features/nudges/api';
 import { SyncSetupSheet } from '@/features/nudges/SyncSetupSheet';
 import { countUnread } from '@/features/notifications/api';
+import { countDiscountsToAnswer } from '@/features/fees/api';
 import { ReportHomeCard } from '@/features/reports/ReportHomeCard';
 import { TodayVisits } from '@/features/visits/TodayVisits';
 import { countPendingUsers } from '@/features/users/api';
@@ -27,6 +28,7 @@ export default function HomeScreen() {
   const [pendingCount, setPendingCount] = useState(0);
   const [unread, setUnread] = useState(0);
   const [contactsAllowed, setContactsAllowed] = useState(false);
+  const [discounts, setDiscounts] = useState(0);
 
   // Reminder from the Super Admin (e.g. "turn on call log sync")
   const [nudge, setNudge] = useState<Nudge | null>(null);
@@ -71,6 +73,7 @@ export default function HomeScreen() {
 
       checkNudge();
       countUnread().then(setUnread);
+      countDiscountsToAnswer().then(setDiscounts);
 
       if (!canManageUsers) return;
       countPendingUsers()
@@ -155,6 +158,21 @@ export default function HomeScreen() {
             <Text style={styles.bannerIcon}>⏳</Text>
             <Text style={styles.bannerText}>
               {pendingCount} {pendingCount === 1 ? 'person is' : 'people are'} waiting for approval
+            </Text>
+            <Text style={styles.bannerAction}>Review ›</Text>
+          </Pressable>
+        )}
+
+        {/* 💰 Discount requests I may answer */}
+        {discounts > 0 && (
+          <Pressable
+            onPress={() => router.push('/discounts' as Href)}
+            style={({ pressed }) => [styles.banner, pressed && styles.pressed]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.bannerIcon}>💰</Text>
+            <Text style={styles.bannerText}>
+              {discounts} discount {discounts === 1 ? 'request is' : 'requests are'} waiting for you
             </Text>
             <Text style={styles.bannerAction}>Review ›</Text>
           </Pressable>

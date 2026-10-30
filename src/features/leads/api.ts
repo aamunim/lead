@@ -56,6 +56,11 @@ export type LeadListItem = Pick<
   // Campus visit (kept up to date by the database)
   | 'visit_status'
   | 'visit_at'
+  // Fee & discount (kept up to date by the database)
+  | 'fee_status'
+  | 'fee_full'
+  | 'fee_discount'
+  | 'fee_final'
 > & {
   stage: Stage | null;
   source: Named | null;
@@ -127,7 +132,9 @@ export type LeadSort =
   | 'not_contacted_longest'
   | 'recently_contacted'
   | 'visit_date'
-  | 'papers_missing';
+  | 'papers_missing'
+  | 'discount_most'
+  | 'fee_latest';
 
 export const DEFAULT_SORT: LeadSort = 'next_call';
 
@@ -140,6 +147,8 @@ export const SORT_OPTIONS: { value: LeadSort; label: string; text: string; icon:
   { value: 'recently_contacted', label: 'Recently contacted', text: 'Last talked to first', icon: '🕐' },
   { value: 'visit_date', label: 'Campus visit date', text: 'Earliest visit first, no visit last', icon: '🏫' },
   { value: 'papers_missing', label: 'Most papers missing', text: 'Most required papers still to collect first', icon: '📄' },
+  { value: 'discount_most', label: 'Biggest discount', text: 'Largest discount first, no discount last', icon: '💰' },
+  { value: 'fee_latest', label: 'Fee talk: latest', text: 'Last fee talk or discount change first', icon: '💬' },
 ];
 
 /** Everything the list can be narrowed by */
@@ -185,6 +194,7 @@ const LIST_SELECT = `
   id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
+  fee_status, fee_full, fee_discount, fee_final,
   stage:pipeline_stages(id, key, name, color, kind),
   source:lead_sources(id, name),
   assignee:assigned_to(id, full_name),
@@ -294,6 +304,12 @@ function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: 
       break;
     case 'papers_missing':
       q = q.order('papers_missing', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+      break;
+    case 'discount_most':
+      q = q.order('fee_discount', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+      break;
+    case 'fee_latest':
+      q = q.order('fee_updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
       break;
     default:
       q = q.order('next_follow_up_at', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });

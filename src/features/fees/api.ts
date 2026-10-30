@@ -83,6 +83,33 @@ export const EVENT_LABELS: Record<NegotiationEvent['kind'], string> = {
 
 export const money = (n: number) => `৳${Math.round(n).toLocaleString('en-IN')}`;
 
+/** The small badge on lead cards (list and board), from leads.fee_status */
+export function feeBadge(
+  status: string | null | undefined,
+  discount: number | null | undefined,
+): { text: string; tone: 'talk' | 'wait' | 'good' } | null {
+  const off = Number(discount ?? 0);
+  switch (status) {
+    case 'negotiating':
+      return { text: '💰 Negotiating', tone: 'talk' };
+    case 'discount_waiting':
+      return { text: '⏳ Discount', tone: 'wait' };
+    case 'discount_given':
+      return { text: `💰 −${money(off)}`, tone: 'good' };
+    case 'final':
+      return off > 0 ? { text: `💰 −${money(off)}`, tone: 'good' } : null;
+    default:
+      return null;
+  }
+}
+
+/** Waiting discount requests I may answer (Home card, More badge) */
+export async function countDiscountsToAnswer(): Promise<number> {
+  const { data, error } = await supabase.rpc('discounts_to_answer');
+  if (error) return 0;
+  return Number(data ?? 0);
+}
+
 function toError(error: { message: string }): Error {
   const m = error.message.toLowerCase();
   if (m.includes('network request failed') || m.includes('fetch')) {

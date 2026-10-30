@@ -20,6 +20,8 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
 import type { TemplateChannel } from '@/features/templates/api';
 import { TemplateSheet } from '@/features/templates/TemplateSheet';
+import { canUseFees, feeBadge, getFeeSettings } from '@/features/fees/api';
+import { FeeSheet, type FeeSheetLead } from '@/features/fees/FeeSheet';
 import { useTemplateAccess } from '@/features/templates/useTemplateAccess';
 import { getCallSyncSettings, markCallFromApp } from '@/features/call-sync/api';
 import type { CallChannel } from '@/features/calls/api';
@@ -70,7 +72,7 @@ const RATING_COLOR: Record<string, string> = {
 const WHATSAPP_GREEN = '#25D366';
 
 // The floating buttons shown while leads are marked ("lost" opens the Lost sheet)
-type FloatAction = QuickField | 'lost';
+type FloatAction = QuickField | 'lost' | 'fee';
 
 const ACTIONS: {
   field: FloatAction;
@@ -83,6 +85,7 @@ const ACTIONS: {
   { field: 'tags', label: 'Tag', icon: 'pricetags', color: '#EC4899' },
   { field: 'assign', label: 'Assign', icon: 'person-add', color: '#0EA5E9' },
   { field: 'followup', label: 'Next call', icon: 'alarm', color: '#10B981' },
+  { field: 'fee', label: 'Fee', icon: 'cash', color: '#D97706' },
   { field: 'lost', label: 'Lost', icon: 'close-circle', color: '#EF4444' },
 ];
 
@@ -129,8 +132,18 @@ export default function LeadsScreen() {
   // Many leads lost at once: only for people who edit their team's or all leads
   const canBulkLost = hasPermission('leads.edit_team') || hasPermission('leads.edit_all');
 
+  // 💰 Fee & discount (one marked lead), when the feature is on for this person
+  const [feeOn, setFeeOn] = useState(false);
+  const [feeFor, setFeeFor] = useState<FeeSheetLead | null>(null);
+  useEffect(() => {
+    getFeeSettings()
+      .then((s) => setFeeOn(canUseFees(s, profile, isAdmin || hasPermission('discounts.approve'))))
+      .catch(() => setFeeOn(false));
+  }, [profile, isAdmin, hasPermission]);
+
   const actions = ACTIONS.filter(
-    (a) => (a.field !== 'assign' || mayHandOver) && (a.field !== 'lost' || canBulkLost),
+    (a) =>
+      (a.field !== 'assign' || mayHandOver) && (a.field !== 'lost' || canBulkLost) && (a.field !== 'fee' || feeOn),
   );
   const showAssignee = assignmentOn && seesOthers;
 
@@ -711,6 +724,17 @@ export default function LeadsScreen() {
           onWhatsApp={whatsapp}
           onSms={sms}
           onTemplate={templates.allowed ? (lead, ch) => setTemplateFor({ lead, channel: ch }) : undefined}
+          onFee={
+            feeOn
+              ? (lead) =>
+                  setFeeFor({
+                    id: lead.id,
+                    name: lead.name,
+                    stageKind: lead.stage?.kind ?? 'open',
+                    courseIds: lead.lead_courses.map((c) => c.course?.id ?? '').filter(Boolean),
+                  })
+              : undefined
+          }
           onChanged={(message) => {
             showToast(message);
             loadFirstPage();
@@ -807,7 +831,20 @@ export default function LeadsScreen() {
               {actions.map((a) => (
                 <Pressable
                   key={a.field}
-                  onPress={() => (a.field === 'lost' ? setLostVisible(true) : setSheetField(a.field))}
+                  onPress={() => {
+                    if (a.field === 'lost') return setLostVisible(true);
+                    if (a.field === 'fee') {
+                      const one = markedLeads.length === 1 ? markedLeads[0] : null;
+                      if (!one) return showToast('Mark just one lead for Fee & discount.');
+                      return setFeeFor({
+                        id: one.id,
+                        name: one.name,
+                        stageKind: one.stage?.kind ?? 'open',
+                        courseIds: one.lead_courses.map((c) => c.course?.id ?? '').filter(Boolean),
+                      });
+                    }
+                    setSheetField(a.field);
+                  }}
                   disabled={markingAll}
                   style={({ pressed }) => [styles.actionItem, pressed && styles.actionPressed]}
                   accessibilityRole="button"
@@ -889,6 +926,21 @@ export default function LeadsScreen() {
           setMatchingCache([]);
           showToast(message);
           loadFirstPage();
+        }}
+      />
+
+      {/* 💰 Fee & discount for one marked lead */}
+      <FeeSheet
+        lead={feeFor}
+        onClose={() => {
+          setFeeFor(null);
+          setSelected(new Set());
+          setMatchingCache([]);
+        }}
+        onChanged={(message) => {
+          if (message) showToast(message);
+          loadFirstPage();
+          setBoardReload((n) => n + 1);
         }}
       />
 
@@ -979,6 +1031,9 @@ function LeadCard({
   const visitSoon = lead.visit_status === 'planned';
   const visitLate = visitSoon && !!lead.visit_at && new Date(lead.visit_at).getTime() < Date.now();
 
+  // 💰 Negotiating / ⏳ Discount / 💰 −৳3,500
+  const fee = kind === 'open' || kind === 'won' ? feeBadge(lead.fee_status, lead.fee_discount) : null;
+
   return (
     <Pressable
       onPress={onPress}
@@ -1046,6 +1101,18 @@ function LeadCard({
                 ]}
               >
                 {visit}
+              </Text>
+            </View>
+          )}
+          {fee && (
+            <View style={[styles.papers, fee.tone === 'wait' ? styles.papersMissing : fee.tone === 'good' ? styles.papersDone : styles.visitOther]}>
+              <Text
+                style={[
+                  styles.papersText,
+                  { color: fee.tone === 'wait' ? colors.warning : fee.tone === 'good' ? colors.success : colors.text },
+                ]}
+              >
+                {fee.text}
               </Text>
             </View>
           )}

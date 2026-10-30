@@ -131,6 +131,7 @@ const EXPORT_SELECT = `
   name, phone, whatsapp_number, whatsapp_username, alt_phone, email, area,
   guardian_name, guardian_phone, guardian_relation,
   rating, notes, referred_by, created_at, next_follow_up_at, last_contacted_at, visit_status, visit_at,
+  fee_status, fee_full, fee_discount, fee_final,
   stage:pipeline_stages(name),
   source:lead_sources(name),
   campaign:campaigns(name),
@@ -159,6 +160,10 @@ type ExportLead = {
   last_contacted_at: string | null;
   visit_status: string | null;
   visit_at: string | null;
+  fee_status: string | null;
+  fee_full: number | null;
+  fee_discount: number | null;
+  fee_final: number | null;
   stage: { name: string } | null;
   source: { name: string } | null;
   campaign: { name: string } | null;
@@ -172,8 +177,18 @@ const EXPORT_HEADERS = [
   'Name', 'Phone', 'WhatsApp number', 'WhatsApp username', 'Alternative phone', 'Email', 'Area',
   'Guardian name', 'Guardian phone', 'Guardian relation',
   'Courses', 'Stage', 'Rating', 'Source', 'Campaign', 'Referred by', 'Lead type', 'Tags',
-  'Assigned to', 'Created', 'Next follow-up', 'Last contacted', 'Campus visit', 'Notes',
+  'Assigned to', 'Created', 'Next follow-up', 'Last contacted', 'Campus visit',
+  'Fee status', 'Full fee', 'Discount', 'To pay', 'Notes',
 ];
+
+const FEE_STATUS: Record<string, string> = {
+  negotiating: 'Negotiating',
+  discount_waiting: 'Discount waiting',
+  discount_given: 'Discount given',
+  final: 'Final (admitted)',
+};
+
+const num = (v: number | null) => (v == null ? null : Number(v));
 
 /** "Planned · 28 Oct 2026, 11:00", "Visited · …", "Didn't come · …" */
 function visitText(status: string | null, at: string | null): string {
@@ -258,6 +273,10 @@ export async function exportLeads(filters: ExportFilters, userId: string): Promi
     dateText(l.next_follow_up_at),
     dateText(l.last_contacted_at),
     visitText(l.visit_status, l.visit_at),
+    l.fee_status ? FEE_STATUS[l.fee_status] ?? l.fee_status : '',
+    num(l.fee_full),
+    num(l.fee_discount),
+    num(l.fee_final),
     l.notes,
   ]);
 

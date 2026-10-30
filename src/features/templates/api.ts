@@ -142,6 +142,9 @@ export const VARIABLES: { key: string; label: string }[] = [
   { key: 'batch', label: 'Batch' },
   { key: 'batch_start', label: 'Batch start' },
   { key: 'fee', label: 'Fee list' },
+  { key: 'full_fee', label: 'Full fee' },
+  { key: 'discount', label: 'Discount' },
+  { key: 'final_fee', label: 'Fee to pay' },
   { key: 'visit_time', label: 'Visit time' },
   { key: 'next_call', label: 'Next call' },
   { key: 'papers_missing', label: 'Papers missing' },
@@ -190,7 +193,7 @@ export async function loadTemplateContext(
   const { data: lead } = await supabase
     .from('leads')
     .select(
-      'name, student_ref, next_follow_up_at, visit_at, visit_status, admitted_course_id, admitted_batch_id, lead_courses(course_id)',
+      'name, student_ref, next_follow_up_at, visit_at, visit_status, admitted_course_id, admitted_batch_id, fee_full, fee_discount, fee_final, lead_courses(course_id)',
     )
     .eq('id', leadId)
     .maybeSingle();
@@ -203,6 +206,9 @@ export async function loadTemplateContext(
     visit_status: string | null;
     admitted_course_id: string | null;
     admitted_batch_id: string | null;
+    fee_full: number | null;
+    fee_discount: number | null;
+    fee_final: number | null;
     lead_courses: { course_id: string }[];
   } | null;
 
@@ -237,6 +243,10 @@ export async function loadTemplateContext(
       ? [...fees.map((f) => `• ${f.name}: ${money(Number(f.amount))}`),
         ...(fees.length > 1 ? [`মোট: ${money(fees.reduce((t, f) => t + Number(f.amount), 0))}`] : [])].join('\n')
       : '',
+    // From the fee negotiation (💰 card); empty when there was no fee talk
+    full_fee: l?.fee_full != null ? money(Number(l.fee_full)) : '',
+    discount: l?.fee_discount ? money(Number(l.fee_discount)) : '',
+    final_fee: l?.fee_final != null ? money(Number(l.fee_final)) : '',
     visit_time: l?.visit_status === 'planned' ? dateText(l.visit_at, true) : '',
     next_call: dateText(l?.next_follow_up_at, true),
     papers_missing: missing.join('\n'),

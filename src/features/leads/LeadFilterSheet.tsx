@@ -26,6 +26,7 @@ import {
   NONE,
   PAPERS_OPTIONS,
   VISIT_OPTIONS,
+  FEE_OPTIONS,
   cleanFilters,
   countActiveFilters,
   createSavedFilter,
@@ -182,7 +183,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
     });
   };
 
-  const setSingle = <K extends 'followUp' | 'created' | 'lastContacted' | 'admitted' | 'papers' | 'visit' | 'contact'>(
+  const setSingle = <K extends 'followUp' | 'created' | 'lastContacted' | 'admitted' | 'papers' | 'visit' | 'contact' | 'fee'>(
     key: K,
     v: LeadFilters[K],
   ) => {
@@ -201,6 +202,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
       if (key === 'papers') delete next.papers;
       if (key === 'visit') delete next.visit;
       if (key === 'contact') delete next.contact;
+      if (key === 'fee') delete next.fee;
       return next;
     });
   };
@@ -215,6 +217,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
     if (key === 'papers') return !!draft.papers;
     if (key === 'visit') return !!draft.visit;
     if (key === 'contact') return !!draft.contact;
+    if (key === 'fee') return !!draft.fee;
     return false;
   };
 
@@ -388,6 +391,21 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
                 color={o.value === 'visited' ? colors.success : o.value === 'overdue' ? colors.danger : undefined}
                 on={draft.visit === o.value}
                 onPress={() => setSingle('visit', o.value)}
+              />
+            ))}
+          </View>
+        );
+        break;
+      case 'fee':
+        body = (
+          <View style={styles.chips}>
+            {FEE_OPTIONS.map((o) => (
+              <Chip
+                key={o.value}
+                label={o.label}
+                color={o.value === 'waiting' ? colors.warning : o.value === 'final' ? colors.success : undefined}
+                on={draft.fee === o.value}
+                onPress={() => setSingle('fee', o.value)}
               />
             ))}
           </View>

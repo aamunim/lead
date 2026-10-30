@@ -11,7 +11,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 export type BoardAction =
   | { type: 'move'; stage: PipelineStage }
-  | { type: 'admit' | 'lost' | 'call' | 'followup' | 'note' | 'open' | 'handover' };
+  | { type: 'admit' | 'lost' | 'call' | 'followup' | 'note' | 'open' | 'handover' | 'fee' };
 
 type Props = {
   lead: LeadListItem | null;
@@ -22,11 +22,13 @@ type Props = {
   canAdmit: boolean;
   /** May give the lead to someone (hand over) */
   canHandOver: boolean;
+  /** Fee & discount is on for this person */
+  canFee?: boolean;
   onClose: () => void;
   onPick: (action: BoardAction) => void;
 };
 
-export function BoardActionSheet({ lead, stages, canEdit, canAdmit, canHandOver, onClose, onPick }: Props) {
+export function BoardActionSheet({ lead, stages, canEdit, canAdmit, canHandOver, canFee, onClose, onPick }: Props) {
   const isOpen = (lead?.stage?.kind ?? 'open') === 'open';
 
   return (
@@ -93,6 +95,9 @@ export function BoardActionSheet({ lead, stages, canEdit, canAdmit, canHandOver,
               {canEdit && <Row icon="⏰" label="Next call" onPress={() => onPick({ type: 'followup' })} />}
               {canEdit && canHandOver && (
                 <Row icon="👥" label="Give to someone (hand over)" onPress={() => onPick({ type: 'handover' })} />
+              )}
+              {canFee && (isOpen || lead?.stage?.kind === 'won') && (
+                <Row icon="💰" label="Fee & discount" onPress={() => onPick({ type: 'fee' })} />
               )}
               <Row icon="📝" label="Add a note" onPress={() => onPick({ type: 'note' })} />
               <Row icon="👁" label="Open lead" onPress={() => onPick({ type: 'open' })} />

@@ -61,6 +61,8 @@ type Props = {
   onSms: (lead: LeadListItem) => void;
   /** Long press on WhatsApp / SMS: pick a message template */
   onTemplate?: (lead: LeadListItem, channel: 'whatsapp' | 'sms') => void;
+  /** Long press → Fee & discount (when the feature is on for this person) */
+  onFee?: (lead: LeadListItem) => void;
   /** Something changed: show a short message */
   onChanged: (message: string) => void;
 };
@@ -79,6 +81,7 @@ export function LeadBoard({
   onWhatsApp,
   onSms,
   onTemplate,
+  onFee,
   onChanged,
 }: Props) {
   const { profile, hasPermission, sharedMode, assignment } = useAuth();
@@ -239,6 +242,10 @@ export function LeadBoard({
         setSheet(null);
         router.push(`/leads/${lead.id}` as Href);
         return;
+      case 'fee':
+        setSheet(null);
+        onFee?.(lead);
+        return;
       default:
         setSheet({ type: action.type, lead });
     }
@@ -344,6 +351,7 @@ export function LeadBoard({
         canEdit={!!active && canEdit(active)}
         canAdmit={mayAdmit}
         canHandOver={canHandOver(assignment, hasPermission)}
+        canFee={!!onFee}
         onClose={() => setSheet(null)}
         onPick={(a) => active && pick(active, a)}
       />
