@@ -264,6 +264,7 @@ export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; acti
       'discount_cancelled',
       'payment_received',
       'payment_voided',
+      'payment_refunded',
       'installments_set',
     ],
   },
@@ -407,6 +408,11 @@ export function describeChange(
     case 'payment_voided':
       return {
         text: `✕ Payment void: ${q(d.receipt_no)} · ৳${Math.round(Number(d.amount ?? 0)).toLocaleString('en-IN')}${d.reason ? ` · ${q(d.reason)}` : ''}`,
+        warn: true,
+      };
+    case 'payment_refunded':
+      return {
+        text: `↩ Refund ৳${Math.round(Number(d.amount ?? 0)).toLocaleString('en-IN')} (${q(d.method)}) · ${q(d.receipt_no)}${d.reason ? ` · ${q(d.reason)}` : ''}`,
         warn: true,
       };
     case 'installments_set':

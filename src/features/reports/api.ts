@@ -17,6 +17,7 @@ export type ReportSection =
   | 'team'
   | 'whatsapp'
   | 'templates'
+  | 'collection'
   | 'lost'
   | 'heatmap';
 
@@ -28,6 +29,7 @@ export const SECTION_LABELS: Record<ReportSection, { title: string; text: string
   team: { title: 'Team', text: 'Leads, calls, talk time and admissions per person' },
   whatsapp: { title: 'WhatsApp', text: 'WhatsApp calls and messages, apart from phone calls' },
   templates: { title: 'Message templates', text: 'Which templates are sent, by whom, and what happened after' },
+  collection: { title: 'Collection', text: 'Money taken and returned, by method and person; due, late, discounts' },
   lost: { title: 'Why leads are lost', text: 'Lost reasons, and the stage they left from' },
   heatmap: { title: 'Best time to call', text: 'Which days and hours calls get answered' },
 };
@@ -40,6 +42,7 @@ export const SECTION_ORDER: ReportSection[] = [
   'team',
   'whatsapp',
   'templates',
+  'collection',
   'lost',
   'heatmap',
 ];
@@ -64,6 +67,7 @@ export const DEFAULT_REPORTS: ReportSettings = {
     team: true,
     whatsapp: true,
     templates: true,
+    collection: true,
     lost: true,
     heatmap: true,
   },
@@ -331,6 +335,38 @@ export async function getTemplateReport(q: Pick<ReportQuery, 'from' | 'to' | 'us
   });
   if (error) throw toError(error);
   return data as unknown as TemplateReport;
+}
+
+// =====================================================================
+// 💵 Collection: money in / out in the period, and what is due now
+// =====================================================================
+export type CollectionReport = {
+  totals: { collected: number; refunded: number; net: number; receipts: number; students: number };
+  by_method: { method: string; amount: number; receipts: number }[];
+  by_person: { user_id: string | null; full_name: string | null; amount: number; receipts: number }[];
+  due_now: { with_due: number; due: number; late: number; late_amount: number };
+  discounts: { given: number; amount: number; leads: number; admitted: number };
+  discount_by: { user_id: string | null; full_name: string | null; given: number; amount: number }[];
+  voided: {
+    receipt_no: string;
+    amount: number;
+    kind: string;
+    lead_id: string;
+    lead_name: string;
+    void_reason: string | null;
+    voided_at: string;
+    voided_by: string | null;
+  }[];
+};
+
+export async function getCollectionReport(q: Pick<ReportQuery, 'from' | 'to' | 'userId'>): Promise<CollectionReport> {
+  const { data, error } = await supabase.rpc('collection_report', {
+    p_from: q.from,
+    p_to: q.to,
+    p_user_id: q.userId ?? undefined,
+  });
+  if (error) throw toError(error);
+  return data as unknown as CollectionReport;
 }
 
 export async function getCallHeatmap(q: ReportQuery): Promise<HeatCell[]> {

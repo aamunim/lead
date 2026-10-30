@@ -494,6 +494,8 @@ export default function LeadDetailScreen() {
         return `💰 Discount taken back: ${money(Number(d.amount ?? 0))} off ${d.fee ?? 'the fee'}`;
       case 'payment_received':
         return `💵 ${money(Number(d.amount ?? 0))} received (${d.method ?? ''}) · 🧾 ${d.receipt_no ?? ''}`;
+      case 'payment_refunded':
+        return `↩ Refund ${money(Number(d.amount ?? 0))} (${d.method ?? ''}) · ${d.receipt_no ?? ''}${d.reason ? ` · ${d.reason}` : ''}`;
       case 'payment_voided':
         return `✕ Payment void: ${d.receipt_no ?? ''} · ${money(Number(d.amount ?? 0))}${d.reason ? ` · ${d.reason}` : ''}`;
       case 'installments_set':

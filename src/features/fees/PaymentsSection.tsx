@@ -13,6 +13,7 @@ import {
   paidTotal,
   receiptText,
   recordPayment,
+  recordRefund,
   setInstallments,
   voidPayment,
   type FeeSettings,
@@ -66,6 +67,7 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
   const [loading, setLoading] = useState(true);
   const [sheet, setSheet] = useState<'pay' | 'plan' | null>(null);
   const [voiding, setVoiding] = useState<Payment | null>(null);
+  const [refunding, setRefunding] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -114,15 +116,80 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
 
   if (loading) return <ActivityIndicator color={colors.primary} />;
 
-  // A cancelled admission with money paid: say so (refunds come later)
+  // Receipts (payments and refunds), newest first
+  const receiptRows = more.visible.map((p) => (
+        <View key={p.id} style={[styles.payRow, p.voided_at && styles.voided]}>
+          <View style={styles.flex}>
+            <Text style={[styles.payAmount, p.voided_at && styles.struck, p.kind === 'refund' && styles.refund]}>
+              {p.kind === 'refund' ? '↩ Refund ' : ''}
+              {money(Number(p.amount))} · {p.method}
+            </Text>
+            <Text style={styles.meta}>
+              {p.kind === 'refund' ? '↩' : '🧾'} {p.receipt_no} · {dayText(p.paid_at)}
+              {nameOf(p.received_by) ? ` · ${nameOf(p.received_by)}` : ''}
+            </Text>
+            {p.txn_id && <Text style={styles.meta}>Txn: {p.txn_id}</Text>}
+            {p.note && <Text style={styles.note}>“{p.note}”</Text>}
+            {p.voided_at && (
+              <Text style={styles.badText}>
+                ✕ Void{p.void_reason ? `: ${p.void_reason}` : ''}
+                {nameOf(p.voided_by) ? ` · ${nameOf(p.voided_by)}` : ''}
+              </Text>
+            )}
+          </View>
+          <View style={styles.payActions}>
+            <Pressable onPress={() => share(p)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Share receipt">
+              <Text style={styles.link}>Share</Text>
+            </Pressable>
+            {canVoid && !p.voided_at && (
+              <Pressable onPress={() => setVoiding(p)} hitSlop={8} accessibilityRole="button">
+                <Text style={styles.voidLink}>Void</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      ));
+
+  // A cancelled admission: what was paid, and give it back (refund)
   if (!admitted) {
-    if (paid <= 0) return null;
+    if (payments.length === 0) return null;
     return (
-      <View style={styles.warnBox}>
-        <Text style={styles.warnText}>
-          ⚠ Admission cancelled, but {money(paid)} was paid ({payments.filter((p) => !p.voided_at).length} receipt
-          {payments.filter((p) => !p.voided_at).length === 1 ? '' : 's'}). Check if it needs to be returned.
-        </Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>PAYMENTS</Text>
+        {paid > 0 ? (
+          <View style={styles.warnBox}>
+            <Text style={styles.warnText}>
+              ⚠ Admission cancelled, but {money(paid)} is still with us. Return it with Refund if needed.
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.meta}>Nothing left to return.</Text>
+        )}
+        {canVoid && paid > 0 && (
+          <Button title="↩ Refund" variant="secondary" onPress={() => setRefunding(true)} fullWidth />
+        )}
+        {receiptRows}
+        <ShowMoreButton {...more} />
+        <RefundSheet
+          visible={refunding}
+          paid={paid}
+          settings={settings}
+          onClose={() => setRefunding(false)}
+          onSave={async (input) => {
+            const r = await recordRefund({ leadId, ...input });
+            setRefunding(false);
+            await after(`↩ ${money(input.amount)} returned · ${r.receipt_no}`);
+          }}
+        />
+        <VoidSheet
+          payment={voiding}
+          onClose={() => setVoiding(null)}
+          onSave={async (reason) => {
+            if (!voiding) return;
+            await voidPayment(voiding.id, reason);
+            await after(`✕ ${voiding.receipt_no} is void.`);
+          }}
+        />
       </View>
     );
   }
@@ -186,37 +253,7 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
       )}
 
       {/* Receipts */}
-      {more.visible.map((p) => (
-        <View key={p.id} style={[styles.payRow, p.voided_at && styles.voided]}>
-          <View style={styles.flex}>
-            <Text style={[styles.payAmount, p.voided_at && styles.struck]}>
-              {money(Number(p.amount))} · {p.method}
-            </Text>
-            <Text style={styles.meta}>
-              🧾 {p.receipt_no} · {dayText(p.paid_at)}
-              {nameOf(p.received_by) ? ` · ${nameOf(p.received_by)}` : ''}
-            </Text>
-            {p.txn_id && <Text style={styles.meta}>Txn: {p.txn_id}</Text>}
-            {p.note && <Text style={styles.note}>“{p.note}”</Text>}
-            {p.voided_at && (
-              <Text style={styles.badText}>
-                ✕ Void{p.void_reason ? `: ${p.void_reason}` : ''}
-                {nameOf(p.voided_by) ? ` · ${nameOf(p.voided_by)}` : ''}
-              </Text>
-            )}
-          </View>
-          <View style={styles.payActions}>
-            <Pressable onPress={() => share(p)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Share receipt">
-              <Text style={styles.link}>Share</Text>
-            </Pressable>
-            {canVoid && !p.voided_at && (
-              <Pressable onPress={() => setVoiding(p)} hitSlop={8} accessibilityRole="button">
-                <Text style={styles.voidLink}>Void</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-      ))}
+      {receiptRows}
       <ShowMoreButton {...more} />
 
       <PaySheet
@@ -514,6 +551,95 @@ function PlanSheet({
 }
 
 // =====================================================================
+// Give money back (after a cancelled admission)
+// =====================================================================
+function RefundSheet({
+  visible,
+  paid,
+  settings,
+  onClose,
+  onSave,
+}: {
+  visible: boolean;
+  paid: number;
+  settings: FeeSettings;
+  onClose: () => void;
+  onSave: (input: { amount: number; method: string; reason: string; txnId: string }) => Promise<void>;
+}) {
+  const methods = settings.payments.methods;
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState<string | null>(null);
+  const [txn, setTxn] = useState('');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    setAmount(String(Math.round(paid)));
+    setMethod(methods[0]?.name ?? null);
+    setTxn('');
+    setReason('');
+    setError(null);
+  }, [visible, paid, methods]);
+
+  const save = async () => {
+    const v = Number(amount.replace(/[^0-9.]/g, ''));
+    if (!(v > 0)) return setError('Please type the amount.');
+    if (v > paid) return setError(`That is more than what was paid (${money(paid)}).`);
+    if (!method) return setError('Please choose how it was returned.');
+    if (!reason.trim()) return setError('Please write why the money is returned.');
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave({ amount: v, method, reason, txnId: txn });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SmallSheet visible={visible} onClose={saving ? undefined : onClose}>
+      <Text style={styles.sheetTitle}>↩ Refund</Text>
+      <Text style={styles.meta}>Paid and not returned yet: {money(paid)}</Text>
+      <TextInput
+        value={amount}
+        onChangeText={setAmount}
+        keyboardType="numeric"
+        placeholder="Amount (৳)"
+        placeholderTextColor={colors.textMuted}
+        style={[styles.input, styles.bigInput]}
+      />
+      <Text style={styles.label}>Returned by</Text>
+      <View style={styles.chips}>
+        {methods.map((x) => (
+          <Chip key={x.name} text={x.name} on={method === x.name} onPress={() => setMethod(x.name)} />
+        ))}
+      </View>
+      <TextInput
+        value={txn}
+        onChangeText={setTxn}
+        placeholder="Transaction ID (optional)"
+        placeholderTextColor={colors.textMuted}
+        autoCapitalize="characters"
+        style={styles.input}
+      />
+      <TextInput
+        value={reason}
+        onChangeText={setReason}
+        placeholder="Why? e.g. left the course *"
+        placeholderTextColor={colors.textMuted}
+        style={styles.input}
+      />
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      <Button title="Save refund" onPress={save} loading={saving} fullWidth />
+    </SmallSheet>
+  );
+}
+
+// =====================================================================
 // Void a wrong payment (with a reason)
 // =====================================================================
 function VoidSheet({
@@ -647,6 +773,7 @@ const styles = StyleSheet.create({
   voided: { opacity: 0.6 },
   payAmount: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text },
   struck: { textDecorationLine: 'line-through' },
+  refund: { color: colors.danger },
   payActions: { alignItems: 'flex-end', gap: spacing.sm },
 
   // Sheets

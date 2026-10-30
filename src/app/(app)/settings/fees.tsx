@@ -374,6 +374,58 @@ export default function FeeSettingsScreen() {
         )}
       </View>
 
+      {/* ⏰ Installment reminders */}
+      <Text style={styles.sectionLabel}>INSTALLMENT REMINDERS</Text>
+      <View style={styles.card}>
+        <View style={styles.switchRow}>
+          <View style={styles.flex}>
+            <Text style={styles.rowTitle}>Remind about installments</Text>
+            <Text style={styles.rowText}>
+              {pay.reminders.enabled
+                ? 'The student’s person gets a notification (from 9 am).'
+                : 'Off. No installment notifications.'}
+            </Text>
+          </View>
+          <Switch value={pay.reminders.enabled} onValueChange={(v) => setPay('reminders', { ...pay.reminders, enabled: v })} />
+        </View>
+        {pay.reminders.enabled && (
+          <>
+            <View style={styles.divider} />
+            <Text style={styles.label}>BEFORE THE DATE</Text>
+            <View style={styles.chips}>
+              {[0, 1, 2, 3, 7].map((d) => (
+                <Chip
+                  key={d}
+                  text={d === 0 ? 'No' : d === 1 ? '1 day before' : `${d} days before`}
+                  on={pay.reminders.days_before === d}
+                  onPress={() => setPay('reminders', { ...pay.reminders, days_before: d })}
+                />
+              ))}
+            </View>
+            <View style={styles.switchRow}>
+              <Text style={[styles.rowTitle, styles.flex]}>On the day</Text>
+              <Switch
+                value={pay.reminders.on_day}
+                onValueChange={(v) => setPay('reminders', { ...pay.reminders, on_day: v })}
+              />
+            </View>
+            <View style={styles.divider} />
+            <Text style={styles.label}>LATE: TELL THE TEAM LEAD AND ADMINS AFTER</Text>
+            <View style={styles.chips}>
+              {[0, 1, 3, 7, 15].map((d) => (
+                <Chip
+                  key={d}
+                  text={d === 0 ? 'Never' : `${d} day${d > 1 ? 's' : ''}`}
+                  on={pay.reminders.late_after === d}
+                  onPress={() => setPay('reminders', { ...pay.reminders, late_after: d })}
+                />
+              ))}
+            </View>
+            <Text style={styles.hint}>Each reminder comes once. The student’s person gets the late one too.</Text>
+          </>
+        )}
+      </View>
+
       <Text style={styles.sectionLabel}>RECEIPT SHOWS</Text>
       <View style={styles.card}>
         <View style={styles.chips}>
