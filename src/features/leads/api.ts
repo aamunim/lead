@@ -583,3 +583,17 @@ export async function listAssignableUsers(
   if (error) throw toError(error);
   return data ?? [];
 }
+// =====================================================================
+// 🗑 Delete one note of the lead (Admins any; your own Note within 24 hours)
+//   block = the note exactly as stored (LeadNote.raw). Returns the
+//   change-log line, for Undo.
+// =====================================================================
+export async function deleteLeadNote(leadId: string, block: string, reason?: string): Promise<string> {
+  const { data, error } = await supabase.rpc('delete_lead_note', {
+    p_lead_id: leadId,
+    p_block: block,
+    ...(reason?.trim() ? { p_reason: reason.trim() } : {}),
+  });
+  if (error) throw toError(error);
+  return data as string;
+}

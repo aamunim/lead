@@ -23,12 +23,17 @@ import {
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
 import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
 import {
+  canDeleteEntry,
   channelLabel,
+  deleteCall,
+  deleteCallNote,
   directionInfo,
   findWhatsAppCall,
   formatDuration,
+  isHandWritten,
   listLeadCalls,
   outcomeInfo,
+  restoreDeleted,
   type CallChannel,
   type CallLog,
 } from '@/features/calls/api';
@@ -42,6 +47,7 @@ import {
   type FollowUp,
 } from '@/features/follow-ups/api';
 import {
+  deleteLeadNote,
   getLead,
   listAssignableUsers,
   listLeadActivity,
@@ -106,7 +112,9 @@ export default function LeadDetailScreen() {
   // callNote = a call-log id, when opened from the "add a note" notification
   // waCall = a WhatsApp call id, from the WhatsApp "add a note" notification
   const { id, callNote, waCall } = useLocalSearchParams<{ id: string; callNote?: string; waCall?: string }>();
-  const { hasPermission } = useAuth();
+  const { hasPermission, profile } = useAuth();
+  const isAdmin = hasPermission('leads.edit_all');
+  const me = profile?.id ?? null;
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
@@ -142,6 +150,9 @@ export default function LeadDetailScreen() {
   }, []);
 
   // Short message after a pipeline change (admitted, lost, moved…)
+  // 🗑 After a delete: "Undo" for a few seconds
+  const [undo, setUndo] = useState<{ activityId: string; label: string } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = (message: string) => {
@@ -431,6 +442,13 @@ export default function LeadDetailScreen() {
         return 'Next call removed';
       case 'note_added':
         return `📝 Note: ${d.note ?? ''}`;
+      case 'call_deleted':
+        return `🗑 ${d.channel === 'whatsapp' ? 'WhatsApp entry' : 'Call'} deleted${d.reason ? ` · ${d.reason}` : ''}`;
+      case 'call_note_deleted':
+      case 'note_deleted':
+        return `🗑 Note deleted: ${d.note ?? ''}`;
+      case 'entry_restored':
+        return `↩ Restored${d.note ? `: ${d.note}` : ''}`;
       case 'paper_received':
         return `📄 ${d.paper ?? 'Paper'} received${d.copy_type ? ` (${d.copy_type})` : ''}`;
       case 'paper_not_needed':
@@ -473,6 +491,84 @@ export default function LeadDetailScreen() {
       default:
         return item.action.replace(/_/g, ' ');
     }
+  };
+
+  // --- 🗑 delete a call / WhatsApp entry / note -------------------------
+  const offerUndo = (activityId: string, label: string) => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo({ activityId, label });
+    undoTimer.current = setTimeout(() => setUndo(null), 10000);
+  };
+
+  const runDelete = async (work: () => Promise<string>, label: string) => {
+    try {
+      const activityId = await work();
+      offerUndo(activityId, label);
+      load();
+    } catch (e) {
+      Alert.alert('Could not delete', e instanceof Error ? e.message : '');
+    }
+  };
+
+  const undoDelete = async () => {
+    if (!undo) return;
+    const { activityId } = undo;
+    setUndo(null);
+    try {
+      await restoreDeleted(activityId);
+      load();
+      showToast('Restored.');
+    } catch (e) {
+      Alert.alert('Could not undo', e instanceof Error ? e.message : '');
+    }
+  };
+
+  const confirm = (title: string, onYes: () => void) =>
+    Alert.alert(title, 'It will be hidden everywhere (lead, reports). An admin can restore it from the change log.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: onYes },
+    ]);
+
+  const onLongPressNote = (n: LeadNote) => {
+    if (!lead) return;
+    const mine = n.when === 'exact' && canDeleteEntry(n.userId, n.at, me, false);
+    if (!isAdmin && !mine) {
+      Alert.alert('Can’t delete', 'You can delete your own notes within 24 hours. Admins can delete any note.');
+      return;
+    }
+    confirm('Delete this note?', () => runDelete(() => deleteLeadNote(lead.id, n.raw), 'Note deleted'));
+  };
+
+  const onLongPressCall = (c: CallLog) => {
+    const allowed = canDeleteEntry(c.user_id, c.created_at, me, isAdmin);
+    const what = c.channel === 'whatsapp' ? 'WhatsApp entry' : 'call';
+    const options: { text: string; style?: 'destructive' | 'cancel'; onPress?: () => void }[] = [];
+    if (allowed && isHandWritten(c)) {
+      options.push({
+        text: `Delete this ${what}`,
+        style: 'destructive',
+        onPress: () => confirm(`Delete this ${what}?`, () => runDelete(() => deleteCall(c.id), `${what} deleted`)),
+      });
+    }
+    if (allowed && c.notes) {
+      options.push({
+        text: 'Delete only the note',
+        onPress: () => confirm('Delete this note?', () => runDelete(() => deleteCallNote(c.id), 'Note deleted')),
+      });
+    }
+    if (options.length === 0) {
+      Alert.alert(
+        'Can’t delete',
+        isHandWritten(c)
+          ? 'You can delete your own entries within 24 hours. Admins can delete any.'
+          : 'Calls read from the phone’s call log or from WhatsApp can’t be deleted.',
+      );
+      return;
+    }
+    Alert.alert(c.channel === 'whatsapp' ? 'WhatsApp entry' : 'Call', undefined, [
+      ...options,
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   // --- calls and notes, newest first ----------------------------------
@@ -830,7 +926,13 @@ export default function LeadDetailScreen() {
               if (item.kind === 'note') {
                 const n = item.note;
                 return (
-                  <View key={item.key} style={styles.callRow}>
+                  <Pressable
+                    key={item.key}
+                    style={({ pressed }) => [styles.callRow, pressed && styles.pressed]}
+                    onLongPress={() => onLongPressNote(n)}
+                    delayLongPress={400}
+                    accessibilityHint="Long press to delete"
+                  >
                     <View style={[styles.dirBadge, { backgroundColor: colors.primarySoft }]}>
                       <Text style={styles.noteIcon}>📝</Text>
                     </View>
@@ -842,7 +944,7 @@ export default function LeadDetailScreen() {
                         {n.author ? ` · ${n.author}` : ''}
                       </Text>
                     </View>
-                  </View>
+                  </Pressable>
                 );
               }
 
@@ -857,7 +959,13 @@ export default function LeadDetailScreen() {
                   ? `💬 ${wa} · ${c.direction === 'incoming' ? 'received' : 'sent'}`
                   : `${wa ? `💬 ${wa} · ` : ''}${c.direction === 'incoming' && c.outcome === 'connected' ? 'Incoming · ' : ''}${info.label}`;
               return (
-                <View key={item.key} style={styles.callRow}>
+                <Pressable
+                  key={item.key}
+                  style={({ pressed }) => [styles.callRow, pressed && styles.pressed]}
+                  onLongPress={() => onLongPressCall(c)}
+                  delayLongPress={400}
+                  accessibilityHint="Long press to delete"
+                >
                   <View style={[styles.dirBadge, { backgroundColor: dir.color + '1A' }]}>
                     <Text style={[styles.dirArrow, { color: dir.color }]}>{dir.arrow}</Text>
                   </View>
@@ -880,7 +988,7 @@ export default function LeadDetailScreen() {
                       {c.sim_label ? ` · ${c.sim_label}` : ''}
                     </Text>
                   </View>
-                </View>
+                </Pressable>
               );
             })
           )}
@@ -892,6 +1000,7 @@ export default function LeadDetailScreen() {
           {calls.some((c) => c.source === 'phone' || c.phone_verified) && (
             <Text style={styles.hint}>📱 = taken from the phone’s call log (real time and length)</Text>
           )}
+          {feed.length > 0 && <Text style={styles.hint}>Long-press a call or note to delete it.</Text>}
         </Section>
 
         {/* Interest */}
@@ -977,6 +1086,16 @@ export default function LeadDetailScreen() {
       {toast && (
         <View style={styles.toast} pointerEvents="none">
           <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      )}
+
+      {/* 🗑 Undo a delete */}
+      {undo && (
+        <View style={[styles.toast, styles.undoBar]}>
+          <Text style={[styles.toastText, styles.flex]}>🗑 {undo.label}</Text>
+          <Pressable onPress={undoDelete} hitSlop={10} accessibilityRole="button">
+            <Text style={styles.undoText}>UNDO</Text>
+          </Pressable>
         </View>
       )}
 
@@ -1211,4 +1330,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.text,
   },
   toastText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.surface, textAlign: 'center' },
+  undoBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  undoText: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: '#93C5FD' },
 });

@@ -11,6 +11,10 @@ import type { ActivityItem } from '@/features/leads/api';
 export type LeadNote = {
   key: string;
   text: string;
+  /** The note exactly as stored in leads.notes (to delete it) */
+  raw: string;
+  /** Who added it with the Note option (null for notes typed on the edit screen) */
+  userId: string | null;
   author: string | null;
   /** When the note was added (ISO); for notes without a date, when the lead was added */
   at: string;
@@ -32,7 +36,11 @@ export function splitLeadNotes(notes: string | null, createdAt: string, activity
   // Timeline lines for notes, oldest first, each used once
   const noteLines = activity
     .filter((a) => a.action === 'note_added')
-    .map((a) => ({ at: a.created_at, note: (a.details as { note?: string } | null)?.note ?? '' }))
+    .map((a) => ({
+      at: a.created_at,
+      userId: a.user_id,
+      note: (a.details as { note?: string } | null)?.note ?? '',
+    }))
     .reverse();
   const used = new Set<number>();
 
@@ -44,17 +52,25 @@ export function splitLeadNotes(notes: string | null, createdAt: string, activity
       const m = STAMP.exec(block);
       const month = m ? MONTHS.indexOf(m[2]) : -1;
       if (!m || month < 0) {
-        return { key: `note-${i}`, text: block, author: null, at: createdAt, when: 'none' };
+        return { key: `note-${i}`, text: block, raw: block, userId: null, author: null, at: createdAt, when: 'none' };
       }
 
       const text = m[5].trim();
       const match = noteLines.findIndex((l, j) => !used.has(j) && l.note === text);
       if (match >= 0) {
         used.add(match);
-        return { key: `note-${i}`, text, author: m[4].trim(), at: noteLines[match].at, when: 'exact' };
+        return {
+          key: `note-${i}`,
+          text,
+          raw: block,
+          userId: noteLines[match].userId,
+          author: m[4].trim(),
+          at: noteLines[match].at,
+          when: 'exact',
+        };
       }
       // Only the date is known: put it at the end of that day
       const day = new Date(Number(m[3]), month, Number(m[1]), 23, 59);
-      return { key: `note-${i}`, text, author: m[4].trim(), at: day.toISOString(), when: 'day' };
+      return { key: `note-${i}`, text, raw: block, userId: null, author: m[4].trim(), at: day.toISOString(), when: 'day' };
     });
 }

@@ -399,3 +399,45 @@ export async function listWhatsAppLogs(options: {
   if (error) throw toError(error);
   return (data ?? []) as unknown as WhatsAppLog[];
 }
+
+// =====================================================================
+// 🗑 Delete what was written by hand (Admins any; the writer within 24 hours)
+//   Calls read from the phone's call log or WhatsApp can't be deleted.
+//   Each returns the change-log line, for Undo (restoreDeleted).
+// =====================================================================
+const DELETE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Written in the app (not read from the phone or WhatsApp) */
+export function isHandWritten(c: Pick<CallLog, 'source' | 'device_call_id'>): boolean {
+  return c.source === 'app' && !c.device_call_id;
+}
+
+/** May this person delete this entry? (the database checks again) */
+export function canDeleteEntry(writerId: string | null, writtenAt: string, me: string | null, isAdmin: boolean) {
+  if (isAdmin) return true;
+  return !!me && writerId === me && Date.now() - new Date(writtenAt).getTime() < DELETE_WINDOW_MS;
+}
+
+export async function deleteCall(callId: string, reason?: string): Promise<string> {
+  const { data, error } = await supabase.rpc('delete_call_log', {
+    p_call_id: callId,
+    ...(reason?.trim() ? { p_reason: reason.trim() } : {}),
+  });
+  if (error) throw toError(error);
+  return data as string;
+}
+
+export async function deleteCallNote(callId: string, reason?: string): Promise<string> {
+  const { data, error } = await supabase.rpc('delete_call_note', {
+    p_call_id: callId,
+    ...(reason?.trim() ? { p_reason: reason.trim() } : {}),
+  });
+  if (error) throw toError(error);
+  return data as string;
+}
+
+/** Undo a delete (the person who deleted: 10 minutes; admins: any time) */
+export async function restoreDeleted(activityId: string): Promise<void> {
+  const { error } = await supabase.rpc('restore_deleted', { p_activity_id: activityId });
+  if (error) throw toError(error);
+}

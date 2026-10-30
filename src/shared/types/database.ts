@@ -1827,6 +1827,9 @@ export type Database = {
       }
       current_role_key: { Args: never; Returns: string }
       existing_lead_phones: { Args: { p_phones: string[] }; Returns: string[] }
+      delete_call_log: { Args: { p_call_id: string; p_reason?: string }; Returns: string }
+      delete_call_note: { Args: { p_call_id: string; p_reason?: string }; Returns: string }
+      delete_lead_note: { Args: { p_block: string; p_lead_id: string; p_reason?: string }; Returns: string }
       find_leads_by_contact: {
         Args: {
           p_exclude_id?: string
@@ -2076,6 +2079,7 @@ export type Database = {
       stage_of_kind: { Args: { p_kind: string }; Returns: string }
       student_ref_scope: { Args: { p_pattern: string }; Returns: string }
       sync_nudge_reason: { Args: { p_user: string }; Returns: string }
+      restore_deleted: { Args: { p_activity_id: string }; Returns: undefined }
       sync_phone_calls: {
         Args: { p_calls: Json; p_device_id: string }
         Returns: Json
