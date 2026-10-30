@@ -127,6 +127,7 @@ export default function LeadDetailScreen() {
   const me = profile?.id ?? null;
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
+  const [filesTick, setFilesTick] = useState(0);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [followUp, setFollowUp] = useState<FollowUp | null>(null);
@@ -868,6 +869,7 @@ export default function LeadDetailScreen() {
           leadId={lead.id}
           stageKind={stageKind}
           stageKey={lead.stage?.key ?? null}
+          refreshKey={filesTick}
           onChanged={(message) => {
             if (message) showToast(message);
             load();
@@ -881,6 +883,7 @@ export default function LeadDetailScreen() {
           nameOf={nameOf}
           onChanged={(message) => {
             if (message) showToast(message);
+            setFilesTick((n) => n + 1);
             load();
           }}
         />
