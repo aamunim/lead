@@ -1,7 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { DEFAULT_SORT, SORT_OPTIONS, type LeadSort } from '@/features/leads/api';
+import {
+  DEFAULT_SORT,
+  DEFAULT_STUDENT_SORT,
+  SORT_OPTIONS,
+  STUDENT_SORT_OPTIONS,
+  type LeadSort,
+} from '@/features/leads/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -10,40 +16,47 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 // =====================================================================
 
 const SORT_KEY = 'leads.sort';
+const STUDENT_SORT_KEY = 'students.sort';
 
-/** The sort last chosen on this phone (or the default) */
-export async function loadLeadSort(): Promise<LeadSort> {
+const optionsFor = (students: boolean) => (students ? STUDENT_SORT_OPTIONS : SORT_OPTIONS);
+export const defaultSortFor = (students: boolean) => (students ? DEFAULT_STUDENT_SORT : DEFAULT_SORT);
+
+/** The sort last chosen on this phone (or the default); the Students list keeps its own */
+export async function loadLeadSort(students = false): Promise<LeadSort> {
   try {
-    const saved = await AsyncStorage.getItem(SORT_KEY);
-    return SORT_OPTIONS.some((o) => o.value === saved) ? (saved as LeadSort) : DEFAULT_SORT;
+    const saved = await AsyncStorage.getItem(students ? STUDENT_SORT_KEY : SORT_KEY);
+    return optionsFor(students).some((o) => o.value === saved) ? (saved as LeadSort) : defaultSortFor(students);
   } catch {
-    return DEFAULT_SORT;
+    return defaultSortFor(students);
   }
 }
 
-export function saveLeadSort(sort: LeadSort): void {
-  AsyncStorage.setItem(SORT_KEY, sort).catch(() => undefined);
+export function saveLeadSort(sort: LeadSort, students = false): void {
+  AsyncStorage.setItem(students ? STUDENT_SORT_KEY : SORT_KEY, sort).catch(() => undefined);
 }
 
-export const sortLabel = (sort: LeadSort) => SORT_OPTIONS.find((o) => o.value === sort)?.label ?? 'Next call';
+export const sortLabel = (sort: LeadSort, students = false) =>
+  optionsFor(students).find((o) => o.value === sort)?.label ?? 'Next call';
 
 type Props = {
   visible: boolean;
   value: LeadSort;
   onClose: () => void;
   onPick: (sort: LeadSort) => void;
+  /** The Students list: its own sorts */
+  students?: boolean;
 };
 
-export function LeadSortSheet({ visible, value, onClose, onPick }: Props) {
+export function LeadSortSheet({ visible, value, onClose, onPick, students = false }: Props) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={styles.title}>Sort leads</Text>
+          <Text style={styles.title}>{students ? 'Sort students' : 'Sort leads'}</Text>
           <ScrollView contentContainerStyle={styles.list}>
-            {SORT_OPTIONS.map((o) => {
+            {optionsFor(students).map((o) => {
               const on = o.value === value;
               return (
                 <Pressable

@@ -2463,6 +2463,7 @@ export type Database = {
         Args: { p_lead_id: string; p_course_id: string }
         Returns: string
       }
+      students_summary: { Args: never; Returns: Json }
       template_report: {
         Args: { p_from: string; p_to: string; p_user_id?: string }
         Returns: Json

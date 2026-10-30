@@ -47,6 +47,7 @@ type Options = {
   sources: Option[];
   campaigns: Option[];
   courses: Option[];
+  batches: Option[];
   leadTypes: Option[];
   lostReasons: Option[];
 };
@@ -58,6 +59,7 @@ const EMPTY_OPTIONS: Options = {
   sources: [],
   campaigns: [],
   courses: [],
+  batches: [],
   leadTypes: [],
   lostReasons: [],
 };
@@ -78,6 +80,7 @@ const LIST_KEYS: Partial<Record<FilterKey, keyof LeadFilters>> = {
   source: 'sourceIds',
   campaign: 'campaignIds',
   course: 'courseIds',
+  batch: 'batchIds',
   lead_type: 'leadTypeIds',
   lost_reason: 'lostReasonIds',
 };
@@ -89,9 +92,13 @@ type Props = {
   onApply: (filters: LeadFilters) => void;
   /** Called after a filter is saved, so the list can show it */
   onSavedFilter?: (filter: SavedFilter) => void;
+  /** Fields not shown here (e.g. Stage on the Students list) */
+  hiddenFields?: FilterKey[];
+  /** Fields only for the Students list (e.g. Batch) are shown */
+  students?: boolean;
 };
 
-export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilter }: Props) {
+export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilter, hiddenFields = [], students = false }: Props) {
   const insets = useSafeAreaInsets();
   const { profile, hasPermission, assignmentOn, sharedMode } = useAuth();
   // Everyone they could filter by: all users (admins, or everyone-sees-all), else own team
@@ -152,7 +159,10 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
             .filter((f) => f.enabled)
             .map((f) => f.key)
             // "Assigned to" only while assignment is on, and only for people who see others' leads
-            .filter((k) => k !== 'assigned' || showAssigned),
+            .filter((k) => k !== 'assigned' || showAssigned)
+            .filter((k) => !hiddenFields.includes(k))
+            // Batch: always on the Students list, else only when switched on in Settings
+            .concat(students && !config.fields.some((f) => f.key === 'batch' && f.enabled) ? ['batch' as FilterKey] : []),
         );
         setOptions({
           // Switched-off stages hold no leads (e.g. the old "Campus visit")
@@ -165,6 +175,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
           sources: toOpts(sources),
           campaigns: toOpts(campaigns),
           courses: courses.map((c) => ({ value: c.id, label: c.name })),
+          batches: courses.flatMap((c) => c.batches.map((b) => ({ value: b.id, label: `${c.name} · ${b.name}` }))),
           leadTypes: toOpts(leadTypes),
           lostReasons: toOpts(lostReasons),
         });
@@ -313,6 +324,9 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
         break;
       case 'course':
         body = listChips(options.courses, 'courseIds', 'No courses yet.');
+        break;
+      case 'batch':
+        body = listChips(options.batches, 'batchIds', 'No batches yet.');
         break;
       case 'lead_type':
         body = listChips(options.leadTypes, 'leadTypeIds', 'No lead types yet.');

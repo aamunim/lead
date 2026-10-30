@@ -12,6 +12,7 @@ import { SyncSetupSheet } from '@/features/nudges/SyncSetupSheet';
 import { countUnread } from '@/features/notifications/api';
 import { countDiscountsToAnswer } from '@/features/fees/api';
 import { ReportHomeCard } from '@/features/reports/ReportHomeCard';
+import { StudentsHomeCard } from '@/features/students/StudentsHomeCard';
 import { TodayVisits } from '@/features/visits/TodayVisits';
 import { countPendingUsers } from '@/features/users/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -184,6 +185,9 @@ export default function HomeScreen() {
           <TodayVisits />
           <TodayList />
         </View>
+
+        {/* 🎓 Students at a glance (Settings → Students) */}
+        <StudentsHomeCard />
 
         {/* This month at a glance (Settings → Reports) */}
         <ReportHomeCard />

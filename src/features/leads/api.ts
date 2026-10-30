@@ -64,12 +64,16 @@ export type LeadListItem = Pick<
   | 'fee_paid'
   | 'fee_due'
   | 'fee_next_due'
+  | 'admitted_at'
 > & {
   stage: Stage | null;
   source: Named | null;
   assignee: Person | null;
   lead_courses: { course: Named | null }[];
   lead_tags: { tag_id: string }[];
+  /** The course and batch the student is admitted to */
+  admitted_course: Named | null;
+  admitted_batch: Named | null;
 };
 
 export type LeadDetail = Tables<'leads'> & {
@@ -115,7 +119,19 @@ export type QuickPatch = {
   assigned_to?: string | null;
 };
 
-export type QuickFilter = 'all' | 'mine' | 'new' | 'hot' | 'unassigned' | 'closed';
+export type QuickFilter =
+  | 'all'
+  | 'mine'
+  | 'new'
+  | 'hot'
+  | 'unassigned'
+  | 'closed'
+  // 🎓 Students list
+  | 'due'
+  | 'overdue'
+  | 'paid'
+  | 'papers'
+  | 'new_students';
 
 /**
  * Closed leads (Admitted / Lost / Cancelled) in the list:
@@ -137,7 +153,13 @@ export type LeadSort =
   | 'visit_date'
   | 'papers_missing'
   | 'discount_most'
-  | 'fee_latest';
+  | 'fee_latest'
+  // 🎓 Students list
+  | 'admitted_newest'
+  | 'admitted_oldest'
+  | 'student_id'
+  | 'due_most'
+  | 'next_due';
 
 export const DEFAULT_SORT: LeadSort = 'next_call';
 
@@ -154,6 +176,19 @@ export const SORT_OPTIONS: { value: LeadSort; label: string; text: string; icon:
   { value: 'fee_latest', label: 'Fee talk: latest', text: 'Last fee talk or discount change first', icon: '💬' },
 ];
 
+/** Sorts for the 🎓 Students list */
+export const STUDENT_SORT_OPTIONS: typeof SORT_OPTIONS = [
+  { value: 'admitted_newest', label: 'Newest admission', text: 'Last admitted first', icon: '🎓' },
+  { value: 'admitted_oldest', label: 'Oldest admission', text: 'First admitted first', icon: '📜' },
+  { value: 'name', label: 'Name A–Z', text: 'By name', icon: '🔤' },
+  { value: 'student_id', label: 'Student ID', text: 'By student ID', icon: '🪪' },
+  { value: 'due_most', label: 'Most due', text: 'Most money still to pay first', icon: '💵' },
+  { value: 'next_due', label: 'Next installment', text: 'Earliest installment date first', icon: '📅' },
+  { value: 'papers_missing', label: 'Most papers missing', text: 'Most required papers still to collect first', icon: '📄' },
+  { value: 'next_call', label: 'Next call', text: 'Soonest call first', icon: '⏰' },
+];
+export const DEFAULT_STUDENT_SORT: LeadSort = 'admitted_newest';
+
 /** Everything the list can be narrowed by */
 export type LeadQuery = {
   search?: string;
@@ -165,6 +200,8 @@ export type LeadQuery = {
   filters?: LeadFilters;
   closedMode?: ClosedMode;
   sort?: LeadSort;
+  /** 🎓 Only admitted students (the Students tab) */
+  students?: boolean;
 };
 
 export type DuplicateLead = {
@@ -197,7 +234,9 @@ const LIST_SELECT = `
   id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
-  fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due,
+  fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, admitted_at,
+  admitted_course:courses!leads_admitted_course_id_fkey(id, name),
+  admitted_batch:batches!leads_admitted_batch_id_fkey(id, name),
   stage:pipeline_stages(id, key, name, color, kind),
   source:lead_sources(id, name),
   assignee:assigned_to(id, full_name),
@@ -235,6 +274,7 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
     closedMode = 'hide',
     sort = DEFAULT_SORT,
     ids = null,
+    students = false,
   } = options;
 
   let query = supabase
@@ -247,7 +287,11 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
   if (text) {
     const digits = normalizePhone(text);
     const username = text.replace(/^@+/, '').toLowerCase();
-    const parts = [`name.ilike.%${text}%`, `whatsapp_username.ilike.%${username}%`];
+    const parts = [
+      `name.ilike.%${text}%`,
+      `whatsapp_username.ilike.%${username}%`,
+      `student_ref.ilike.%${text}%`,
+    ];
     if (digits.length >= 3) {
       parts.push(
         `phone.ilike.%${digits}%`,
@@ -268,7 +312,19 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
   if (ids && ids.length > 0) query = query.in('id', ids);
 
   const wantsClosed = !!stageId || needsClosedLeads(filters) || !!(ids && ids.length > 0);
-  if (quick === 'closed') query = query.not('closed_at', 'is', null);
+  if (students) {
+    // 🎓 Admitted students only (a cancelled admission clears admitted_at)
+    query = query.not('admitted_at', 'is', null);
+    const today = new Date();
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    if (quick === 'due') query = query.gt('fee_due', 0);
+    if (quick === 'overdue') query = query.gt('fee_due', 0).lt('fee_next_due', todayIso);
+    if (quick === 'paid') query = query.eq('fee_due', 0);
+    if (quick === 'papers') query = query.gt('papers_missing', 0);
+    if (quick === 'new_students') {
+      query = query.gte('admitted_at', new Date(today.getFullYear(), today.getMonth(), 1).toISOString());
+    }
+  } else if (quick === 'closed') query = query.not('closed_at', 'is', null);
   else if (closedMode === 'hide' && !wantsClosed) query = query.is('closed_at', null);
 
   if (stageId) query = query.eq('stage_id', stageId);
@@ -313,6 +369,21 @@ function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: 
       break;
     case 'fee_latest':
       q = q.order('fee_updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+      break;
+    case 'admitted_newest':
+      q = q.order('admitted_at', { ascending: false, nullsFirst: false });
+      break;
+    case 'admitted_oldest':
+      q = q.order('admitted_at', { ascending: true, nullsFirst: false });
+      break;
+    case 'student_id':
+      q = q.order('student_ref', { ascending: true, nullsFirst: false }).order('name', { ascending: true });
+      break;
+    case 'due_most':
+      q = q.order('fee_due', { ascending: false, nullsFirst: false }).order('name', { ascending: true });
+      break;
+    case 'next_due':
+      q = q.order('fee_next_due', { ascending: true, nullsFirst: false }).order('name', { ascending: true });
       break;
     default:
       q = q.order('next_follow_up_at', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
