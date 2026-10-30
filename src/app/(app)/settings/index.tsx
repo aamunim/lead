@@ -114,6 +114,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/export' as Href,
       },
       {
+        title: 'Message templates',
+        description: 'WhatsApp / SMS templates, who can use them',
+        icon: '💬',
+        href: '/templates' as Href,
+      },
+      {
         title: 'Phone contacts access',
         description: 'Who can add leads from their phone contacts',
         icon: '📇',

@@ -59,6 +59,8 @@ type Props = {
   onCall: (lead: LeadListItem) => void;
   onWhatsApp: (lead: LeadListItem) => void;
   onSms: (lead: LeadListItem) => void;
+  /** Long press on WhatsApp / SMS: pick a message template */
+  onTemplate?: (lead: LeadListItem, channel: 'whatsapp' | 'sms') => void;
   /** Something changed: show a short message */
   onChanged: (message: string) => void;
 };
@@ -76,6 +78,7 @@ export function LeadBoard({
   onCall,
   onWhatsApp,
   onSms,
+  onTemplate,
   onChanged,
 }: Props) {
   const { profile, hasPermission, sharedMode, assignment } = useAuth();
@@ -312,6 +315,7 @@ export function LeadBoard({
                       onCall={() => onCall(lead)}
                       onWhatsApp={() => onWhatsApp(lead)}
                       onSms={() => onSms(lead)}
+                      onTemplate={onTemplate && ((ch) => onTemplate(lead, ch))}
                     />
                   )}
                   ListEmptyComponent={

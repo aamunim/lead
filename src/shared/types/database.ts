@@ -116,6 +116,57 @@ export type Database = {
           },
         ]
       }
+      message_templates: {
+        Row: {
+          body: string
+          category: string | null
+          channels: string
+          course_ids: string[] | null
+          created_at: string
+          id: string
+          is_active: boolean
+          is_shared: boolean
+          last_used_at: string | null
+          name: string
+          owner_id: string | null
+          sort_order: number
+          updated_at: string
+          use_count: number
+        }
+        Insert: {
+          body: string
+          category?: string | null
+          channels?: string
+          course_ids?: string[] | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_shared?: boolean
+          last_used_at?: string | null
+          name: string
+          owner_id?: string | null
+          sort_order?: number
+          updated_at?: string
+          use_count?: number
+        }
+        Update: {
+          body?: string
+          category?: string | null
+          channels?: string
+          course_ids?: string[] | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_shared?: boolean
+          last_used_at?: string | null
+          name?: string
+          owner_id?: string | null
+          sort_order?: number
+          updated_at?: string
+          use_count?: number
+        }
+        Relationships: []
+      }
       notification_prefs: {
         Row: { muted: string[]; user_id: string }
         Insert: { muted?: string[]; user_id: string }
@@ -2079,6 +2130,10 @@ export type Database = {
       stage_of_kind: { Args: { p_kind: string }; Returns: string }
       student_ref_scope: { Args: { p_pattern: string }; Returns: string }
       sync_nudge_reason: { Args: { p_user: string }; Returns: string }
+      log_template_sent: {
+        Args: { p_channel: string; p_edited?: boolean; p_lead_id: string; p_template_id: string }
+        Returns: string
+      }
       restore_deleted: { Args: { p_activity_id: string }; Returns: undefined }
       sync_phone_calls: {
         Args: { p_calls: Json; p_device_id: string }
