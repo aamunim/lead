@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lead Management",
     "slug": "lead-management",
-    "version": "2.5.0-beta",
+    "version": "2.5.1-beta",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "leadmanagement",

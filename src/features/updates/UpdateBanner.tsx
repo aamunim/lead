@@ -1,9 +1,8 @@
-import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { checkAndDownload, restartWithUpdate } from '@/features/updates/api';
+import { Updates, checkAndDownload, restartWithUpdate } from '@/features/updates/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -12,9 +11,12 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 //   starts by itself the next time the app is opened.
 // =====================================================================
 
-export function UpdateBanner() {
+// Nothing at all in builds without expo-updates (older APKs / dev client)
+export const UpdateBanner = Updates ? Banner : () => null;
+
+function Banner() {
   const insets = useSafeAreaInsets();
-  const { isUpdatePending } = Updates.useUpdates();
+  const { isUpdatePending } = Updates!.useUpdates();
   const [hidden, setHidden] = useState(false);
   const [restarting, setRestarting] = useState(false);
 
