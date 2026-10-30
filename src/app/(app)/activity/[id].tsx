@@ -26,6 +26,7 @@ import {
   type UserDetail,
 } from '@/features/activity/api';
 import { useActivityLookups } from '@/features/activity/useLookups';
+import { getTemplateReport, type TemplateReport } from '@/features/reports/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Collapsible } from '@/shared/ui/Collapsible';
 
@@ -41,6 +42,7 @@ type Section =
   | 'timeline'
   | 'calls'
   | 'whatsapp'
+  | 'templates'
   | 'followups'
   | 'speed'
   | 'leads'
@@ -53,6 +55,7 @@ const ALL: Section[] = [
   'timeline',
   'calls',
   'whatsapp',
+  'templates',
   'followups',
   'speed',
   'leads',
@@ -101,6 +104,7 @@ export default function UserActivityScreen() {
   const [member, setMember] = useState<TeamMember | null>(null);
   const [before, setBefore] = useState<TeamMember | null>(null);
   const [detail, setDetail] = useState<UserDetail | null>(null);
+  const [tpl, setTpl] = useState<TemplateReport | null>(null);
   const [days, setDays] = useState<ActivityDay[]>([]);
   const [sessions, setSessions] = useState<AppSession[]>([]);
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -145,14 +149,16 @@ export default function UserActivityScreen() {
     const prev = previousRange(range);
     try {
       setError(null);
-      const [team, teamBefore, det, d, s, feed] = await Promise.all([
+      const [team, teamBefore, det, d, s, feed, t] = await Promise.all([
         listTeamActivity(range.from, range.to),
         listTeamActivity(prev.from, prev.to),
         getUserDetail(id, range.from, range.to),
         listUserDays(id, 14),
         listUserSessions(id, range.from, range.to),
         listActivityFeed({ ...range, userId: id }),
+        getTemplateReport({ ...range, userId: id }).catch(() => null),
       ]);
+      setTpl(t);
       setMember(team.find((m) => m.user_id === id) ?? null);
       setBefore(teamBefore.find((m) => m.user_id === id) ?? null);
       setDetail(det);
@@ -387,6 +393,45 @@ export default function UserActivityScreen() {
             <Tile label="Msgs sent" value={String(wa.sent)} />
             <Tile label="Msgs received" value={String(wa.received)} />
           </View>
+        )}
+      </Collapsible>
+
+      {/* 📝 Message templates */}
+      <Collapsible
+        icon="📝"
+        title="Message templates"
+        open={open.has('templates')}
+        onToggle={() => toggle('templates')}
+        summary={
+          tpl
+            ? tpl.totals.sent > 0
+              ? `${tpl.totals.sent} sent · ${tpl.totals.leads} leads · ${tpl.totals.admitted} admitted`
+              : 'None sent'
+            : '—'
+        }
+      >
+        {tpl && (
+          <>
+            <View style={styles.tiles}>
+              <Tile label="Sent" value={String(tpl.totals.sent)} />
+              <Tile label="WhatsApp" value={String(tpl.totals.whatsapp)} />
+              <Tile label="SMS" value={String(tpl.totals.sms)} />
+              <Tile label="Replied" value={pct(tpl.totals.replied, tpl.totals.leads)} />
+              <Tile label="Moved on" value={pct(tpl.totals.moved, tpl.totals.leads)} />
+              <Tile label="Admitted" value={String(tpl.totals.admitted)} tone={tpl.totals.admitted > 0 ? 'good' : undefined} />
+            </View>
+            {tpl.templates.length > 0 && <Text style={styles.subTitle}>Templates used</Text>}
+            {tpl.templates.map((t) => (
+              <View key={t.id} style={styles.dayRow}>
+                <Text style={[styles.dayLabel, styles.flex]} numberOfLines={1}>
+                  {t.name}
+                </Text>
+                <Text style={styles.dayValue}>{t.sent}×</Text>
+                <Text style={styles.dayMeta}>{t.leads} leads</Text>
+              </View>
+            ))}
+            <Text style={styles.hint}>Replied / moved on / admitted: what the leads did in the 7 days after a template.</Text>
+          </>
         )}
       </Collapsible>
 
