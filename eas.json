@@ -19,14 +19,16 @@
       "android": {
         "buildType": "apk",
         "credentialsSource": "remote"
-      }
+      },
+      "channel": "preview"
     },
     "production": {
       "environment": "production",
       "android": {
         "buildType": "app-bundle",
         "credentialsSource": "remote"
-      }
+      },
+      "channel": "production"
     }
   }
 }
