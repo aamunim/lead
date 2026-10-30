@@ -421,3 +421,62 @@ export function formatDuration(sec: number): string {
   const m = Math.round((sec % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
+
+// =====================================================================
+// One person, everything for the details page (user_activity_detail)
+// =====================================================================
+export type UserDetail = {
+  calls: {
+    total: number;
+    outgoing: number;
+    incoming: number;
+    missed: number;
+    connected: number;
+    no_answer: number;
+    talk_sec: number;
+    avg_sec: number;
+    longest_sec: number;
+    short: number;
+    with_note: number;
+  };
+  wa: { calls: number; connected: number; missed: number; talk_sec: number; video: number; sent: number; received: number };
+  follow_ups: { due: number; on_time: number; late: number; missed: number; avg_late_min: number; overdue_now: number };
+  speed: {
+    given: number;
+    called: number;
+    within_15: number;
+    within_60: number;
+    avg_min: number;
+    median_min: number;
+    not_called: number;
+  };
+  leads: {
+    open_now: number;
+    given: number;
+    admitted: number;
+    lost: number;
+    stages: { name: string; color: string; n: number }[];
+    lost_reasons: { name: string; n: number }[];
+  };
+  hours: { hour: number; calls: number; actions: number; app_min: number }[];
+  /** One day only: 60+ minutes with no work between 9 AM and 7 PM */
+  gaps: { from: string; to: string }[];
+};
+
+export async function getUserDetail(userId: string, from: string, to: string): Promise<UserDetail> {
+  const { data, error } = await supabase.rpc('user_activity_detail', { p_user_id: userId, p_from: from, p_to: to });
+  if (error) throw toError(error);
+  return data as unknown as UserDetail;
+}
+
+/** The same number of days just before (for ↑ / ↓) */
+export function previousRange(range: { from: string; to: string }): { from: string; to: string } {
+  const from = new Date(`${range.from}T00:00:00`);
+  const to = new Date(`${range.to}T00:00:00`);
+  const days = Math.round((to.getTime() - from.getTime()) / 86400000) + 1;
+  const pTo = new Date(from);
+  pTo.setDate(from.getDate() - 1);
+  const pFrom = new Date(pTo);
+  pFrom.setDate(pTo.getDate() - (days - 1));
+  return { from: day(pFrom), to: day(pTo) };
+}
