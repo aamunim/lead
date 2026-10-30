@@ -1032,7 +1032,7 @@ function LeadCard({
   const visitLate = visitSoon && !!lead.visit_at && new Date(lead.visit_at).getTime() < Date.now();
 
   // 💰 Negotiating / ⏳ Discount / 💰 −৳3,500
-  const fee = kind === 'open' || kind === 'won' ? feeBadge(lead.fee_status, lead.fee_discount) : null;
+  const fee = kind === 'open' || kind === 'won' ? feeBadge(lead) : null;
 
   return (
     <Pressable
@@ -1105,11 +1105,29 @@ function LeadCard({
             </View>
           )}
           {fee && (
-            <View style={[styles.papers, fee.tone === 'wait' ? styles.papersMissing : fee.tone === 'good' ? styles.papersDone : styles.visitOther]}>
+            <View
+              style={[
+                styles.papers,
+                fee.tone === 'wait' || fee.tone === 'bad'
+                  ? styles.papersMissing
+                  : fee.tone === 'good'
+                    ? styles.papersDone
+                    : styles.visitOther,
+              ]}
+            >
               <Text
                 style={[
                   styles.papersText,
-                  { color: fee.tone === 'wait' ? colors.warning : fee.tone === 'good' ? colors.success : colors.text },
+                  {
+                    color:
+                      fee.tone === 'bad'
+                        ? colors.danger
+                        : fee.tone === 'wait'
+                          ? colors.warning
+                          : fee.tone === 'good'
+                            ? colors.success
+                            : colors.text,
+                  },
                 ]}
               >
                 {fee.text}

@@ -492,6 +492,12 @@ export default function LeadDetailScreen() {
         return `💰 Discount not approved: ${money(Number(d.amount ?? 0))}${d.note ? ` · “${d.note}”` : ''}`;
       case 'discount_cancelled':
         return `💰 Discount taken back: ${money(Number(d.amount ?? 0))} off ${d.fee ?? 'the fee'}`;
+      case 'payment_received':
+        return `💵 ${money(Number(d.amount ?? 0))} received (${d.method ?? ''}) · 🧾 ${d.receipt_no ?? ''}`;
+      case 'payment_voided':
+        return `✕ Payment void: ${d.receipt_no ?? ''} · ${money(Number(d.amount ?? 0))}${d.reason ? ` · ${d.reason}` : ''}`;
+      case 'installments_set':
+        return Number(d.count ?? 0) > 0 ? `📅 Installment plan: ${d.count} installments` : '📅 Installment plan removed';
       case 'tag_added':
         return `🏷 Tag added: ${d.tag ?? ''}`;
       case 'tag_removed':

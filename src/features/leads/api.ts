@@ -61,6 +61,9 @@ export type LeadListItem = Pick<
   | 'fee_full'
   | 'fee_discount'
   | 'fee_final'
+  | 'fee_paid'
+  | 'fee_due'
+  | 'fee_next_due'
 > & {
   stage: Stage | null;
   source: Named | null;
@@ -194,7 +197,7 @@ const LIST_SELECT = `
   id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
-  fee_status, fee_full, fee_discount, fee_final,
+  fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due,
   stage:pipeline_stages(id, key, name, color, kind),
   source:lead_sources(id, name),
   assignee:assigned_to(id, full_name),

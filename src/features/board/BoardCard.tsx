@@ -74,7 +74,7 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
       ? papersBadge(lead.papers_required ?? 0, (lead.papers_required ?? 0) - (lead.papers_missing ?? 0))
       : null;
   const visit = kind === 'open' ? visitBadge(lead.visit_status, lead.visit_at) : null;
-  const fee = kind === 'open' || kind === 'won' ? feeBadge(lead.fee_status, lead.fee_discount) : null;
+  const fee = kind === 'open' || kind === 'won' ? feeBadge(lead) : null;
   const courses = lead.lead_courses.map((c) => c.course?.name).filter(Boolean).join(', ');
 
   const flipButton = (
@@ -136,7 +136,16 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
                 <Text
                   style={[
                     styles.badge,
-                    { color: fee.tone === 'wait' ? colors.warning : fee.tone === 'good' ? colors.success : colors.text },
+                    {
+                      color:
+                        fee.tone === 'bad'
+                          ? colors.danger
+                          : fee.tone === 'wait'
+                            ? colors.warning
+                            : fee.tone === 'good'
+                              ? colors.success
+                              : colors.text,
+                    },
                   ]}
                   numberOfLines={1}
                 >
