@@ -1,0 +1,83 @@
+# =====================================================================
+# 📦 Build the Android app on GitHub (not on EAS's build servers)
+#   Actions → "Build Android" → Run workflow → choose the profile.
+#   Runs `eas build --local` on a GitHub Linux machine, so no EAS build
+#   credits are used. The signing key and the environment variables
+#   (Supabase, GOOGLE_SERVICES_JSON) still come from EAS, exactly as for a
+#   normal EAS build, so the Play Store signing stays the same.
+#   Needs one repository secret: EXPO_TOKEN (expo.dev → Access tokens).
+#   The .aab / .apk is attached to the run (Artifacts), kept 14 days.
+# =====================================================================
+name: Build Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Build profile (eas.json)'
+        type: choice
+        options:
+          - production
+          - preview
+          - development
+        default: production
+
+concurrency:
+  group: build-android-${{ inputs.profile }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1g"
+    steps:
+      - name: Check the Expo token
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Add the EXPO_TOKEN secret: Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Make room on the disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/node_modules/@angular "$AGENT_TOOLSDIRECTORY/CodeQL" || true
+          df -h /
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Install packages
+        run: npm ci
+
+      - name: Build (${{ inputs.profile }})
+        run: |
+          case "${{ inputs.profile }}" in
+            production) EXT=aab ;;
+            *) EXT=apk ;;
+          esac
+          VERSION=$(node -p "require('./app.json').expo.version")
+          CODE=$(node -p "require('./app.json').expo.android.versionCode")
+          OUT="lead-management-${VERSION}-${CODE}-${{ inputs.profile }}.${EXT}"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          npx eas-cli@latest build --local --non-interactive \
+            --platform android --profile "${{ inputs.profile }}" --output "$OUT"
+
+      - name: Keep the file
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.OUT }}
+          path: ${{ env.OUT }}
+          retention-days: 14
+          if-no-files-found: error
