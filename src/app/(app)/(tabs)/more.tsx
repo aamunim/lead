@@ -115,6 +115,13 @@ export default function MoreScreen() {
             href={'/templates' as Href}
             divider
           />
+          <Row
+            icon="💰"
+            title="Discount requests"
+            subtitle="Discounts waiting for approval"
+            href={'/discounts' as Href}
+            divider
+          />
         </View>
       </View>
 

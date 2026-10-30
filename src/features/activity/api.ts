@@ -221,6 +221,7 @@ export type ChangeKind =
   | 'details'
   | 'visit'
   | 'papers'
+  | 'fee'
   | 'deleted'
   | 'lead';
 
@@ -249,6 +250,19 @@ export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; acti
     label: 'Papers',
     icon: '📄',
     actions: ['paper_received', 'paper_not_needed', 'paper_unticked', 'paper_returned', 'papers_moved'],
+  },
+  {
+    kind: 'fee',
+    label: 'Fee / discount',
+    icon: '💰',
+    actions: [
+      'negotiation_started',
+      'negotiation_event',
+      'discount_requested',
+      'discount_approved',
+      'discount_rejected',
+      'discount_cancelled',
+    ],
   },
   {
     kind: 'deleted',
@@ -360,6 +374,28 @@ export function describeChange(
       return { text: `${q(d.paper)} returned`, warn: false };
     case 'papers_moved':
       return { text: d.kept_at ? `Kept at ${q(d.kept_at)}` : 'Place removed', warn: false };
+    case 'negotiation_started':
+      return { text: `💰 Fee talk started: ${q(d.course)}`, warn: false };
+    case 'negotiation_event':
+      return {
+        text:
+          d.kind === 'note'
+            ? `💰 “${q(d.note)}”`
+            : `💰 ${d.kind === 'lead_asked' ? 'Lead asked' : d.kind === 'offer' ? 'Offered' : 'Told the fee'} ৳${Math.round(Number(d.amount ?? 0)).toLocaleString('en-IN')}`,
+        warn: false,
+      };
+    case 'discount_requested':
+    case 'discount_approved':
+    case 'discount_rejected':
+    case 'discount_cancelled': {
+      const verb = { discount_requested: 'asked', discount_approved: 'approved', discount_rejected: 'not approved', discount_cancelled: 'taken back' }[
+        item.action
+      ];
+      return {
+        text: `💰 Discount ${verb}: ৳${Math.round(Number(d.amount ?? 0)).toLocaleString('en-IN')} off ${q(d.fee)}${d.reason ? ` · ${q(d.reason)}` : ''}`,
+        warn: item.action === 'discount_rejected',
+      };
+    }
     case 'created':
       return { text: 'Lead added', warn: false };
     case 're_enquiry':

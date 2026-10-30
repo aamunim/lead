@@ -36,6 +36,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/courses' as Href,
       },
       {
+        title: 'Fee & discount',
+        description: 'Negotiation on/off, who, discount limits, reasons',
+        icon: '💰',
+        href: '/settings/fees' as Href,
+      },
+      {
         title: 'Admission rules',
         description: 'Who can admit or cancel, papers check, student ID, closed leads',
         icon: '📋',
