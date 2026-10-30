@@ -37,7 +37,7 @@ export type ContactFilter = 'phone' | 'whatsapp_only' | 'wa_number' | 'username'
  *   talking = fee talk going on (not admitted) · waiting = a discount waits for approval
  *   given = has a discount in force · final = admitted, fee locked · none = no fee talk yet
  */
-export type FeeFilter = 'talking' | 'waiting' | 'given' | 'final' | 'none';
+export type FeeFilter = 'talking' | 'waiting' | 'given' | 'final' | 'none' | 'due' | 'overdue' | 'paid';
 
 export type LeadFilters = {
   ratings?: string[];        // 'hot' | 'warm' | 'cold' | 'none'
@@ -48,6 +48,7 @@ export type LeadFilters = {
   sourceIds?: string[];
   campaignIds?: string[];
   courseIds?: string[];
+  batchIds?: string[];       // the batch a student is admitted to
   leadTypeIds?: string[];
   created?: CreatedFilter;
   lastContacted?: LastContactedFilter;
@@ -76,7 +77,8 @@ export type FilterKey =
   | 'papers'
   | 'visit'
   | 'contact'
-  | 'fee';
+  | 'fee'
+  | 'batch';
 
 export const NONE = 'none';
 
@@ -100,7 +102,8 @@ export const FILTER_FIELDS: Record<FilterKey, { label: string; icon: string }> =
   papers: { label: 'Papers', icon: 'document-text' },
   visit: { label: 'Campus visit', icon: 'business' },
   contact: { label: 'Contact by', icon: 'logo-whatsapp' },
-  fee: { label: 'Fee / discount', icon: 'cash' },
+  fee: { label: 'Fee / payment', icon: 'cash' },
+  batch: { label: 'Batch (admitted)', icon: 'people-circle' },
 };
 
 export const FOLLOW_UP_OPTIONS: { value: FollowUpFilter; label: string }[] = [
@@ -163,6 +166,9 @@ export const FEE_OPTIONS: { value: FeeFilter; label: string }[] = [
   { value: 'given', label: 'Discount given' },
   { value: 'final', label: '🔒 Final fee (admitted)' },
   { value: 'none', label: 'No fee talk yet' },
+  { value: 'due', label: '💵 Payment due' },
+  { value: 'overdue', label: '⚠ Installment late' },
+  { value: 'paid', label: '✓ Paid in full' },
 ];
 
 // =====================================================================
@@ -181,6 +187,7 @@ export function countActiveFilters(f: LeadFilters): number {
     list(f.sourceIds),
     list(f.campaignIds),
     list(f.courseIds),
+    list(f.batchIds),
     list(f.leadTypeIds),
     f.created,
     f.lastContacted,
@@ -199,7 +206,14 @@ export function countActiveFilters(f: LeadFilters): number {
  * (Papers keeps only open and admitted leads itself.)
  */
 export function needsClosedLeads(f: LeadFilters): boolean {
-  return !!(list(f.stageIds) || f.admitted || list(f.lostReasonIds) || f.papers || f.fee === 'final');
+  return !!(
+    list(f.stageIds) ||
+    f.admitted ||
+    list(f.lostReasonIds) ||
+    f.papers ||
+    list(f.batchIds) ||
+    (f.fee && ['final', 'due', 'overdue', 'paid'].includes(f.fee))
+  );
 }
 
 /** Drop empty parts so saved filters stay small */
@@ -226,6 +240,9 @@ function addDays(d: Date, days: number): Date {
   return x;
 }
 const iso = (d: Date) => d.toISOString();
+/** "2026-11-05" in the phone's own time (for date columns) */
+const localDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 // =====================================================================
 // Turning filters into a database query
@@ -421,7 +438,19 @@ export function applyLeadFilters<Q extends { [k: string]: any }>(query: Q, f: Le
     case 'none':
       q = q.is('fee_status', null);
       break;
+    case 'due':
+      q = q.gt('fee_due', 0);
+      break;
+    case 'overdue':
+      q = q.gt('fee_due', 0).lt('fee_next_due', localDay(today));
+      break;
+    case 'paid':
+      q = q.eq('fee_due', 0);
+      break;
   }
+
+  // Batch (admitted students)
+  if (list(f.batchIds)) q = q.in('admitted_batch_id', f.batchIds);
 
   // How the lead can be reached
   switch (f.contact) {
@@ -527,6 +556,7 @@ export const DEFAULT_FILTER_CONFIG: FilterConfig = {
     { key: 'papers', enabled: true },
     { key: 'visit', enabled: true },
     { key: 'fee', enabled: true },
+    { key: 'batch', enabled: true },
     { key: 'lost_reason', enabled: true },
     { key: 'contact', enabled: true },
   ],
