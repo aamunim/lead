@@ -2440,6 +2440,20 @@ export type Database = {
         }
         Returns: Json
       }
+      save_phone_call: {
+        Args: {
+          p_lead_id: string
+          p_outcome: string
+          p_notes: string
+          p_duration_sec: number
+          p_called_at: string
+          p_direction: string
+          p_device_id: string
+          p_device_call_id: string
+          p_sim_label?: string
+        }
+        Returns: string
+      }
       set_installments: {
         Args: { p_lead_id: string; p_items: Json }
         Returns: undefined

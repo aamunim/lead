@@ -161,6 +161,24 @@ export async function logCall(input: NewCall): Promise<string> {
   const notes = input.notes?.trim() || null;
   const fromPhone = !!input.deviceCallId && !!input.deviceId;
 
+  // A call from the phone's call log: the automatic sync may have saved it
+  // already; the database then puts this result and note on that call
+  if (fromPhone && input.channel !== 'whatsapp') {
+    const { data, error } = await supabase.rpc('save_phone_call', {
+      p_lead_id: input.leadId,
+      p_outcome: input.outcome,
+      p_notes: notes ?? '',
+      p_duration_sec: input.durationSec ?? (null as unknown as number),
+      p_called_at: input.calledAt ?? new Date().toISOString(),
+      p_direction: input.direction ?? 'outgoing',
+      p_device_id: input.deviceId as string,
+      p_device_call_id: input.deviceCallId as string,
+      p_sim_label: input.simLabel ?? undefined,
+    });
+    if (error) throw toError(error);
+    return data as string;
+  }
+
   const { data, error } = await supabase
     .from('call_logs')
     .insert({
