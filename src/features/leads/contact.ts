@@ -126,18 +126,47 @@ async function openWhatsAppHome(username: string): Promise<boolean> {
 
 /**
  * Open the lead's WhatsApp chat: the WhatsApp number, else the phone.
- * With only a username, copy it and open WhatsApp (search there and paste).
+ * text: a message already typed in the chat (a template); the user taps Send.
+ * With only a username, copy it and open WhatsApp (search there and paste);
+ * a template's text is copied instead, after the username.
  * Returns false when WhatsApp did not open.
  */
-export async function openWhatsApp(lead: LeadContact): Promise<boolean> {
+export async function openWhatsApp(lead: LeadContact, text?: string): Promise<boolean> {
   const number = lead.whatsapp_number || lead.phone;
   if (number) {
     const d = waDigits(number);
-    return openFirst([`whatsapp://send?phone=${d}`, `https://wa.me/${d}`]);
+    const t = text ? encodeURIComponent(text) : '';
+    return openFirst([
+      `whatsapp://send?phone=${d}${t ? `&text=${t}` : ''}`,
+      `https://wa.me/${d}${t ? `?text=${t}` : ''}`,
+    ]);
   }
 
   const username = lead.whatsapp_username;
   if (!username) return false;
+
+  // A template for a username-only lead: copy the message; the user finds the chat and pastes
+  if (text) {
+    let copiedText = false;
+    try {
+      copiedText = !!clipboard && (await clipboard.setStringAsync(text));
+    } catch {
+      copiedText = false;
+    }
+    return new Promise((resolve) => {
+      Alert.alert(
+        `@${username}`,
+        copiedText
+          ? 'The message is copied. In WhatsApp, search this username, open the chat and paste.'
+          : 'In WhatsApp, search this username and open the chat. (This app version can’t copy the message.)',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Open WhatsApp', onPress: () => openWhatsAppHome(username).then(resolve) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
+  }
 
   let copied = false;
   try {
@@ -166,4 +195,15 @@ export async function openWhatsApp(lead: LeadContact): Promise<boolean> {
       { cancelable: true, onDismiss: () => resolve(false) },
     );
   });
+}
+
+/** Open the phone's SMS app to this number, with a message already typed (optional) */
+export async function openSms(phone: string, text?: string): Promise<boolean> {
+  try {
+    await Linking.openURL(text ? `sms:${phone}?body=${encodeURIComponent(text)}` : `sms:${phone}`);
+    return true;
+  } catch {
+    Alert.alert('Could not open', 'SMS is not available on this phone.');
+    return false;
+  }
 }

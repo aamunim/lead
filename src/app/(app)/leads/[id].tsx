@@ -22,6 +22,9 @@ import {
 } from '@/features/call-sync/api';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
 import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
+import type { TemplateChannel } from '@/features/templates/api';
+import { TemplateSheet } from '@/features/templates/TemplateSheet';
+import { useTemplateAccess } from '@/features/templates/useTemplateAccess';
 import {
   canDeleteEntry,
   channelLabel,
@@ -114,6 +117,10 @@ export default function LeadDetailScreen() {
   const { id, callNote, waCall } = useLocalSearchParams<{ id: string; callNote?: string; waCall?: string }>();
   const { hasPermission, profile } = useAuth();
   const isAdmin = hasPermission('leads.edit_all');
+  // 💬 Message templates (Settings → Message templates)
+  const templates = useTemplateAccess();
+  const tapOpensTemplates = templates.allowed && templates.settings.tap === 'sheet';
+  const [templateChannel, setTemplateChannel] = useState<TemplateChannel | null>(null);
   const me = profile?.id ?? null;
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
@@ -725,9 +732,21 @@ export default function LeadDetailScreen() {
             {!!lead.phone && (
               <ActionButton label="Call" icon="📞" color={colors.success} onPress={() => call(lead.phone!)} />
             )}
-            <ActionButton label="WhatsApp" icon="💬" color="#1F7A57" onPress={whatsapp} />
+            <ActionButton
+              label="WhatsApp"
+              icon="💬"
+              color="#1F7A57"
+              onPress={() => (tapOpensTemplates ? setTemplateChannel('whatsapp') : whatsapp())}
+              onLongPress={templates.allowed ? () => setTemplateChannel('whatsapp') : undefined}
+            />
             {!!lead.phone && (
-              <ActionButton label="SMS" icon="✉️" color={colors.info} onPress={() => sms(lead.phone!)} />
+              <ActionButton
+                label="SMS"
+                icon="✉️"
+                color={colors.info}
+                onPress={() => (tapOpensTemplates ? setTemplateChannel('sms') : sms(lead.phone!))}
+                onLongPress={templates.allowed ? () => setTemplateChannel('sms') : undefined}
+              />
             )}
           </View>
 
@@ -1099,6 +1118,20 @@ export default function LeadDetailScreen() {
         </View>
       )}
 
+      {/* 💬 Templates for WhatsApp / SMS */}
+      <TemplateSheet
+        visible={!!templateChannel}
+        lead={lead}
+        channel={templateChannel ?? 'whatsapp'}
+        settings={templates.settings}
+        onClose={() => setTemplateChannel(null)}
+        onPlain={() => (templateChannel === 'sms' ? lead.phone && sms(lead.phone) : whatsapp())}
+        onSent={(name) => {
+          showToast(`Sent with “${name}”`);
+          setTimeout(load, 1500);
+        }}
+      />
+
       <CallResultSheet
         visible={sheetVisible}
         lead={{ id: lead.id, name: lead.name, phone: lead.phone, rating: lead.rating }}
@@ -1175,15 +1208,19 @@ function ActionButton({
   icon,
   color,
   onPress,
+  onLongPress,
 }: {
   label: string;
   icon: string;
   color: string;
   onPress: () => void;
+  onLongPress?: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       style={({ pressed }) => [styles.actionBtn, { backgroundColor: color }, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={label}

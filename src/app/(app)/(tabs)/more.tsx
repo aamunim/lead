@@ -108,6 +108,13 @@ export default function MoreScreen() {
             href={'/whatsapp' as Href}
             divider
           />
+          <Row
+            icon="📝"
+            title="Message templates"
+            subtitle="Ready-made WhatsApp and SMS messages"
+            href={'/templates' as Href}
+            divider
+          />
         </View>
       </View>
 

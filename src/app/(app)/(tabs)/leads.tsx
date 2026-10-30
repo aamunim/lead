@@ -18,6 +18,9 @@ import {
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
+import type { TemplateChannel } from '@/features/templates/api';
+import { TemplateSheet } from '@/features/templates/TemplateSheet';
+import { useTemplateAccess } from '@/features/templates/useTemplateAccess';
 import { getCallSyncSettings, markCallFromApp } from '@/features/call-sync/api';
 import type { CallChannel } from '@/features/calls/api';
 import {
@@ -207,6 +210,10 @@ export default function LeadsScreen() {
   const [estimatedSec, setEstimatedSec] = useState<number | null>(null);
   const callStartedAt = useRef<number | null>(null);
   const leftApp = useRef(false);
+  // 💬 Message templates (Settings → Message templates)
+  const templates = useTemplateAccess();
+  const tapOpensTemplates = templates.allowed && templates.settings.tap === 'sheet';
+  const [templateFor, setTemplateFor] = useState<{ lead: LeadListItem; channel: TemplateChannel } | null>(null);
   // 📞 phone call or 💬 WhatsApp: which one the popup asks about
   const [callChannel, setCallChannel] = useState<CallChannel>('phone');
   const pendingChannel = useRef<CallChannel>('phone');
@@ -455,6 +462,14 @@ export default function LeadsScreen() {
 
   // 💬 WhatsApp: when the user comes back, ask what happened (Settings → Calls)
   const whatsapp = async (lead: LeadListItem) => {
+    if (tapOpensTemplates) {
+      setTemplateFor({ lead, channel: 'whatsapp' });
+      return;
+    }
+    await openPlainWhatsApp(lead);
+  };
+
+  const openPlainWhatsApp = async (lead: LeadListItem) => {
     if (askAfterWhatsApp) {
       setCallLead(lead);
       callStartedAt.current = Date.now();
@@ -466,6 +481,10 @@ export default function LeadsScreen() {
   };
 
   const sms = (lead: LeadListItem) => {
+    if (tapOpensTemplates) {
+      setTemplateFor({ lead, channel: 'sms' });
+      return;
+    }
     if (lead.phone) open(`sms:${lead.phone}`);
   };
 
@@ -691,6 +710,7 @@ export default function LeadsScreen() {
           onCall={call}
           onWhatsApp={whatsapp}
           onSms={sms}
+          onTemplate={templates.allowed ? (lead, ch) => setTemplateFor({ lead, channel: ch }) : undefined}
           onChanged={(message) => {
             showToast(message);
             loadFirstPage();
@@ -748,6 +768,7 @@ export default function LeadsScreen() {
               onCall={() => call(item)}
               onWhatsApp={() => whatsapp(item)}
               onSms={() => sms(item)}
+              onTemplate={templates.allowed ? (ch) => setTemplateFor({ lead: item, channel: ch }) : undefined}
             />
           )}
         />
@@ -871,6 +892,22 @@ export default function LeadsScreen() {
         }}
       />
 
+      {/* 💬 Templates for WhatsApp / SMS */}
+      <TemplateSheet
+        visible={!!templateFor}
+        lead={templateFor?.lead ?? null}
+        channel={templateFor?.channel ?? 'whatsapp'}
+        settings={templates.settings}
+        onClose={() => setTemplateFor(null)}
+        onPlain={() => {
+          const t = templateFor;
+          if (!t) return;
+          if (t.channel === 'whatsapp') openPlainWhatsApp(t.lead);
+          else if (t.lead.phone) open(`sms:${t.lead.phone}`);
+        }}
+        onSent={(name) => showToast(`Sent with “${name}”`)}
+      />
+
       {callLead && (
         <CallResultSheet
           visible={callSheetVisible}
@@ -902,6 +939,7 @@ function LeadCard({
   onCall,
   onWhatsApp,
   onSms,
+  onTemplate,
 }: {
   lead: LeadListItem;
   showAssignee: boolean;
@@ -912,6 +950,8 @@ function LeadCard({
   onCall: () => void;
   onWhatsApp: () => void;
   onSms: () => void;
+  /** Long press on WhatsApp / SMS: pick a message template */
+  onTemplate?: (channel: TemplateChannel) => void;
 }) {
   const ratingColor = lead.rating ? RATING_COLOR[lead.rating] : null;
   const courses = lead.lead_courses.map((c) => c.course?.name).filter(Boolean).join(', ');
@@ -1033,9 +1073,16 @@ function LeadCard({
             color={WHATSAPP_GREEN}
             label={`WhatsApp ${lead.name}`}
             onPress={onWhatsApp}
+            onLongPress={onTemplate && (() => onTemplate('whatsapp'))}
           />
           {!!lead.phone && (
-            <ContactButton icon="chatbubble-ellipses" color={colors.info} label={`SMS ${lead.name}`} onPress={onSms} />
+            <ContactButton
+              icon="chatbubble-ellipses"
+              color={colors.info}
+              label={`SMS ${lead.name}`}
+              onPress={onSms}
+              onLongPress={onTemplate && (() => onTemplate('sms'))}
+            />
           )}
         </View>
       )}
@@ -1048,15 +1095,19 @@ function ContactButton({
   color,
   label,
   onPress,
+  onLongPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   label: string;
   onPress: () => void;
+  onLongPress?: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       hitSlop={4}
       style={({ pressed }) => [styles.contactBtn, { backgroundColor: color + '1A' }, pressed && styles.contactPressed]}
       accessibilityRole="button"

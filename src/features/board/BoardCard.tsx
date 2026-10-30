@@ -49,9 +49,11 @@ type Props = {
   onCall: () => void;
   onWhatsApp: () => void;
   onSms: () => void;
+  /** Long press on WhatsApp / SMS: pick a message template */
+  onTemplate?: (channel: 'whatsapp' | 'sms') => void;
 };
 
-export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, onWhatsApp, onSms }: Props) {
+export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, onWhatsApp, onSms, onTemplate }: Props) {
   const turn = useRef(new Animated.Value(0)).current;
   const [flipped, setFlipped] = useState(false);
 
@@ -169,9 +171,21 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
             {!!lead.phone && (
               <ContactButton icon="call" color={colors.success} label={`Call ${lead.name}`} onPress={onCall} />
             )}
-            <ContactButton icon="logo-whatsapp" color={WHATSAPP_GREEN} label={`WhatsApp ${lead.name}`} onPress={onWhatsApp} />
+            <ContactButton
+              icon="logo-whatsapp"
+              color={WHATSAPP_GREEN}
+              label={`WhatsApp ${lead.name}`}
+              onPress={onWhatsApp}
+              onLongPress={onTemplate && (() => onTemplate('whatsapp'))}
+            />
             {!!lead.phone && (
-              <ContactButton icon="chatbubble-ellipses" color={colors.info} label={`SMS ${lead.name}`} onPress={onSms} />
+              <ContactButton
+                icon="chatbubble-ellipses"
+                color={colors.info}
+                label={`SMS ${lead.name}`}
+                onPress={onSms}
+                onLongPress={onTemplate && (() => onTemplate('sms'))}
+              />
             )}
           </View>
         </Pressable>
@@ -186,15 +200,19 @@ function ContactButton({
   color,
   label,
   onPress,
+  onLongPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   label: string;
   onPress: () => void;
+  onLongPress?: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       hitSlop={4}
       style={({ pressed }) => [styles.contactBtn, { backgroundColor: color + '1A' }, pressed && styles.pressed]}
       accessibilityRole="button"
