@@ -3,7 +3,9 @@
 //   POST multipart/form-data: file, lead_id, kind ('paper' | 'voice' |
 //   'other'), paper_id?, call_id?, name?, duration_sec?
 //   The caller must be able to see the lead (row security). The file goes
-//   to Lead Management / <Lead> / Papers | Voice notes.
+//   to Lead Management / <Student ID Name, or Name – Phone> / Papers |
+//   Voice notes. A paper's file also ticks that paper in the checklist
+//   (as a photocopy) if it isn't ticked yet.
 // =====================================================================
 import { admin, asUser, cors, currentUser, json, leadFolder, uploadFile } from '../_shared/drive.ts';
 
@@ -28,7 +30,7 @@ Deno.serve(async (req) => {
     if (file.size > MAX_BYTES) return json({ error: 'The file is bigger than 35 MB.' }, 400);
 
     // Can this person see the lead? (their own client: row security)
-    const { data: lead } = await asUser(req).from('leads').select('id, name, phone').eq('id', leadId).maybeSingle();
+    const { data: lead } = await asUser(req).from('leads').select('id, name, phone, student_ref').eq('id', leadId).maybeSingle();
     if (!lead) return json({ error: 'Lead not found.' }, 404);
 
     const paperId = (form.get('paper_id') as string | null) || null;
@@ -65,7 +67,28 @@ Deno.serve(async (req) => {
       details: { name, kind, file_id: row.id, paper_id: paperId },
     });
 
-    return json(row);
+    // Tick the paper in the checklist (as the uploader; a failed tick doesn't fail the upload)
+    let paperTicked = false;
+    if (kind === 'paper' && paperId) {
+      const me = asUser(req);
+      const { data: had } = await me
+        .from('lead_papers')
+        .select('id')
+        .eq('lead_id', lead.id)
+        .eq('paper_id', paperId)
+        .maybeSingle();
+      if (!had) {
+        const { error: tickError } = await me.rpc('set_lead_paper', {
+          p_lead_id: lead.id,
+          p_paper_id: paperId,
+          p_status: 'received',
+          p_copy_type: 'photocopy',
+        });
+        paperTicked = !tickError;
+      }
+    }
+
+    return json({ ...row, paper_ticked: paperTicked });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }

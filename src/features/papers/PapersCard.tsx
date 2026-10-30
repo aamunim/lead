@@ -44,9 +44,11 @@ type Props = {
   stageKey: string | null;
   /** Something changed: reload the lead page (and show a short message) */
   onChanged: (message?: string) => void;
+  /** Changes when papers may have been ticked elsewhere (e.g. a file upload): reload */
+  refreshKey?: number;
 };
 
-export function PapersCard({ leadId, stageKind, stageKey, onChanged }: Props) {
+export function PapersCard({ leadId, stageKind, stageKey, onChanged, refreshKey }: Props) {
   const [data, setData] = useState<LeadPapers | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null); // paper id being saved
@@ -71,7 +73,7 @@ export function PapersCard({ leadId, stageKind, stageKey, onChanged }: Props) {
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   // All required papers in: offer to move the lead on
   const offerReady = async (before: LeadPapers, after: LeadPapers) => {

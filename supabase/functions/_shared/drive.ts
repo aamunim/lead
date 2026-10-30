@@ -104,15 +104,24 @@ export async function rootFolder(): Promise<string> {
 
 const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 
-/** The lead's folder, and inside it "Papers" / "Voice notes" */
-export async function leadFolder(lead: { id: string; name: string; phone: string | null }, kind: 'paper' | 'voice' | 'other') {
+/** Folder name: "ADM-2026-0012 Rahim Uddin" for a student, else "Rahim Uddin – 01711…" */
+export function leadFolderName(lead: { name: string; phone: string | null; student_ref: string | null }): string {
+  if (lead.student_ref) return safe(`${lead.student_ref} ${lead.name}`);
+  return safe(`${lead.name}${lead.phone ? ` – ${lead.phone}` : ''}`);
+}
+
+/** The lead's folder, and inside it "Papers" / "Voice notes" (a folder made earlier keeps its name) */
+export async function leadFolder(
+  lead: { id: string; name: string; phone: string | null; student_ref: string | null },
+  kind: 'paper' | 'voice' | 'other',
+) {
   const get = async (k: string) =>
     (await admin.from('lead_drive_folders').select('folder_id').eq('lead_id', lead.id).eq('kind', k).maybeSingle()).data
       ?.folder_id as string | undefined;
 
   let main = await get('lead');
   if (!main) {
-    main = await makeFolder(safe(`${lead.name}${lead.phone ? ` – ${lead.phone}` : ''}`), await rootFolder());
+    main = await makeFolder(leadFolderName(lead), await rootFolder());
     await admin.from('lead_drive_folders').upsert({ lead_id: lead.id, kind: 'lead', folder_id: main });
   }
   if (kind === 'other') return main;
