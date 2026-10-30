@@ -32,6 +32,8 @@ create trigger leads_phone_hashes
 -- The leads already there (without touching updated_at or the change log)
 do $$
 begin
+  -- digest() lives in the "extensions" schema on Supabase
+  perform set_config('search_path', 'public, extensions', true);
   alter table public.leads disable trigger user;
   update public.leads
      set phone_hash     = case when phone is null then null else encode(digest(phone, 'sha256'), 'hex') end,
