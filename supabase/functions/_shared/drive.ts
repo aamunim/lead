@@ -1,21 +1,17 @@
 // =====================================================================
 // 📎 Google Drive helpers for the drive-* Edge Functions
-//   One Google account (connected by an admin) holds every file. Its
-//   refresh token lives in google_drive_connection, which only the server
-//   (service role) can read.
-//   Needs the secrets GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET
-//   (npx supabase secrets set …).
+//   The files go to the Google Drive of ONE account, through a small
+//   Google Apps Script web app the admin deploys there
+//   (docs/drive-script.gs). Its address and secret key are kept in
+//   google_drive_connection, which only the server (service role) reads.
+//   No Google Cloud project, OAuth client or card is needed.
 // =====================================================================
+import { decodeBase64, encodeBase64 } from 'jsr:@std/encoding@1/base64';
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
 export const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-export const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? '';
-export const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET') ?? '';
-export const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/drive-callback`;
-/** drive.file: the app sees only the files it made itself */
-export const SCOPES = 'https://www.googleapis.com/auth/drive.file email';
 export const ROOT_FOLDER = 'Lead Management';
 
 export const cors = {
@@ -28,7 +24,7 @@ export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 }
 
-/** Server client: can read the Google token and add files */
+/** Server client: reads the script's address and adds files */
 export const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
 /** The caller's own client: row security decides what they may see */
@@ -48,58 +44,53 @@ export async function currentUser(req: Request): Promise<{ id: string } | null> 
 }
 
 // ---------------------------------------------------------------------
-// Google
+// The Apps Script web app
 // ---------------------------------------------------------------------
-let cached: { token: string; until: number } | null = null;
+type Script = { url: string; secret: string };
 
-export async function accessToken(): Promise<string> {
-  if (cached && cached.until > Date.now() + 60_000) return cached.token;
-  const { data: conn } = await admin.from('google_drive_connection').select('refresh_token').eq('id', 1).maybeSingle();
-  if (!conn) throw new Error('Google Drive is not connected. An admin can connect it in Settings → Google Drive.');
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
-      refresh_token: conn.refresh_token,
-      grant_type: 'refresh_token',
-    }),
-  });
-  const body = await res.json();
-  if (!res.ok) {
+/** Call the script (it answers with JSON; Google redirects once, fetch follows) */
+export async function callScript<T>(script: Script, action: string, payload: Record<string, unknown> = {}): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(script.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ secret: script.secret, action, ...payload }),
+      redirect: 'follow',
+    });
+  } catch {
+    throw new Error('Could not reach the Google Drive script.');
+  }
+  const text = await res.text();
+  let body: { error?: string } & Record<string, unknown>;
+  try {
+    body = JSON.parse(text);
+  } catch {
     throw new Error(
-      body.error === 'invalid_grant'
-        ? 'The Google Drive connection has expired. An admin needs to connect it again in Settings → Google Drive.'
-        : `Google: ${body.error_description ?? body.error ?? res.status}`,
+      'The Google Drive script did not answer properly. Check that it is deployed as a Web app with access "Anyone".',
     );
   }
-  cached = { token: body.access_token, until: Date.now() + (body.expires_in ?? 3600) * 1000 };
-  return cached.token;
+  if (body.error) {
+    throw new Error(body.error === 'Not allowed' ? 'The secret key does not match the script.' : `Google Drive: ${body.error}`);
+  }
+  return body as T;
 }
 
-async function google(path: string, init: RequestInit = {}): Promise<Response> {
-  const token = await accessToken();
-  return fetch(`https://www.googleapis.com${path}`, {
-    ...init,
-    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
-  });
+async function connected(): Promise<Script> {
+  const { data } = await admin
+    .from('google_drive_connection')
+    .select('script_url, script_secret')
+    .eq('id', 1)
+    .maybeSingle();
+  if (!data?.script_url || !data?.script_secret) {
+    throw new Error('Google Drive is not connected. An admin can connect it in Settings → Google Drive.');
+  }
+  return { url: data.script_url, secret: data.script_secret };
 }
 
-/** A folder inside another (made if it isn't there) */
 export async function makeFolder(name: string, parent: string | null): Promise<string> {
-  const res = await google('/drive/v3/files?fields=id', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name,
-      mimeType: 'application/vnd.google-apps.folder',
-      ...(parent ? { parents: [parent] } : {}),
-    }),
-  });
-  const body = await res.json();
-  if (!res.ok) throw new Error(`Google Drive: ${body.error?.message ?? res.status}`);
-  return body.id as string;
+  const r = await callScript<{ id: string }>(await connected(), 'folder', { name, parent });
+  return r.id;
 }
 
 /** "Lead Management" folder (made once, remembered) */
@@ -134,31 +125,18 @@ export async function leadFolder(lead: { id: string; name: string; phone: string
   return sub;
 }
 
-/** Upload one file (multipart: metadata + content) */
 export async function uploadFile(name: string, mime: string, bytes: Uint8Array, parent: string): Promise<string> {
-  const boundary = `lead${crypto.randomUUID()}`;
-  const meta = JSON.stringify({ name, parents: [parent] });
-  const head = new TextEncoder().encode(
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n` +
-      `--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`,
-  );
-  const tail = new TextEncoder().encode(`\r\n--${boundary}--`);
-  const body = new Uint8Array(head.length + bytes.length + tail.length);
-  body.set(head, 0);
-  body.set(bytes, head.length);
-  body.set(tail, head.length + bytes.length);
-
-  const res = await google('/upload/drive/v3/files?uploadType=multipart&fields=id', {
-    method: 'POST',
-    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
-    body,
+  const r = await callScript<{ id: string }>(await connected(), 'upload', {
+    name,
+    mime,
+    parent,
+    data: encodeBase64(bytes),
   });
-  const out = await res.json();
-  if (!res.ok) throw new Error(`Google Drive: ${out.error?.message ?? res.status}`);
-  return out.id as string;
+  return r.id;
 }
 
-/** The file's content (streamed straight to the app) */
-export function downloadFile(fileId: string): Promise<Response> {
-  return google(`/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`);
+/** The file's content */
+export async function downloadFile(fileId: string): Promise<{ bytes: Uint8Array; mime: string }> {
+  const r = await callScript<{ data: string; mime: string }>(await connected(), 'download', { id: fileId });
+  return { bytes: decodeBase64(r.data), mime: r.mime };
 }

@@ -1,6 +1,6 @@
 import { Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import {
   DEFAULT_FILES_SETTINGS,
@@ -19,8 +19,9 @@ import { Button } from '@/shared/ui/Button';
 
 // =====================================================================
 // ⚙️ Settings → Google Drive
-//   Connect the institute's Google account (once, by an admin), files
-//   on/off, and who sees everyone's files (others see the ones they added).
+//   Connect the Google Drive (once, by an admin: the Apps Script's Web app
+//   URL and secret key), files on/off, and who sees everyone's files
+//   (others see the ones they added).
 // =====================================================================
 
 export default function DriveSettingsScreen() {
@@ -32,6 +33,9 @@ export default function DriveSettingsScreen() {
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scriptUrl, setScriptUrl] = useState('');
+  const [secret, setSecret] = useState('');
+  const [showForm, setShowForm] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -63,8 +67,11 @@ export default function DriveSettingsScreen() {
     setBusy(true);
     setError(null);
     try {
-      const r = await connectDrive();
-      if (r.message) Alert.alert(r.ok ? 'Connected' : 'Not connected', r.message);
+      const r = await connectDrive(scriptUrl, secret);
+      Alert.alert('✓ Google Drive connected', `Files will be saved in "Lead Management" in ${r.email ?? 'the Drive'}.`);
+      setScriptUrl('');
+      setSecret('');
+      setShowForm(false);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not connect.');
@@ -143,19 +150,53 @@ export default function DriveSettingsScreen() {
             ? `${status.email ?? 'Google account'}${status.connected_by ? ` · by ${status.connected_by}` : ''}${
                 status.connected_at ? ` · ${new Date(status.connected_at).toLocaleDateString('en-GB')}` : ''
               }`
-            : 'Connect the institute’s Google account once. Papers (and voice notes later) are saved in its Drive, in a "Lead Management" folder. Staff don’t need to sign in to Google.'}
+            : 'Papers (and voice notes later) are saved in a Google Drive, in a "Lead Management" folder. Staff don’t need to sign in to Google.'}
         </Text>
-        {status?.connected ? (
+
+        {(showForm || !status?.connected) && (
+          <>
+            <Text style={styles.hint}>
+              1. In the Drive owner’s Gmail, open script.google.com → New project, paste the script (docs/drive-script.gs),
+              change SECRET. 2. Deploy → New deployment → Web app · Execute as: Me · Who has access: Anyone. 3. Paste
+              the Web app URL and the same secret here.
+            </Text>
+            <TextInput
+              value={scriptUrl}
+              onChangeText={setScriptUrl}
+              placeholder="https://script.google.com/macros/s/…/exec"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.input}
+            />
+            <TextInput
+              value={secret}
+              onChangeText={setSecret}
+              placeholder="Secret key (same as in the script)"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              style={styles.input}
+            />
+            <Button
+              title="🔗 Connect Google Drive"
+              onPress={connect}
+              loading={busy}
+              disabled={!scriptUrl.trim() || !secret.trim()}
+              fullWidth
+            />
+          </>
+        )}
+        {status?.connected && !showForm && (
           <View style={styles.row}>
             <View style={styles.flex}>
-              <Button title="Connect again" variant="secondary" onPress={connect} loading={busy} fullWidth />
+              <Button title="Change" variant="secondary" onPress={() => setShowForm(true)} fullWidth />
             </View>
             <View style={styles.flex}>
               <Button title="Disconnect" variant="ghost" onPress={disconnect} fullWidth />
             </View>
           </View>
-        ) : (
-          <Button title="🔗 Connect Google Drive" onPress={connect} loading={busy} fullWidth />
         )}
         <Text style={styles.hint}>
           Files open through the app only (not with a Drive link), so the rules below decide who sees them.
@@ -241,6 +282,16 @@ const styles = StyleSheet.create({
   label: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, letterSpacing: 1, color: colors.textMuted },
   hint: { fontSize: fontSize.caption, color: colors.textMuted },
   error: { fontSize: fontSize.small, color: colors.danger },
+  input: {
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: fontSize.small,
+    color: colors.text,
+    backgroundColor: colors.background,
+  },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: {
     paddingVertical: 6,
