@@ -1423,6 +1423,11 @@ export type Database = {
           updated_at: string
           visit_at: string | null
           visit_status: string | null
+          fee_status: string | null
+          fee_full: number | null
+          fee_discount: number | null
+          fee_final: number | null
+          fee_updated_at: string | null
           whatsapp_number: string | null
           whatsapp_username: string | null
         }
@@ -1477,6 +1482,11 @@ export type Database = {
           updated_at?: string
           visit_at?: string | null
           visit_status?: string | null
+          fee_status?: string | null
+          fee_full?: number | null
+          fee_discount?: number | null
+          fee_final?: number | null
+          fee_updated_at?: string | null
           whatsapp_number?: string | null
           whatsapp_username?: string | null
         }
@@ -1531,6 +1541,11 @@ export type Database = {
           updated_at?: string
           visit_at?: string | null
           visit_status?: string | null
+          fee_status?: string | null
+          fee_full?: number | null
+          fee_discount?: number | null
+          fee_final?: number | null
+          fee_updated_at?: string | null
           whatsapp_number?: string | null
           whatsapp_username?: string | null
         }
@@ -2312,6 +2327,7 @@ export type Database = {
         Args: { p_discount_id: string; p_approve: boolean; p_note?: string }
         Returns: undefined
       }
+      discounts_to_answer: { Args: never; Returns: number }
       discount_limit: {
         Args: { p_user?: string }
         Returns: number

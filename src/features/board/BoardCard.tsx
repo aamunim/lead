@@ -6,6 +6,7 @@ import type { LeadListItem } from '@/features/leads/api';
 import { contactLabel, whatsAppOnly } from '@/features/leads/contact';
 import { papersBadge } from '@/features/papers/api';
 import { visitBadge } from '@/features/visits/api';
+import { feeBadge } from '@/features/fees/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -73,6 +74,7 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
       ? papersBadge(lead.papers_required ?? 0, (lead.papers_required ?? 0) - (lead.papers_missing ?? 0))
       : null;
   const visit = kind === 'open' ? visitBadge(lead.visit_status, lead.visit_at) : null;
+  const fee = kind === 'open' || kind === 'won' ? feeBadge(lead.fee_status, lead.fee_discount) : null;
   const courses = lead.lead_courses.map((c) => c.course?.name).filter(Boolean).join(', ');
 
   const flipButton = (
@@ -118,7 +120,7 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
             {lead.next_follow_up_at ? `${overdue ? '⚠ ' : '⏰ '}${shortWhen(lead.next_follow_up_at)}` : '⏰ No call set'}
           </Text>
 
-          {(papers || visit) && (
+          {(papers || visit || fee) && (
             <View style={styles.badges}>
               {papers && (
                 <Text style={[styles.badge, { color: papers.complete ? colors.success : colors.warning }]}>
@@ -128,6 +130,17 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
               {visit && (
                 <Text style={[styles.badge, { color: colors.primary }]} numberOfLines={1}>
                   {visit}
+                </Text>
+              )}
+              {fee && (
+                <Text
+                  style={[
+                    styles.badge,
+                    { color: fee.tone === 'wait' ? colors.warning : fee.tone === 'good' ? colors.success : colors.text },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {fee.text}
                 </Text>
               )}
             </View>

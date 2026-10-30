@@ -8,6 +8,7 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { canSyncCalls, isCallLogAvailable, isCallSyncEnabled } from '@/features/call-sync/api';
 import { listSyncHealth } from '@/features/call-sync/health';
 import { canImportContacts } from '@/features/contacts/api';
+import { countDiscountsToAnswer } from '@/features/fees/api';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
@@ -38,8 +39,11 @@ export default function MoreScreen() {
     .map((p) => p[0]?.toUpperCase())
     .join('');
 
+  const [discounts, setDiscounts] = useState(0);
+
   useFocusEffect(
     useCallback(() => {
+      countDiscountsToAnswer().then(setDiscounts);
       canImportContacts()
         .then(setContactsAllowed)
         .catch(() => setContactsAllowed(false));
@@ -120,6 +124,7 @@ export default function MoreScreen() {
             title="Discount requests"
             subtitle="Discounts waiting for approval"
             href={'/discounts' as Href}
+            badge={discounts > 0 ? String(discounts) : undefined}
             divider
           />
         </View>

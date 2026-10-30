@@ -44,13 +44,15 @@ type Props = {
   stateKey: string;
   nameOf: (userId: string | null | undefined) => string | null;
   onChanged: (message?: string) => void;
+  /** In a sheet: say why there is nothing, instead of showing nothing */
+  showEmpty?: boolean;
 };
 
 type CourseOption = { id: string; name: string; total: number };
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
-export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, onChanged }: Props) {
+export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, onChanged, showEmpty }: Props) {
   const { profile, hasPermission } = useAuth();
   const isAdmin = hasPermission('settings.manage') || hasPermission('discounts.approve');
   const [settings, setSettings] = useState<FeeSettings | null>(null);
@@ -101,8 +103,19 @@ export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, on
     );
   }
   // Off for this person, or a closed lead that never talked about the fee
-  if (!allowed && items.length === 0) return null;
-  if (!isOpen && items.length === 0) return null;
+  if ((!allowed || !isOpen) && items.length === 0) {
+    if (!showEmpty) return null;
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>💰 Fee & discount</Text>
+        <Text style={styles.hint}>
+          {!allowed
+            ? 'Fee negotiation is turned off for you. Ask an admin.'
+            : 'This lead is closed. Reopen it to talk about the fee.'}
+        </Text>
+      </View>
+    );
+  }
 
   const openPicker = async () => {
     setPicking(true);
