@@ -275,7 +275,42 @@ export async function reportSyncStatus(error?: string | null): Promise<void> {
 // Sync: phone queue → server
 // =====================================================================
 const LAST_SYNC_KEY = 'call_sync_last_at';
-const CHUNK = 200;
+// Calls per request; a part the server is too slow with is sent again in smaller pieces
+const CHUNK = 50;
+const SMALL_CHUNK = 10;
+
+const isTimeout = (message: string) => /statement timeout|canceling statement|timed out|timeout/i.test(message);
+
+/** A short, plain message instead of the database's own words */
+export function syncErrorText(message: string): string {
+  if (isTimeout(message)) return 'The server was busy. The calls are kept on this phone and will be sent on the next sync.';
+  if (/network request failed|fetch/i.test(message)) return 'No internet. The calls are kept on this phone and will be sent later.';
+  return message;
+}
+
+type CallPart = ReturnType<typeof getPendingCalls>;
+
+/** Send one part; if the server runs out of time, try again 10 at a time */
+async function sendCalls(deviceId: string, part: CallPart): Promise<{ added: number; matched: number; ignored: number }> {
+  const { data, error } = await supabase.rpc('sync_phone_calls', {
+    p_device_id: deviceId,
+    p_calls: part as unknown as Json,
+  });
+  if (!error) return data as unknown as { added: number; matched: number; ignored: number };
+  if (!isTimeout(error.message) || part.length <= SMALL_CHUNK) throw new Error(error.message);
+
+  const r = { added: 0, matched: 0, ignored: 0 };
+  for (let i = 0; i < part.length; i += SMALL_CHUNK) {
+    const small = part.slice(i, i + SMALL_CHUNK);
+    const one = await sendCalls(deviceId, small);
+    r.added += one.added;
+    r.matched += one.matched;
+    r.ignored += one.ignored;
+    // Keep what got through, even if a later piece fails
+    removePendingCalls(small.map((c) => c.id));
+  }
+  return r;
+}
 
 export type SyncResult = { sent: number; added: number; matched: number; ignored: number };
 
@@ -292,13 +327,7 @@ async function uploadQueue(): Promise<SyncResult> {
 
   for (let i = 0; i < pending.length; i += CHUNK) {
     const part = pending.slice(i, i + CHUNK);
-    const { data, error } = await supabase.rpc('sync_phone_calls', {
-      p_device_id: deviceId,
-      p_calls: part as unknown as Json,
-    });
-    if (error) throw new Error(error.message);
-
-    const r = data as unknown as { added: number; matched: number; ignored: number };
+    const r = await sendCalls(deviceId, part);
     total.sent += part.length;
     total.added += r.added;
     total.matched += r.matched;
@@ -328,7 +357,7 @@ async function uploadQueue(): Promise<SyncResult> {
 
 /**
  * 1. Copy new calls from the call log into the phone's queue
- * 2. Send the queue to the server, 200 at a time, and remove what it accepted
+ * 2. Send the queue to the server, 50 at a time (10 if the server is slow), and remove what it accepted
  * 3. Refresh the on-phone lead directory (every 15 min)
  * 4. Report this phone's health to the server
  * Only one sync runs at a time; a second call just waits for the first.
@@ -350,7 +379,7 @@ export function syncCallsNow(): Promise<SyncResult> {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await reportSyncStatus(msg);
-      throw e;
+      throw new Error(syncErrorText(msg));
     }
   })().finally(() => {
     running = null;
