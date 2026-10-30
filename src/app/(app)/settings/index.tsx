@@ -37,7 +37,7 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
       },
       {
         title: 'Fee & discount',
-        description: 'Negotiation on/off, who, discount limits, reasons',
+        description: 'Negotiation, discount limits, payments, methods, receipts',
         icon: '💰',
         href: '/settings/fees' as Href,
       },

@@ -116,6 +116,90 @@ export type Database = {
           },
         ]
       }
+      fee_installments: {
+        Row: {
+          amount: number
+          course_id: string | null
+          created_at: string
+          created_by: string | null
+          due_date: string
+          id: string
+          lead_id: string
+          seq: number
+        }
+        Insert: {
+          amount: number
+          course_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          due_date: string
+          id?: string
+          lead_id: string
+          seq: number
+        }
+        Update: {
+          amount?: number
+          course_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          due_date?: string
+          id?: string
+          lead_id?: string
+          seq?: number
+        }
+        Relationships: []
+      }
+      fee_payments: {
+        Row: {
+          amount: number
+          course_id: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          method: string
+          note: string | null
+          paid_at: string
+          receipt_no: string
+          received_by: string | null
+          txn_id: string | null
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          amount: number
+          course_id?: string | null
+          created_at?: string
+          id?: string
+          lead_id: string
+          method: string
+          note?: string | null
+          paid_at?: string
+          receipt_no: string
+          received_by?: string | null
+          txn_id?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          amount?: number
+          course_id?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          method?: string
+          note?: string | null
+          paid_at?: string
+          receipt_no?: string
+          received_by?: string | null
+          txn_id?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: []
+      }
       fee_discounts: {
         Row: {
           amount: number
@@ -1424,6 +1508,9 @@ export type Database = {
           visit_at: string | null
           visit_status: string | null
           fee_status: string | null
+          fee_paid: number | null
+          fee_due: number | null
+          fee_next_due: string | null
           fee_full: number | null
           fee_discount: number | null
           fee_final: number | null
@@ -1483,6 +1570,9 @@ export type Database = {
           visit_at?: string | null
           visit_status?: string | null
           fee_status?: string | null
+          fee_paid?: number | null
+          fee_due?: number | null
+          fee_next_due?: string | null
           fee_full?: number | null
           fee_discount?: number | null
           fee_final?: number | null
@@ -1542,6 +1632,9 @@ export type Database = {
           visit_at?: string | null
           visit_status?: string | null
           fee_status?: string | null
+          fee_paid?: number | null
+          fee_due?: number | null
+          fee_next_due?: string | null
           fee_full?: number | null
           fee_discount?: number | null
           fee_final?: number | null
@@ -2335,6 +2428,25 @@ export type Database = {
       discount_queue: {
         Args: never
         Returns: Json
+      }
+      record_payment: {
+        Args: {
+          p_lead_id: string
+          p_amount: number
+          p_method: string
+          p_txn_id?: string
+          p_paid_at?: string
+          p_note?: string
+        }
+        Returns: Json
+      }
+      set_installments: {
+        Args: { p_lead_id: string; p_items: Json }
+        Returns: undefined
+      }
+      void_payment: {
+        Args: { p_payment_id: string; p_reason: string }
+        Returns: undefined
       }
       request_discount: {
         Args: {

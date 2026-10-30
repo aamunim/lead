@@ -131,7 +131,7 @@ const EXPORT_SELECT = `
   name, phone, whatsapp_number, whatsapp_username, alt_phone, email, area,
   guardian_name, guardian_phone, guardian_relation,
   rating, notes, referred_by, created_at, next_follow_up_at, last_contacted_at, visit_status, visit_at,
-  fee_status, fee_full, fee_discount, fee_final,
+  fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due,
   stage:pipeline_stages(name),
   source:lead_sources(name),
   campaign:campaigns(name),
@@ -164,6 +164,8 @@ type ExportLead = {
   fee_full: number | null;
   fee_discount: number | null;
   fee_final: number | null;
+  fee_paid: number | null;
+  fee_due: number | null;
   stage: { name: string } | null;
   source: { name: string } | null;
   campaign: { name: string } | null;
@@ -178,7 +180,7 @@ const EXPORT_HEADERS = [
   'Guardian name', 'Guardian phone', 'Guardian relation',
   'Courses', 'Stage', 'Rating', 'Source', 'Campaign', 'Referred by', 'Lead type', 'Tags',
   'Assigned to', 'Created', 'Next follow-up', 'Last contacted', 'Campus visit',
-  'Fee status', 'Full fee', 'Discount', 'To pay', 'Notes',
+  'Fee status', 'Full fee', 'Discount', 'To pay', 'Paid', 'Due', 'Notes',
 ];
 
 const FEE_STATUS: Record<string, string> = {
@@ -277,6 +279,8 @@ export async function exportLeads(filters: ExportFilters, userId: string): Promi
     num(l.fee_full),
     num(l.fee_discount),
     num(l.fee_final),
+    num(l.fee_paid),
+    num(l.fee_due),
     l.notes,
   ]);
 

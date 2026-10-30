@@ -253,7 +253,7 @@ export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; acti
   },
   {
     kind: 'fee',
-    label: 'Fee / discount',
+    label: 'Fee / payment',
     icon: '💰',
     actions: [
       'negotiation_started',
@@ -262,6 +262,9 @@ export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; acti
       'discount_approved',
       'discount_rejected',
       'discount_cancelled',
+      'payment_received',
+      'payment_voided',
+      'installments_set',
     ],
   },
   {
@@ -396,6 +399,18 @@ export function describeChange(
         warn: item.action === 'discount_rejected',
       };
     }
+    case 'payment_received':
+      return {
+        text: `💵 ৳${Math.round(Number(d.amount ?? 0)).toLocaleString('en-IN')} received (${q(d.method)}) · ${q(d.receipt_no)}`,
+        warn: false,
+      };
+    case 'payment_voided':
+      return {
+        text: `✕ Payment void: ${q(d.receipt_no)} · ৳${Math.round(Number(d.amount ?? 0)).toLocaleString('en-IN')}${d.reason ? ` · ${q(d.reason)}` : ''}`,
+        warn: true,
+      };
+    case 'installments_set':
+      return { text: Number(d.count ?? 0) > 0 ? `📅 ${q(d.count)} installments set` : '📅 Installment plan removed', warn: false };
     case 'created':
       return { text: 'Lead added', warn: false };
     case 're_enquiry':

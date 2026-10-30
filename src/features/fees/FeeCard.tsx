@@ -22,6 +22,7 @@ import {
   type Negotiation,
   type NegotiationEvent,
 } from '@/features/fees/api';
+import { PaymentsSection } from '@/features/fees/PaymentsSection';
 import { listCourses } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -215,6 +216,19 @@ export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, on
         <Text style={styles.hint}>
           Talking about the fee or a discount? Start here. The lead moves to Interested (if it is New or Contacted).
         </Text>
+      )}
+
+      {/* 💵 Payments: admitted students (or money paid before a cancelled admission) */}
+      {current && settings && (current.status === 'locked' || stageKind === 'cancelled') && (
+        <PaymentsSection
+          key={stateKey}
+          leadId={leadId}
+          stageKind={stageKind}
+          finalFee={Number(current.final_total ?? totals(current).final)}
+          settings={settings}
+          nameOf={nameOf}
+          onChanged={onChanged}
+        />
       )}
 
       {canWork && (

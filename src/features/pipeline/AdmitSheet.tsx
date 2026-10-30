@@ -11,6 +11,16 @@ import {
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
+import { useAuth } from '@/features/auth/AuthProvider';
+import {
+  DEFAULT_FEE_SETTINGS,
+  canTakePayments,
+  getAdmissionFee,
+  getFeeSettings,
+  money,
+  recordPayment,
+  type FeeSettings,
+} from '@/features/fees/api';
 import { listMissingPapers } from '@/features/papers/api';
 import {
   DEFAULT_ADMISSION,
@@ -49,7 +59,18 @@ function formatDay(d: Date): string {
 }
 
 export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
+  const { profile, hasPermission } = useAuth();
   const [settings, setSettings] = useState<AdmissionSettings>(DEFAULT_ADMISSION);
+
+  // 💰 The fee for the chosen course, and a payment now (optional, or the least one set in Settings)
+  const [feeSettings, setFeeSettings] = useState<FeeSettings>(DEFAULT_FEE_SETTINGS);
+  const [fee, setFee] = useState<{ full: number; discount: number; final: number; negotiated: boolean } | null>(null);
+  const [payNow, setPayNow] = useState(false);
+  const [payAmount, setPayAmount] = useState('');
+  const [payMethod, setPayMethod] = useState<string | null>(null);
+  const [payTxn, setPayTxn] = useState('');
+  const [donePay, setDonePay] = useState<{ receipt: string; amount: number } | null>(null);
+  const [donePayError, setDonePayError] = useState<string | null>(null);
   const [courses, setCourses] = useState<Named[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -92,6 +113,19 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
     setOwnRef(false);
     setStudentRef(lead.studentRef ?? '');
     setNote('');
+    setFee(null);
+    setPayNow(false);
+    setPayAmount('');
+    setPayTxn('');
+    setDonePay(null);
+    setDonePayError(null);
+    getFeeSettings()
+      .then((s) => {
+        setFeeSettings(s);
+        setPayMethod(s.payments.methods[0]?.name ?? null);
+        if (s.payments.min_on_admit > 0) setPayNow(true);
+      })
+      .catch(() => undefined);
 
     Promise.all([getAdmissionSettings(), listActiveCourses(), previewStudentRef()])
       .then(([s, c, preview]) => {
@@ -123,6 +157,28 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
       .catch(() => setBatches([]))
       .finally(() => setBatchesLoading(false));
   }, [courseId]);
+
+  // --- the fee for the chosen course ------------------------------------------
+  useEffect(() => {
+    setFee(null);
+    if (!visible || !courseId) return;
+    let alive = true;
+    getAdmissionFee(lead.id, courseId)
+      .then((f) => {
+        if (!alive) return;
+        setFee(f.full > 0 ? f : null);
+      })
+      .catch(() => alive && setFee(null));
+    return () => {
+      alive = false;
+    };
+  }, [visible, courseId, lead.id]);
+
+  const isPayAdmin = hasPermission('settings.manage') || hasPermission('payments.manage');
+  const payOn = feeSettings.enabled && feeSettings.payments.enabled && !!fee;
+  const mayPay = payOn && canTakePayments(feeSettings, profile, isPayAdmin);
+  const minPay = payOn ? Math.min(feeSettings.payments.min_on_admit, fee?.final ?? 0) : 0;
+  const payMethodInfo = feeSettings.payments.methods.find((m) => m.name === payMethod);
 
   // --- papers missing for the chosen course ----------------------------------
   useEffect(() => {
@@ -164,6 +220,31 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
       return;
     }
 
+    // Payment now
+    const payValue = Number(payAmount.replace(/[^0-9.]/g, '')) || 0;
+    if (minPay > 0 && !mayPay) {
+      setError(`A payment of at least ${money(minPay)} is needed to admit. Ask someone who takes payments.`);
+      return;
+    }
+    if (payNow && mayPay) {
+      if (payValue < Math.max(minPay, 1)) {
+        setError(minPay > 0 ? `At least ${money(minPay)} must be paid to admit.` : 'Please type the amount paid.');
+        return;
+      }
+      if (fee && payValue > fee.final) {
+        setError(`That is more than the fee (${money(fee.final)}).`);
+        return;
+      }
+      if (!payMethod) {
+        setError('Please choose how it was paid.');
+        return;
+      }
+      if (payMethodInfo?.txn && !payTxn.trim()) {
+        setError(`Please type the transaction ID for ${payMethod}.`);
+        return;
+      }
+    }
+
     // Papers
     if (blockedByPapers) {
       setError(`Required papers are missing: ${missing!.join(', ')}. Tick them on the Papers card first.`);
@@ -192,6 +273,22 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
         note,
       });
       setDoneMissing(missingCount);
+      // The payment, now that the student is admitted
+      if (payNow && mayPay && payValue > 0 && payMethod) {
+        try {
+          const r = await recordPayment({
+            leadId: lead.id,
+            amount: payValue,
+            method: payMethod,
+            txnId: payTxn,
+            paidAt: null,
+            note: 'At admission',
+          });
+          setDonePay({ receipt: r.receipt_no, amount: payValue });
+        } catch (e) {
+          setDonePayError(e instanceof Error ? e.message : 'Could not save the payment.');
+        }
+      }
       setDone(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save the admission.');
@@ -233,6 +330,16 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
                 {done.seatsLeft != null && (
                   <Text style={styles.hint}>
                     {done.seatsLeft === 0 ? 'This batch is now full.' : `${done.seatsLeft} seats left in this batch.`}
+                  </Text>
+                )}
+                {donePay && (
+                  <Text style={styles.doneText}>
+                    💵 {money(donePay.amount)} received · 🧾 {donePay.receipt}
+                  </Text>
+                )}
+                {donePayError && (
+                  <Text style={styles.warn}>
+                    ⚠ Admitted, but the payment was not saved: {donePayError} Add it from the Fee card.
                   </Text>
                 )}
                 {doneMissing > 0 && (
@@ -329,6 +436,77 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
                             {settings.allow_overbooking
                               ? 'Full batches can still be chosen (overbooking is on).'
                               : 'Full batches are greyed out.'}
+                          </Text>
+                        )}
+                      </View>
+                    )}
+
+                    {/* 💰 Fee and a payment now */}
+                    {courseId && fee && (
+                      <View style={styles.feeBox}>
+                        <View style={styles.feeRow}>
+                          <Text style={styles.label}>💰 Fee</Text>
+                          <Text style={styles.feeFinal}>{money(fee.final)}</Text>
+                        </View>
+                        {fee.discount > 0 && (
+                          <Text style={styles.hint}>
+                            {money(fee.full)} − {money(fee.discount)} discount (from the fee talk)
+                          </Text>
+                        )}
+                        {mayPay && (
+                          <>
+                            <Pressable
+                              onPress={() => minPay === 0 && setPayNow(!payNow)}
+                              style={styles.payToggle}
+                              accessibilityRole="checkbox"
+                              accessibilityState={{ checked: payNow }}
+                            >
+                              <Text style={styles.payToggleBox}>{payNow ? '☑' : '☐'}</Text>
+                              <Text style={styles.label}>
+                                Take a payment now{minPay > 0 ? ` (at least ${money(minPay)})` : ''}
+                              </Text>
+                            </Pressable>
+                            {payNow && (
+                              <>
+                                <TextField
+                                  label=""
+                                  value={payAmount}
+                                  onChangeText={setPayAmount}
+                                  keyboardType="numeric"
+                                  placeholder={`Amount (৳), up to ${money(fee.final)}`}
+                                />
+                                <View style={styles.chips}>
+                                  {feeSettings.payments.methods.map((m) => {
+                                    const on = payMethod === m.name;
+                                    return (
+                                      <Pressable
+                                        key={m.name}
+                                        onPress={() => setPayMethod(m.name)}
+                                        style={[styles.chip, on && styles.chipOn]}
+                                        accessibilityRole="radio"
+                                        accessibilityState={{ checked: on }}
+                                      >
+                                        <Text style={[styles.chipText, on && styles.textOn]}>{m.name}</Text>
+                                      </Pressable>
+                                    );
+                                  })}
+                                </View>
+                                {payMethodInfo?.txn && (
+                                  <TextField
+                                    label=""
+                                    value={payTxn}
+                                    onChangeText={setPayTxn}
+                                    autoCapitalize="characters"
+                                    placeholder="Transaction ID *"
+                                  />
+                                )}
+                              </>
+                            )}
+                          </>
+                        )}
+                        {minPay > 0 && !mayPay && (
+                          <Text style={styles.warn}>
+                            A payment of at least {money(minPay)} is needed to admit, and you can't take payments.
                           </Text>
                         )}
                       </View>
@@ -584,6 +762,18 @@ const styles = StyleSheet.create({
   radioDot: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.success },
 
   refPreview: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.background, gap: 2 },
+  feeBox: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  feeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  feeFinal: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
+  payToggle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 4 },
+  payToggleBox: { fontSize: fontSize.title, color: colors.primary },
   refPreviewText: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text, letterSpacing: 0.5 },
 
   doneBox: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.lg },
