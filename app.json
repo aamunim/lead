@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lead Management",
     "slug": "lead-management",
-    "version": "2.4.10-beta",
+    "version": "2.4.11-beta",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "leadmanagement",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.abamunim.leads",
-      "versionCode": 16,
+      "versionCode": 17,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
