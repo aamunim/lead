@@ -61,6 +61,7 @@ import {
 import { splitLeadNotes, type LeadNote } from '@/features/leads/notes';
 import { EVENT_LABELS, money } from '@/features/fees/api';
 import { FeeCard } from '@/features/fees/FeeCard';
+import { FilesCard } from '@/features/files/FilesCard';
 import { PapersCard } from '@/features/papers/PapersCard';
 import { PipelineCard } from '@/features/pipeline/PipelineCard';
 import { formatVisitTime } from '@/features/visits/api';
@@ -494,6 +495,10 @@ export default function LeadDetailScreen() {
         return `💰 Discount taken back: ${money(Number(d.amount ?? 0))} off ${d.fee ?? 'the fee'}`;
       case 'payment_received':
         return `💵 ${money(Number(d.amount ?? 0))} received (${d.method ?? ''}) · 🧾 ${d.receipt_no ?? ''}`;
+      case 'file_added':
+        return `📎 File added: ${d.name ?? ''}`;
+      case 'file_deleted':
+        return `📎 File removed: ${d.name ?? ''}`;
       case 'payment_refunded':
         return `↩ Refund ${money(Number(d.amount ?? 0))} (${d.method ?? ''}) · ${d.receipt_no ?? ''}${d.reason ? ` · ${d.reason}` : ''}`;
       case 'payment_voided':
@@ -863,6 +868,17 @@ export default function LeadDetailScreen() {
           leadId={lead.id}
           stageKind={stageKind}
           stageKey={lead.stage?.key ?? null}
+          onChanged={(message) => {
+            if (message) showToast(message);
+            load();
+          }}
+        />
+
+        {/* 📎 Files in Google Drive (papers, voice notes) */}
+        <FilesCard
+          leadId={lead.id}
+          stateKey={lead.updated_at ?? ''}
+          nameOf={nameOf}
           onChanged={(message) => {
             if (message) showToast(message);
             load();
