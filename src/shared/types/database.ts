@@ -2115,6 +2115,10 @@ export type Database = {
         Args: { p_days?: number; p_user_id: string }
         Returns: { actions: number; app_sec: number; calls: number; day: string; wa: number }[]
       }
+      user_activity_detail: {
+        Args: { p_from: string; p_to: string; p_user_id: string }
+        Returns: Json
+      }
       whatsapp_report: {
         Args: { p_from: string; p_to: string; p_user_id?: string }
         Returns: Json
