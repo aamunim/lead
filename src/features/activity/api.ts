@@ -221,6 +221,7 @@ export type ChangeKind =
   | 'details'
   | 'visit'
   | 'papers'
+  | 'deleted'
   | 'lead';
 
 export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; actions: string[] }[] = [
@@ -248,6 +249,12 @@ export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; acti
     label: 'Papers',
     icon: '📄',
     actions: ['paper_received', 'paper_not_needed', 'paper_unticked', 'paper_returned', 'papers_moved'],
+  },
+  {
+    kind: 'deleted',
+    label: 'Call / note deleted',
+    icon: '🗑',
+    actions: ['call_deleted', 'call_note_deleted', 'note_deleted', 'entry_restored'],
   },
   { kind: 'lead', label: 'Added / deleted', icon: '➕', actions: ['created', 're_enquiry', 'deleted', 'restored'] },
 ];
@@ -361,6 +368,26 @@ export function describeChange(
       return { text: 'Lead deleted', warn: true };
     case 'restored':
       return { text: 'Lead restored', warn: false };
+    case 'call_deleted': {
+      const what =
+        d.channel === 'whatsapp' ? (d.media === 'message' ? 'WhatsApp message' : 'WhatsApp call') : 'Call';
+      return {
+        text: `🗑 ${what} deleted (${q(d.outcome).replace(/_/g, ' ')}, ${when(d.called_at)})${
+          d.note ? ` “${q(d.note)}”` : ''
+        }${d.reason ? ` · Reason: ${q(d.reason)}` : ''}${d.restored_at ? ' · ✓ restored' : ''}`,
+        warn: !d.restored_at,
+      };
+    }
+    case 'call_note_deleted':
+    case 'note_deleted':
+      return {
+        text: `🗑 Note deleted: “${q(d.note)}”${d.reason ? ` · Reason: ${q(d.reason)}` : ''}${
+          d.restored_at ? ' · ✓ restored' : ''
+        }`,
+        warn: !d.restored_at,
+      };
+    case 'entry_restored':
+      return { text: `↩ Restored${d.note ? `: “${q(d.note)}”` : ''}`, warn: false };
     default:
       return { text: item.action.replace(/_/g, ' '), warn: false };
   }

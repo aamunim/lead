@@ -1,13 +1,18 @@
 import { router, Stack, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
+import { useAuth } from '@/features/auth/AuthProvider';
 import {
+  canDeleteEntry,
   channelLabel,
+  deleteCall,
   directionInfo,
   formatDuration,
+  isHandWritten,
   listWhatsAppLogs,
   outcomeInfo,
+  restoreDeleted,
   WHATSAPP_PAGE,
   type WhatsAppKind,
   type WhatsAppLog,
@@ -57,6 +62,8 @@ function titleOf(c: WhatsAppLog): string {
 }
 
 export default function WhatsAppLogScreen() {
+  const { hasPermission, profile } = useAuth();
+  const isAdmin = hasPermission('leads.edit_all');
   const [period, setPeriod] = useState<Period>('7d');
   const [kind, setKind] = useState<WhatsAppKind>('all');
   const [items, setItems] = useState<WhatsAppLog[]>([]);
@@ -103,6 +110,43 @@ export default function WhatsAppLogScreen() {
     } finally {
       setLoadingMore(false);
     }
+  };
+
+  // 🗑 Long press: delete an entry written in the app (own within 24 hours; admins any)
+  const askDelete = (c: WhatsAppLog) => {
+    if (!isHandWritten(c)) {
+      Alert.alert('Can’t delete', 'Calls read from WhatsApp itself can’t be deleted.');
+      return;
+    }
+    if (!canDeleteEntry(c.user_id, c.created_at, profile?.id ?? null, isAdmin)) {
+      Alert.alert('Can’t delete', 'You can delete your own entries within 24 hours. Admins can delete any.');
+      return;
+    }
+    Alert.alert('Delete this WhatsApp entry?', 'It will be hidden everywhere. An admin can restore it.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const activityId = await deleteCall(c.id);
+            setItems((list) => list.filter((x) => x.id !== c.id));
+            Alert.alert('Deleted', undefined, [
+              { text: 'OK' },
+              {
+                text: 'Undo',
+                onPress: () =>
+                  restoreDeleted(activityId)
+                    .then(load)
+                    .catch((e) => Alert.alert('Could not undo', e instanceof Error ? e.message : '')),
+              },
+            ]);
+          } catch (e) {
+            Alert.alert('Could not delete', e instanceof Error ? e.message : '');
+          }
+        },
+      },
+    ]);
   };
 
   const calls = items.filter((c) => c.outcome !== 'message');
@@ -165,6 +209,8 @@ export default function WhatsAppLogScreen() {
           return (
             <Pressable
               onPress={() => c.lead && router.push(`/leads/${c.lead.id}` as Href)}
+              onLongPress={() => askDelete(c)}
+              delayLongPress={400}
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={`${c.lead?.name ?? 'Lead'}, ${channelLabel(c.channel, c.media)}, ${titleOf(c)}`}

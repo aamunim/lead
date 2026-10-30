@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
   describeChange,
@@ -10,6 +10,8 @@ import {
   type FeedItem,
   type StageInfo,
 } from '@/features/activity/api';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { restoreDeleted } from '@/features/calls/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -115,6 +117,8 @@ function GroupRow({
   showUser: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const { hasPermission } = useAuth();
+  const [restored, setRestored] = useState(false);
   const first = group.items[0];
   const many = group.items.length > 1;
   const kind = kindOf(first.action);
@@ -151,6 +155,31 @@ function GroupRow({
         {many && <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text>}
       </Pressable>
 
+      {/* 🗑 Admins can bring a deleted call / note back */}
+      {!many && DELETES.includes(first.action) && hasPermission('leads.edit_all') && (
+        <Pressable
+          onPress={() => {
+            if (restored || (first.details as { restored_at?: string } | null)?.restored_at) return;
+            Alert.alert('Restore it?', 'It will show on the lead and in reports again.', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Restore',
+                onPress: () =>
+                  restoreDeleted(first.id)
+                    .then(() => setRestored(true))
+                    .catch((e) => Alert.alert('Could not restore', e instanceof Error ? e.message : '')),
+              },
+            ]);
+          }}
+          style={({ pressed }) => [styles.restore, pressed && styles.pressed]}
+          accessibilityRole="button"
+        >
+          <Text style={styles.restoreText}>
+            {restored || (first.details as { restored_at?: string } | null)?.restored_at ? '✓ Restored' : '↩ Restore'}
+          </Text>
+        </Pressable>
+      )}
+
       {many && open && (
         <View style={styles.sub}>
           {group.items.map((i) => (
@@ -175,8 +204,21 @@ function GroupRow({
   );
 }
 
+const DELETES = ['call_deleted', 'call_note_deleted', 'note_deleted'];
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  restore: {
+    alignSelf: 'flex-end',
+    marginRight: spacing.md,
+    marginBottom: spacing.sm,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  restoreText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.primary },
   list: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxl },
   loader: { paddingVertical: spacing.xl },
   empty: { fontSize: fontSize.small, color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.xl },
