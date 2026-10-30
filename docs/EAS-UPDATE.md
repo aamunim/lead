@@ -29,6 +29,11 @@ npx eas-cli@latest update:republish --group <group id>         # send that one a
 npx eas-cli@latest update:roll-back-to-embedded --channel production
 ```
 
+## Making a build without EAS build credits (GitHub Actions)
+GitHub → **Actions** → **Build Android** → **Run workflow** → choose `production` (AAB for Play Store) or `preview` / `development` (APK).
+It runs `eas build --local` on GitHub's machine: no EAS build credits, the same signing key and EAS environment variables.
+The file is under the finished run → **Artifacts** (kept 14 days). Needs the repository secret `EXPO_TOKEN` (expo.dev → Access tokens).
+
 ## When a NEW BUILD is needed (and runtimeVersion goes up: "1" → "2")
 Anything native:
 - a new library with native code (e.g. `npx expo install expo-…`), or a library's version changed
