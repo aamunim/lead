@@ -59,6 +59,8 @@ import {
   type LeadDetail,
 } from '@/features/leads/api';
 import { splitLeadNotes, type LeadNote } from '@/features/leads/notes';
+import { EVENT_LABELS, money } from '@/features/fees/api';
+import { FeeCard } from '@/features/fees/FeeCard';
 import { PapersCard } from '@/features/papers/PapersCard';
 import { PipelineCard } from '@/features/pipeline/PipelineCard';
 import { formatVisitTime } from '@/features/visits/api';
@@ -476,6 +478,20 @@ export default function LeadDetailScreen() {
         return `🏫 Didn’t come to the visit${d.note ? ` · ${d.note}` : ''}`;
       case 'visit_cancelled':
         return '🏫 Visit cancelled';
+      case 'negotiation_started':
+        return `💰 Fee negotiation started${d.course ? `: ${d.course}` : ''}`;
+      case 'negotiation_event':
+        return d.kind === 'note'
+          ? `💰 Fee note: ${d.note ?? ''}`
+          : `💰 ${EVENT_LABELS[(d.kind ?? 'note') as keyof typeof EVENT_LABELS] ?? 'Fee'} ${money(Number(d.amount ?? 0))}${d.note ? ` · “${d.note}”` : ''}`;
+      case 'discount_requested':
+        return `💰 Discount asked: ${money(Number(d.amount ?? 0))} off ${d.fee ?? 'the fee'}${d.reason ? ` · ${d.reason}` : ''}`;
+      case 'discount_approved':
+        return `💰 Discount approved: ${money(Number(d.amount ?? 0))} off ${d.fee ?? 'the fee'}${d.note ? ` · “${d.note}”` : ''}`;
+      case 'discount_rejected':
+        return `💰 Discount not approved: ${money(Number(d.amount ?? 0))}${d.note ? ` · “${d.note}”` : ''}`;
+      case 'discount_cancelled':
+        return `💰 Discount taken back: ${money(Number(d.amount ?? 0))} off ${d.fee ?? 'the fee'}`;
       case 'tag_added':
         return `🏷 Tag added: ${d.tag ?? ''}`;
       case 'tag_removed':
@@ -814,6 +830,19 @@ export default function LeadDetailScreen() {
           leadId={lead.id}
           stageKind={stageKind}
           stateKey={`${lead.visit_status ?? ''}|${lead.visit_at ?? ''}`}
+          onChanged={(message) => {
+            if (message) showToast(message);
+            load();
+          }}
+        />
+
+        {/* Fee & discount: negotiation before admission, the final fee after */}
+        <FeeCard
+          leadId={lead.id}
+          stageKind={stageKind}
+          leadCourseIds={lead.lead_courses.map((c) => c.course?.id ?? '').filter(Boolean)}
+          stateKey={`${lead.stage_id}|${lead.admitted_at ?? ''}|${courseKey}`}
+          nameOf={nameOf}
           onChanged={(message) => {
             if (message) showToast(message);
             load();

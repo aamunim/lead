@@ -116,6 +116,99 @@ export type Database = {
           },
         ]
       }
+      fee_discounts: {
+        Row: {
+          amount: number
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          expires_at: string | null
+          fee_id: string | null
+          fee_name: string | null
+          id: string
+          kind: string
+          lead_id: string
+          negotiation_id: string
+          note: string | null
+          reason: string | null
+          requested_at: string
+          requested_by: string | null
+          status: string
+          value: number
+        }
+        Insert: {
+          amount: number
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          expires_at?: string | null
+          fee_id?: string | null
+          fee_name?: string | null
+          id?: string
+          kind: string
+          lead_id: string
+          negotiation_id: string
+          note?: string | null
+          reason?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          status?: string
+          value: number
+        }
+        Update: {
+          amount?: number
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          expires_at?: string | null
+          fee_id?: string | null
+          fee_name?: string | null
+          id?: string
+          kind?: string
+          lead_id?: string
+          negotiation_id?: string
+          note?: string | null
+          reason?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          status?: string
+          value?: number
+        }
+        Relationships: []
+      }
+      lead_negotiations: {
+        Row: {
+          course_id: string
+          final_total: number | null
+          id: string
+          lead_id: string
+          locked_at: string | null
+          started_at: string
+          started_by: string | null
+          status: string
+        }
+        Insert: {
+          course_id: string
+          final_total?: number | null
+          id?: string
+          lead_id: string
+          locked_at?: string | null
+          started_at?: string
+          started_by?: string | null
+          status?: string
+        }
+        Update: {
+          course_id?: string
+          final_total?: number | null
+          id?: string
+          lead_id?: string
+          locked_at?: string | null
+          started_at?: string
+          started_by?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       message_templates: {
         Row: {
           body: string
@@ -171,6 +264,39 @@ export type Database = {
         Row: { muted: string[]; user_id: string }
         Insert: { muted?: string[]; user_id: string }
         Update: { muted?: string[]; user_id?: string }
+        Relationships: []
+      }
+      negotiation_events: {
+        Row: {
+          amount: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          lead_id: string
+          negotiation_id: string
+          note: string | null
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind: string
+          lead_id: string
+          negotiation_id: string
+          note?: string | null
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          lead_id?: string
+          negotiation_id?: string
+          note?: string | null
+        }
         Relationships: []
       }
       notifications: {
@@ -2173,6 +2299,41 @@ export type Database = {
       user_activity_detail: {
         Args: { p_from: string; p_to: string; p_user_id: string }
         Returns: Json
+      }
+      add_negotiation_event: {
+        Args: { p_negotiation_id: string; p_kind: string; p_amount?: number; p_note?: string }
+        Returns: string
+      }
+      cancel_discount: {
+        Args: { p_discount_id: string; p_note?: string }
+        Returns: undefined
+      }
+      decide_discount: {
+        Args: { p_discount_id: string; p_approve: boolean; p_note?: string }
+        Returns: undefined
+      }
+      discount_limit: {
+        Args: { p_user?: string }
+        Returns: number
+      }
+      discount_queue: {
+        Args: never
+        Returns: Json
+      }
+      request_discount: {
+        Args: {
+          p_negotiation_id: string
+          p_fee_id: string | null
+          p_kind: string
+          p_value: number
+          p_reason?: string
+          p_note?: string
+        }
+        Returns: Json
+      }
+      start_negotiation: {
+        Args: { p_lead_id: string; p_course_id: string }
+        Returns: string
       }
       template_report: {
         Args: { p_from: string; p_to: string; p_user_id?: string }
