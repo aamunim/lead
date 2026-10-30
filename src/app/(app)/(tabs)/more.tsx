@@ -9,6 +9,7 @@ import { canSyncCalls, isCallLogAvailable, isCallSyncEnabled } from '@/features/
 import { listSyncHealth } from '@/features/call-sync/health';
 import { canImportContacts } from '@/features/contacts/api';
 import { countDiscountsToAnswer } from '@/features/fees/api';
+import { checkAndDownload, currentVersionInfo, restartWithUpdate } from '@/features/updates/api';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
@@ -40,6 +41,9 @@ export default function MoreScreen() {
     .join('');
 
   const [discounts, setDiscounts] = useState(0);
+  // 🔄 EAS Update (not in development builds)
+  const update = currentVersionInfo();
+  const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'ready' | 'latest'>('idle');
 
   useFocusEffect(
     useCallback(() => {
@@ -227,6 +231,44 @@ export default function MoreScreen() {
             <Text style={styles.rowTitle}>App version</Text>
             <Text style={styles.muted}>{Constants.expoConfig?.version ?? '—'}</Text>
           </View>
+          {update.enabled && (
+            <>
+              <View style={[styles.row, styles.divider]}>
+                <Text style={styles.rowTitle}>Update</Text>
+                <Text style={styles.muted}>
+                  {update.builtIn
+                    ? 'Built in'
+                    : `${update.createdAt ? update.createdAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''} · ${(update.updateId ?? '').slice(0, 8)}`}
+                  {update.channel ? ` · ${update.channel}` : ''}
+                </Text>
+              </View>
+              <Pressable
+                onPress={async () => {
+                  setUpdateState('checking');
+                  const r = await checkAndDownload(true);
+                  setUpdateState(r === 'downloaded' ? 'ready' : 'latest');
+                }}
+                disabled={updateState === 'checking'}
+                style={({ pressed }) => [styles.row, styles.divider, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.rowTitle}>
+                  {updateState === 'checking'
+                    ? 'Checking…'
+                    : updateState === 'ready'
+                      ? '🔄 Restart to use the new version'
+                      : updateState === 'latest'
+                        ? '✓ You have the latest version'
+                        : 'Check for updates'}
+                </Text>
+                {updateState === 'ready' && (
+                  <Pressable onPress={() => restartWithUpdate()} hitSlop={8} accessibilityRole="button">
+                    <Text style={styles.restart}>Restart</Text>
+                  </Pressable>
+                )}
+              </Pressable>
+            </>
+          )}
         </View>
       </View>
 
@@ -333,6 +375,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   divider: { borderTopWidth: 1, borderTopColor: colors.border },
+  restart: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
   pressed: { backgroundColor: colors.background },
   rowIcon: { fontSize: 20 },
   rowTitle: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },

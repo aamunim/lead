@@ -2,20 +2,26 @@
   "expo": {
     "name": "Lead Management",
     "slug": "lead-management",
-    "version": "2.4.12-beta",
+    "version": "2.5.0-beta",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "leadmanagement",
     "userInterfaceStyle": "automatic",
     "owner": "ittc.lead",
+    "runtimeVersion": "1",
+    "updates": {
+      "url": "https://u.expo.dev/e1dd018b-e4a5-496c-adc3-0c4acb50f8f6",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "ios": {
       "icon": "./assets/expo.icon"
     },
     "android": {
       "package": "com.abamunim.leads",
-      "versionCode": 18,
+      "versionCode": 19,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#3F5BD3",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
