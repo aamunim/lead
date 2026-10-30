@@ -1,4 +1,4 @@
-import { File, Paths } from 'expo-file-system';
+import { File, Paths, UploadType } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 
@@ -143,25 +143,38 @@ export async function uploadLeadFile(input: {
   mimeType: string;
   durationSec?: number | null;
 }): Promise<LeadFile> {
-  const form = new FormData();
-  // React Native sends a file from its uri like this
-  form.append('file', { uri: input.uri, name: input.name, type: input.mimeType } as unknown as Blob);
-  form.append('lead_id', input.leadId);
-  form.append('kind', input.kind);
-  form.append('name', input.name);
-  if (input.paperId) form.append('paper_id', input.paperId);
-  if (input.callId) form.append('call_id', input.callId);
-  if (input.durationSec) form.append('duration_sec', String(input.durationSec));
+  // The phone's own upload (multipart): the app's fetch can't send a file from its uri
+  const parameters: Record<string, string> = { lead_id: input.leadId, kind: input.kind, name: input.name };
+  if (input.paperId) parameters.paper_id = input.paperId;
+  if (input.callId) parameters.call_id = input.callId;
+  if (input.durationSec) parameters.duration_sec = String(input.durationSec);
 
-  let res: Response;
+  let res: { status: number; body: string };
   try {
-    res = await fetch(`${FUNCTIONS}/drive-upload`, { method: 'POST', headers: await authHeaders(), body: form });
-  } catch {
-    throw new Error('No internet connection. Please try again.');
+    res = await new File(input.uri).upload(`${FUNCTIONS}/drive-upload`, {
+      httpMethod: 'POST',
+      uploadType: UploadType.MULTIPART,
+      fieldName: 'file',
+      mimeType: input.mimeType,
+      parameters,
+      headers: await authHeaders(),
+    });
+  } catch (e) {
+    const m = e instanceof Error ? e.message : '';
+    throw new Error(/network|internet|offline|timed out|unable to resolve/i.test(m) ? 'No internet connection. Please try again.' : m || 'Could not upload.');
   }
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(res.status === 404 && !body.error ? 'The Google Drive server part is not set up yet.' : body.error ?? 'Could not upload.');
+  let body: { error?: string } & Partial<LeadFile> = {};
+  try {
+    body = JSON.parse(res.body);
+  } catch {
+    body = {};
+  }
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(
+      res.status === 404 && !body.error
+        ? 'The Google Drive server part is not set up yet.'
+        : body.error ?? `Could not upload (${res.status}).`,
+    );
   }
   return body as LeadFile;
 }
