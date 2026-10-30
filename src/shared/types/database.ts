@@ -2174,6 +2174,10 @@ export type Database = {
         Args: { p_from: string; p_to: string; p_user_id: string }
         Returns: Json
       }
+      template_report: {
+        Args: { p_from: string; p_to: string; p_user_id?: string }
+        Returns: Json
+      }
       whatsapp_report: {
         Args: { p_from: string; p_to: string; p_user_id?: string }
         Returns: Json

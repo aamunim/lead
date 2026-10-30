@@ -16,6 +16,7 @@ export type ReportSection =
   | 'sources'
   | 'team'
   | 'whatsapp'
+  | 'templates'
   | 'lost'
   | 'heatmap';
 
@@ -26,6 +27,7 @@ export const SECTION_LABELS: Record<ReportSection, { title: string; text: string
   sources: { title: 'Sources & campaigns', text: 'Where leads and admissions come from' },
   team: { title: 'Team', text: 'Leads, calls, talk time and admissions per person' },
   whatsapp: { title: 'WhatsApp', text: 'WhatsApp calls and messages, apart from phone calls' },
+  templates: { title: 'Message templates', text: 'Which templates are sent, by whom, and what happened after' },
   lost: { title: 'Why leads are lost', text: 'Lost reasons, and the stage they left from' },
   heatmap: { title: 'Best time to call', text: 'Which days and hours calls get answered' },
 };
@@ -37,6 +39,7 @@ export const SECTION_ORDER: ReportSection[] = [
   'sources',
   'team',
   'whatsapp',
+  'templates',
   'lost',
   'heatmap',
 ];
@@ -60,6 +63,7 @@ export const DEFAULT_REPORTS: ReportSettings = {
     sources: true,
     team: true,
     whatsapp: true,
+    templates: true,
     lost: true,
     heatmap: true,
   },
@@ -284,6 +288,49 @@ export async function getWhatsAppReport(q: ReportQuery): Promise<WhatsAppReport>
   });
   if (error) throw toError(error);
   return data as unknown as WhatsAppReport;
+}
+
+// =====================================================================
+// 📝 Message templates: sent, and what happened in the 7 days after
+// =====================================================================
+export type TemplateResult = {
+  sent: number;
+  whatsapp: number;
+  sms: number;
+  edited: number;
+  leads: number;
+  /** leads that answered a call or sent a message within 7 days */
+  replied: number;
+  /** leads whose stage changed within 7 days */
+  moved: number;
+  /** leads admitted within 7 days */
+  admitted: number;
+};
+
+export type TemplateReport = {
+  totals: TemplateResult;
+  templates: (TemplateResult & { id: string; name: string; is_shared: boolean; last_sent: string })[];
+  people: {
+    user_id: string;
+    full_name: string | null;
+    sent: number;
+    whatsapp: number;
+    sms: number;
+    leads: number;
+    top_template: string | null;
+  }[];
+  /** shared templates nobody sent in the period (only for "everyone") */
+  unused: string[];
+};
+
+export async function getTemplateReport(q: Pick<ReportQuery, 'from' | 'to' | 'userId'>): Promise<TemplateReport> {
+  const { data, error } = await supabase.rpc('template_report', {
+    p_from: q.from,
+    p_to: q.to,
+    p_user_id: q.userId ?? undefined,
+  });
+  if (error) throw toError(error);
+  return data as unknown as TemplateReport;
 }
 
 export async function getCallHeatmap(q: ReportQuery): Promise<HeatCell[]> {

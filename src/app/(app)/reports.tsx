@@ -22,6 +22,7 @@ import {
   getCallHeatmap,
   getLeadReport,
   getReportSettings,
+  getTemplateReport,
   getWhatsAppReport,
   pct,
   periodRange,
@@ -30,6 +31,7 @@ import {
   type PipelineStep,
   type Period,
   type ReportSettings,
+  type TemplateReport,
   type WhatsAppReport,
 } from '@/features/reports/api';
 import { BarList, Heatmap, PipelineBars, StatTile } from '@/features/reports/charts';
@@ -59,6 +61,7 @@ export default function ReportsScreen() {
   const [report, setReport] = useState<LeadReport | null>(null);
   const [heat, setHeat] = useState<HeatCell[]>([]);
   const [wa, setWa] = useState<WhatsAppReport | null>(null);
+  const [tpl, setTpl] = useState<TemplateReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,21 +88,24 @@ export default function ReportsScreen() {
     const q = { ...periodRange(period), userId: person?.id ?? null, courseId: course?.id ?? null };
     try {
       setError(null);
-      const [r, h, w] = await Promise.all([
+      const [r, h, w, t] = await Promise.all([
         getLeadReport(q, show.team),
         show.heatmap ? getCallHeatmap(q) : Promise.resolve([]),
         show.whatsapp ? getWhatsAppReport(q) : Promise.resolve(null),
+        // An older database without the report: just leave the card out
+        show.templates ? getTemplateReport(q).catch(() => null) : Promise.resolve(null),
       ]);
       setReport(r);
       setHeat(h);
       setWa(w);
+      setTpl(t);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the report.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [period, person, course, show.team, show.heatmap, show.whatsapp]);
+  }, [period, person, course, show.team, show.heatmap, show.whatsapp, show.templates]);
 
   useEffect(() => {
     if (!ready) return;
@@ -388,6 +394,83 @@ export default function ReportsScreen() {
                     </Pressable>
                   </>
                 )}
+              </Card>
+            )}
+
+            {/* 📝 Message templates */}
+            {show.templates && tpl && (
+              <Card
+                title="📝 Message templates"
+                subtitle="Templates sent in this period, and what the leads did in the 7 days after"
+              >
+                {tpl.totals.sent === 0 ? (
+                  <Text style={styles.empty}>No templates sent in this period.</Text>
+                ) : (
+                  <>
+                    <View style={styles.tiles}>
+                      <StatTile
+                        label="Sent"
+                        value={String(tpl.totals.sent)}
+                        hint={`${tpl.totals.whatsapp} WhatsApp · ${tpl.totals.sms} SMS`}
+                      />
+                      <StatTile label="Leads" value={String(tpl.totals.leads)} hint={`${tpl.totals.edited} changed before sending`} />
+                      <StatTile
+                        label="Replied"
+                        value={pct(tpl.totals.replied, tpl.totals.leads)}
+                        hint={`${tpl.totals.replied} answered or wrote back`}
+                      />
+                      <StatTile
+                        label="Moved on"
+                        value={pct(tpl.totals.moved, tpl.totals.leads)}
+                        hint={`${tpl.totals.moved} changed stage`}
+                      />
+                      <StatTile
+                        label="Admitted"
+                        value={pct(tpl.totals.admitted, tpl.totals.leads)}
+                        hint={`${tpl.totals.admitted} within 7 days`}
+                      />
+                    </View>
+
+                    <Text style={styles.subTitle}>By template</Text>
+                    {tpl.templates.map((t) => (
+                      <View key={t.id} style={styles.person}>
+                        <View style={styles.personTop}>
+                          <Text style={styles.personName} numberOfLines={1}>
+                            {t.name}
+                            {!t.is_shared && <Text style={styles.personLine}>  · personal</Text>}
+                          </Text>
+                          <Text style={styles.personAdmitted}>{t.sent}×</Text>
+                        </View>
+                        <Text style={styles.personLine}>
+                          💬 {t.whatsapp} · ✉️ {t.sms} · {t.leads} leads · ↩ {pct(t.replied, t.leads)} replied · ➜{' '}
+                          {pct(t.moved, t.leads)} moved · 🎓 {t.admitted} admitted
+                        </Text>
+                      </View>
+                    ))}
+
+                    {seesOthers && tpl.people.length > 0 && (
+                      <>
+                        <Text style={styles.subTitle}>By person</Text>
+                        <BarList
+                          empty=""
+                          rows={tpl.people.map((p) => ({
+                            key: p.user_id,
+                            name: `${p.full_name ?? 'No name'}${p.top_template ? ` · ${p.top_template}` : ''}`,
+                            value: p.sent,
+                            right: `${p.leads} leads`,
+                          }))}
+                        />
+                      </>
+                    )}
+
+                    {tpl.unused.length > 0 && (
+                      <Text style={styles.hint}>Not sent in this period: {tpl.unused.join(', ')}</Text>
+                    )}
+                  </>
+                )}
+                <Pressable onPress={() => router.push('/templates' as Href)} hitSlop={8} accessibilityRole="link">
+                  <Text style={styles.waLink}>Manage templates ›</Text>
+                </Pressable>
               </Card>
             )}
 
