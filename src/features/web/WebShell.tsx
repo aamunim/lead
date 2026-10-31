@@ -102,6 +102,9 @@ export function WebShell({ children }: { children: React.ReactNode }) {
           <Text style={styles.meName} numberOfLines={1}>
             {profile?.full_name ?? ''}
           </Text>
+          <Pressable onPress={() => router.navigate('/password' as Href)} accessibilityRole="link" hitSlop={6}>
+            <Text style={styles.link}>🔐 Change password</Text>
+          </Pressable>
           <Pressable onPress={() => signOut()} accessibilityRole="button" hitSlop={6}>
             <Text style={styles.link}>Sign out</Text>
           </Pressable>

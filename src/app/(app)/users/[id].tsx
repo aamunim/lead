@@ -24,6 +24,7 @@ import {
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
+import { ResetPasswordSheet } from '@/features/users/ResetPasswordSheet';
 
 type Form = {
   fullName: string;
@@ -45,6 +46,8 @@ export default function UserEditScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 🔑 Reset password sheet
+  const [resetting, setResetting] = useState(false);
 
   // --- load the user and the options together -----------------------
   const load = useCallback(async () => {
@@ -302,6 +305,10 @@ export default function UserEditScreen() {
                 onPress={() => router.push(`/activity/${user.id}` as Href)}
                 fullWidth
               />
+              {/* 🔑 Admins reset others' passwords; their own: More → Change password */}
+              {!isSelf && (
+                <Button title="🔑 Reset password" variant="secondary" onPress={() => setResetting(true)} fullWidth />
+              )}
               {!isSelf && (
                 <Button
                   title="Deactivate user"
@@ -318,6 +325,13 @@ export default function UserEditScreen() {
             <Button title="Reactivate user" onPress={() => save(true)} loading={saving} fullWidth />
           )}
         </View>
+      )}
+      {resetting && user && (
+        <ResetPasswordSheet
+          user={user}
+          onClose={() => setResetting(false)}
+          onDone={(message) => Alert.alert('Password reset', message)}
+        />
       )}
     </KeyboardAwareScrollView>
   );

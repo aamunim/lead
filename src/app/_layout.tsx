@@ -59,6 +59,9 @@ function RootNavigator() {
         <Stack.Protected guard={status === 'pending_approval'}>
           <Stack.Screen name="pending" />
         </Stack.Protected>
+        <Stack.Protected guard={status === 'must_change_password'}>
+          <Stack.Screen name="change-password" />
+        </Stack.Protected>
         <Stack.Protected guard={status === 'active'}>
           <Stack.Screen name="(app)" />
         </Stack.Protected>

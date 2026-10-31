@@ -278,6 +278,12 @@ function PhoneMore() {
         </View>
       </View>
 
+      <Button
+        title="🔐 Change password"
+        variant="ghost"
+        onPress={() => router.push('/password' as Href)}
+        fullWidth
+      />
       <Button title="Sign out" variant="secondary" onPress={handleSignOut} loading={signingOut} fullWidth />
     </ScrollView>
   );
