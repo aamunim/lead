@@ -2487,6 +2487,7 @@ export type Database = {
         Args: never
         Returns: { id: string; is_active: boolean; name: string | null }[]
       }
+      link_voice_notes: { Args: { p_call_id: string; p_file_ids: string[] }; Returns: number }
       leads_added: {
         Args: { p_from: string; p_to: string }
         Returns: { imported: number; name: string | null; total: number; user_id: string }[]

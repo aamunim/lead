@@ -219,7 +219,7 @@ export async function addNoteToPhoneCall(input: {
   call: DeviceCall;
   notes: string;
   connectedMinSec: number;
-}): Promise<void> {
+}): Promise<string> {
   const notes = input.notes.trim() || null;
 
   try {
@@ -239,15 +239,15 @@ export async function addNoteToPhoneCall(input: {
   if (findError) throw toError(findError);
 
   if (existing) {
-    if (!notes) return; // nothing to add (only the rating may have changed)
+    if (!notes) return existing.id; // nothing to add (only the rating may have changed)
     if (existing.notes) throw new Error('This call already has a note.');
 
     const { error } = await supabase.from('call_logs').update({ notes }).eq('id', existing.id);
     if (error) throw toError(error);
-    return;
+    return existing.id;
   }
 
-  await logCall({
+  return logCall({
     leadId: input.leadId,
     outcome: outcomeFromPhone(input.call, input.connectedMinSec),
     notes,
@@ -307,7 +307,7 @@ export async function addNoteToWhatsAppCall(input: {
   deviceId: string;
   event: WhatsAppDeviceEvent;
   notes: string;
-}): Promise<void> {
+}): Promise<string> {
   const notes = input.notes.trim() || null;
   const deviceCallId = `wa:${input.event.id}`;
 
@@ -327,16 +327,16 @@ export async function addNoteToWhatsAppCall(input: {
   if (findError) throw toError(findError);
 
   if (existing) {
-    if (!notes) return;
+    if (!notes) return existing.id;
     if (existing.notes) throw new Error('This call already has a note.');
     const { error } = await supabase.from('call_logs').update({ notes }).eq('id', existing.id);
     if (error) throw toError(error);
-    return;
+    return existing.id;
   }
 
   const outcome = outcomeOfWhatsApp(input.event);
   const missed = outcome === 'missed';
-  await logCall({
+  return logCall({
     leadId: input.leadId,
     outcome,
     notes,

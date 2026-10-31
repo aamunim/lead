@@ -36,7 +36,7 @@ type Props = {
   leadId: string;
   context: string;
   onClose: () => void;
-  onSaved: (seconds: number) => void;
+  onSaved: (seconds: number, fileId: string) => void;
 };
 
 type Phase = 'asking' | 'denied' | 'ready' | 'recording' | 'paused' | 'done' | 'saving';
@@ -132,7 +132,7 @@ export function VoiceRecorderSheet({ leadId, context, onClose, onSaved }: Props)
     player.pause();
     setPhase('saving');
     try {
-      await uploadLeadFile({
+      const row = await uploadLeadFile({
         leadId,
         kind: 'voice',
         uri,
@@ -142,7 +142,7 @@ export function VoiceRecorderSheet({ leadId, context, onClose, onSaved }: Props)
         context,
       });
       discardFile();
-      onSaved(seconds);
+      onSaved(seconds, row.id);
     } catch (e) {
       setPhase('done');
       Alert.alert('Could not save the voice note', `${e instanceof Error ? e.message : ''}\nThe recording is kept here; try Save again.`);

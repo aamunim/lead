@@ -46,6 +46,7 @@ import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { TextField } from '@/shared/ui/TextField';
 import { VoiceNoteButton } from '@/features/voice/VoiceNote';
+import { linkVoiceNotes } from '@/features/files/api';
 
 const RATINGS: { value: Rating; label: string; color: string }[] = [
   { value: 'hot', label: 'Hot', color: colors.hot },
@@ -143,6 +144,9 @@ export function CallResultSheet({
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 🎙 Voice notes recorded here: linked to the call once it is saved
+  const [voiceIds, setVoiceIds] = useState<string[]>([]);
+  const linkVoices = (callId: string) => linkVoiceNotes(voiceIds, callId).catch(() => undefined);
 
   // The real call from the phone's call log (dev build / APK only)
   const [deviceCall, setDeviceCall] = useState<DeviceCall | null>(null);
@@ -197,6 +201,7 @@ export function CallResultSheet({
     setCustomDate(null);
     setShowFollowUp(false);
     setError(null);
+    setVoiceIds([]);
     setDeviceCall(null);
     setNoteOutcome(null);
     setNotFound(false);
@@ -308,13 +313,14 @@ export function CallResultSheet({
     setError(null);
     try {
       // 1. The note goes on the call itself (synced first if possible)
-      await addNoteToPhoneCall({
+      const callId = await addNoteToPhoneCall({
         leadId: lead.id,
         deviceId,
         call: deviceCall,
         notes,
         connectedMinSec,
       });
+      await linkVoices(callId);
 
       // 2. Next follow-up, only if the user opened that part and chose one
       if (chosenDate) {
@@ -346,7 +352,8 @@ export function CallResultSheet({
     setSaving(true);
     setError(null);
     try {
-      await addNoteToWhatsAppCall({ leadId: lead.id, deviceId, event, notes });
+      const callId = await addNoteToWhatsAppCall({ leadId: lead.id, deviceId, event, notes });
+      await linkVoices(callId);
 
       if (chosenDate) {
         await scheduleFollowUp(lead.id, chosenDate, notes);
@@ -380,7 +387,7 @@ export function CallResultSheet({
     setSaving(true);
     setError(null);
     try {
-      await logCall({
+      const callId = await logCall({
         leadId: lead.id,
         outcome: result,
         notes,
@@ -389,6 +396,7 @@ export function CallResultSheet({
         channel: 'whatsapp',
         media: waMedia,
       });
+      await linkVoices(callId);
 
       if (chosenDate) {
         await scheduleFollowUp(lead.id, chosenDate, notes);
@@ -419,7 +427,7 @@ export function CallResultSheet({
     setError(null);
     try {
       // 1. Save the call (the database also closes today's follow-up)
-      await logCall({
+      const callId = await logCall({
         leadId: lead.id,
         outcome,
         notes,
@@ -434,6 +442,7 @@ export function CallResultSheet({
             }
           : {}),
       });
+      await linkVoices(callId);
 
       // 2. Next follow-up (only if one was chosen)
       if (chosenDate) {
@@ -481,7 +490,11 @@ export function CallResultSheet({
   const noteField = (
     <View style={styles.field}>
       <TextField label="Note" value={notes} onChangeText={setNotes} multiline placeholder="What did they say?" />
-      <VoiceNoteButton leadId={lead?.id} context="call" />
+      <VoiceNoteButton
+        leadId={lead?.id}
+        context={isWa ? 'whatsapp' : 'call'}
+        onUploaded={(fileId) => setVoiceIds((ids) => [...ids, fileId])}
+      />
     </View>
   );
 

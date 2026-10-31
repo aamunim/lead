@@ -210,6 +210,16 @@ export async function deleteLeadFile(id: string): Promise<'trashed' | 'kept'> {
   return body.drive === 'trashed' || body.drive === 'missing' ? 'trashed' : 'kept';
 }
 
+/** 🎙 Voice notes recorded in the call popup belong to the call, once it is saved */
+export async function linkVoiceNotes(fileIds: string[], callId: string): Promise<void> {
+  if (fileIds.length === 0 || !callId) return;
+  const { error } = await supabase.rpc('link_voice_notes', { p_file_ids: fileIds, p_call_id: callId });
+  if (error) throw toError(error);
+}
+
+/** 🎙 Voice notes recorded with the 🎙 button (they show in Calls & notes, not in Files) */
+export const isRecordedVoice = (f: Pick<LeadFile, 'kind' | 'context'>) => f.kind === 'voice' && !!f.context;
+
 /** 📦 Every file of a lead (that I may see) in one ZIP, in the phone's cache */
 export type LeadZip = { file: File; name: string };
 

@@ -4,7 +4,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { openLeadFile, type LeadFile } from '@/features/files/api';
 import { clock } from '@/features/voice/format';
 import { hasAudio } from '@/features/voice/native';
-import { useVoiceNotes } from '@/features/voice/useVoiceNotes';
+import { emitVoiceSaved, useVoiceNotes } from '@/features/voice/useVoiceNotes';
 import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
@@ -23,9 +23,11 @@ type Props = {
   /** Where it is recorded: call, note, fee, payment, visit, … */
   context: string;
   onSaved?: (message: string) => void;
+  /** The saved voice note (e.g. the call popup links it to the call once that is saved) */
+  onUploaded?: (fileId: string) => void;
 };
 
-export function VoiceNoteButton({ leadId, context, onSaved }: Props) {
+export function VoiceNoteButton({ leadId, context, onSaved, onUploaded }: Props) {
   const ok = useVoiceNotes();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState<number[]>([]);
@@ -57,9 +59,11 @@ export function VoiceNoteButton({ leadId, context, onSaved }: Props) {
           leadId={leadId}
           context={context}
           onClose={() => setOpen(false)}
-          onSaved={(sec) => {
+          onSaved={(sec, fileId) => {
             setOpen(false);
             setSaved((s) => [...s, sec]);
+            onUploaded?.(fileId);
+            emitVoiceSaved(leadId);
             onSaved?.(`🎙 Voice note saved (${clock(sec)}).`);
           }}
         />

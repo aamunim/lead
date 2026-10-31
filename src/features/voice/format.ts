@@ -12,6 +12,7 @@ export function clock(sec: number): string {
 /** Where a voice note was recorded, for the timeline */
 export const VOICE_CONTEXT: Record<string, string> = {
   call: 'Call',
+  whatsapp: 'WhatsApp',
   note: 'Note',
   follow_up: 'Next call',
   fee: 'Fee',
