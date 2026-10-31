@@ -37,6 +37,7 @@ import {
   type WhatsAppReport,
 } from '@/features/reports/api';
 import { BarList, Heatmap, PipelineBars, StatTile } from '@/features/reports/charts';
+import { getLeadsAdded, type LeadsAddedRow } from '@/features/leads/added';
 import { listCourses } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
@@ -67,6 +68,7 @@ export default function ReportsScreen() {
   const [wa, setWa] = useState<WhatsAppReport | null>(null);
   const [tpl, setTpl] = useState<TemplateReport | null>(null);
   const [money, setMoney] = useState<CollectionReport | null>(null);
+  const [added, setAdded] = useState<LeadsAddedRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,15 +95,17 @@ export default function ReportsScreen() {
     const q = { ...periodRange(period), userId: person?.id ?? null, courseId: course?.id ?? null };
     try {
       setError(null);
-      const [r, h, w, t, c] = await Promise.all([
+      const [r, h, w, t, c, a] = await Promise.all([
         getLeadReport(q, show.team),
         show.heatmap ? getCallHeatmap(q) : Promise.resolve([]),
         show.whatsapp ? getWhatsAppReport(q) : Promise.resolve(null),
         // An older database without the report: just leave the card out
         show.templates ? getTemplateReport(q).catch(() => null) : Promise.resolve(null),
         show.collection ? getCollectionReport(q).catch(() => null) : Promise.resolve(null),
+        getLeadsAdded(q.from, q.to).catch(() => [] as LeadsAddedRow[]),
       ]);
       setMoney(c);
+      setAdded(person ? a.filter((x) => x.user_id === person.id) : a);
       setReport(r);
       setHeat(h);
       setWa(w);
@@ -352,6 +356,33 @@ export default function ReportsScreen() {
                 )}
               </Card>
             )}
+
+            {/* ➕ Who added the leads (tap one: those leads) */}
+            <Card title="➕ Leads added by" subtitle="Leads each person added in this period (imported ones too)">
+              <BarList
+                empty="No leads added in this period."
+                rows={added.map((x) => ({
+                  key: x.user_id,
+                  name: x.name ?? 'No name',
+                  value: x.total,
+                  right: x.imported > 0 ? `${x.imported} imported` : undefined,
+                }))}
+              />
+              {added.length > 0 && (
+                <Pressable
+                  onPress={() =>
+                    router.push({
+                      pathname: '/leads',
+                      params: { addedDay: 'custom', addedFrom: range.from, addedTo: range.to, ...(person ? { addedBy: person.id } : {}) },
+                    } as unknown as Href)
+                  }
+                  hitSlop={8}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.addedLink}>Show these leads ›</Text>
+                </Pressable>
+              )}
+            </Card>
 
             {/* 💬 WhatsApp (apart from phone calls) */}
             {show.whatsapp && wa && (
@@ -746,6 +777,7 @@ const styles = StyleSheet.create({
 
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   rangeText: { fontSize: fontSize.caption, color: colors.textMuted },
+  addedLink: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary, marginTop: spacing.sm },
 
   card: {
     gap: spacing.md,

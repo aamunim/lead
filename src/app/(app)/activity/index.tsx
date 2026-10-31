@@ -22,12 +22,13 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 // 👥 Team activity: everyone I may see, for a day / week / month
 // =====================================================================
 
-type Sort = 'name' | 'app' | 'calls' | 'actions';
+type Sort = 'name' | 'app' | 'calls' | 'actions' | 'added';
 const SORTS: { value: Sort; label: string }[] = [
   { value: 'name', label: 'Name' },
   { value: 'app', label: 'App time' },
   { value: 'calls', label: 'Calls' },
   { value: 'actions', label: 'Work' },
+  { value: 'added', label: 'Leads added' },
 ];
 
 const ONLINE_MS = 6 * 60 * 1000; // a ping every 5 minutes
@@ -115,6 +116,8 @@ export default function TeamActivityScreen() {
         return list.sort((a, b) => b.calls - a.calls);
       case 'actions':
         return list.sort((a, b) => b.actions - a.actions);
+      case 'added':
+        return list.sort((a, b) => (b.leads_added ?? 0) - (a.leads_added ?? 0));
       default:
         return list.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
     }
@@ -139,9 +142,19 @@ export default function TeamActivityScreen() {
   };
 
   const totals = rows.reduce(
-    (t, m) => ({ app: t.app + m.app_sec, calls: t.calls + m.calls, actions: t.actions + m.actions, admitted: t.admitted + m.admitted }),
-    { app: 0, calls: 0, actions: 0, admitted: 0 },
+    (t, m) => ({
+      app: t.app + m.app_sec,
+      calls: t.calls + m.calls,
+      actions: t.actions + m.actions,
+      admitted: t.admitted + m.admitted,
+      added: t.added + (m.leads_added ?? 0),
+    }),
+    { app: 0, calls: 0, actions: 0, admitted: 0, added: 0 },
   );
+
+  // ➕ The Leads tab, showing the leads this person added in the period
+  const openAdded = (userId: string) =>
+    router.push({ pathname: '/leads', params: { addedBy: userId, addedDay: period } } as unknown as Href);
 
   return (
     <ScrollView
@@ -179,6 +192,7 @@ export default function TeamActivityScreen() {
           <Total value={formatDuration(totals.app)} label="app time" />
           <Total value={String(totals.calls)} label="calls" />
           <Total value={String(totals.actions)} label="changes" />
+          <Total value={String(totals.added)} label="leads added" />
           <Total value={String(totals.admitted)} label="admitted" />
         </View>
       )}
@@ -214,6 +228,14 @@ export default function TeamActivityScreen() {
                 <Stat value={String(m.calls)} label="calls" />
                 <Stat value={String((m.wa_calls ?? 0) + (m.wa_messages ?? 0))} label="💬 WA" />
                 <Stat value={String(m.actions)} label="changes" />
+                <Pressable
+                  onPress={() => openAdded(m.user_id)}
+                  style={styles.statPress}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${m.leads_added ?? 0} leads added. Show them`}
+                >
+                  <Stat value={`➕${m.leads_added ?? 0}`} label="leads" />
+                </Pressable>
                 <Stat value={String(m.admitted)} label="🎓" />
               </View>
 
@@ -310,6 +332,7 @@ const styles = StyleSheet.create({
   seen: { fontSize: fontSize.caption, color: colors.textMuted },
   seenOn: { color: colors.success, fontWeight: fontWeight.bold },
   stats: { flexDirection: 'row', gap: spacing.sm },
+  statPress: { flex: 1, flexDirection: 'row' },
   stat: { flex: 1, alignItems: 'center', paddingVertical: spacing.xs, borderRadius: radius.md, backgroundColor: colors.background },
   statValue: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text },
   statLabel: { fontSize: 11, color: colors.textMuted },

@@ -116,6 +116,9 @@ export type TeamMember = {
   wa_calls: number;
   wa_connected: number;
   wa_messages: number;
+  /** ➕ Leads this person added (imported ones too) */
+  leads_added: number;
+  leads_imported: number;
 };
 
 export async function listTeamActivity(from: string, to: string): Promise<TeamMember[]> {

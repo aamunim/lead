@@ -2450,6 +2450,8 @@ export type Database = {
           wa_calls: number
           wa_connected: number
           wa_messages: number
+          leads_added: number
+          leads_imported: number
         }[]
       }
       undo_contacts_save: { Args: { p_lead_ids: string[] }; Returns: number }
@@ -2477,6 +2479,15 @@ export type Database = {
       delete_lead_file: { Args: { p_file_id: string }; Returns: undefined }
       drive_disconnect: { Args: never; Returns: undefined }
       drive_status: { Args: never; Returns: Json }
+      can_see_added: { Args: { p_user: string }; Returns: boolean }
+      lead_creators: {
+        Args: never
+        Returns: { id: string; is_active: boolean; name: string | null }[]
+      }
+      leads_added: {
+        Args: { p_from: string; p_to: string }
+        Returns: { imported: number; name: string | null; total: number; user_id: string }[]
+      }
       discounts_to_answer: { Args: never; Returns: number }
       discount_limit: {
         Args: { p_user?: string }

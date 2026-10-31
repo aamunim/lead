@@ -12,6 +12,7 @@ import { SyncSetupSheet } from '@/features/nudges/SyncSetupSheet';
 import { countUnread } from '@/features/notifications/api';
 import { countDiscountsToAnswer } from '@/features/fees/api';
 import { ReportHomeCard } from '@/features/reports/ReportHomeCard';
+import { addedRange, getLeadsAdded } from '@/features/leads/added';
 import { StudentsHomeCard } from '@/features/students/StudentsHomeCard';
 import { TodayVisits } from '@/features/visits/TodayVisits';
 import { countPendingUsers } from '@/features/users/api';
@@ -30,6 +31,8 @@ export default function HomeScreen() {
   const [unread, setUnread] = useState(0);
   const [contactsAllowed, setContactsAllowed] = useState(false);
   const [discounts, setDiscounts] = useState(0);
+  // ➕ Leads I added today / this week
+  const [myAdded, setMyAdded] = useState<{ today: number; week: number } | null>(null);
 
   // Reminder from the Super Admin (e.g. "turn on call log sync")
   const [nudge, setNudge] = useState<Nudge | null>(null);
@@ -75,12 +78,23 @@ export default function HomeScreen() {
       checkNudge();
       countUnread().then(setUnread);
       countDiscountsToAnswer().then(setDiscounts);
+      const week = addedRange({ userId: null, day: 'week' });
+      const day = addedRange({ userId: null, day: 'today' });
+      if (week && day && profile?.id) {
+        getLeadsAdded(week.from, week.to)
+          .then(async (rows) => {
+            const weekN = rows.find((r) => r.user_id === profile.id)?.total ?? 0;
+            const todayN = weekN === 0 ? 0 : ((await getLeadsAdded(day.from, day.to)).find((r) => r.user_id === profile.id)?.total ?? 0);
+            setMyAdded({ today: todayN, week: weekN });
+          })
+          .catch(() => setMyAdded(null));
+      }
 
       if (!canManageUsers) return;
       countPendingUsers()
         .then(setPendingCount)
         .catch(() => setPendingCount(0));
-    }, [canManageUsers, checkNudge]),
+    }, [canManageUsers, checkNudge, profile?.id]),
   );
 
   // ...and when the app comes back to the front
@@ -204,6 +218,15 @@ export default function HomeScreen() {
               href="/leads/edit/new"
               divider
             />
+            {myAdded && profile?.id && (
+              <Tile
+                icon="🗓"
+                title={`Today you added ${myAdded.today} ${myAdded.today === 1 ? 'lead' : 'leads'}`}
+                text={`This week: ${myAdded.week} · tap to see them`}
+                href={{ pathname: '/leads', params: { addedBy: profile.id, addedDay: 'today' } } as unknown as Href}
+                divider
+              />
+            )}
             {contactsAllowed && (
               <Tile
                 icon="📇"
