@@ -1,15 +1,17 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
   deleteLeadFile,
+  downloadAllFiles,
   getDriveStatus,
   getFilesSettings,
   listLeadFiles,
   openLeadFile,
+  saveZip,
   sizeText,
   uploadLeadFile,
   type LeadFile,
@@ -22,8 +24,9 @@ import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
 // =====================================================================
 // 📎 Files on the lead page (kept in the institute's Google Drive)
 //   Upload a paper (photo / PDF from the phone or the Google Drive app),
-//   open it, remove it. Everyone sees what they added; admins (and people
-//   allowed in Settings) see all.
+//   open it, remove it (to Drive's Trash), or download all as one ZIP.
+//   Everyone sees what they added; admins (and people allowed in
+//   Settings) see all.
 // =====================================================================
 
 type Props = {
@@ -55,6 +58,7 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
   const [picking, setPicking] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
+  const [zipping, setZipping] = useState(false);
   const more = useShowMore(files, 4);
 
   const load = useCallback(async () => {
@@ -118,18 +122,39 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
     }
   };
 
+  // 📦 Every file here in one ZIP: save it to a folder, or share it
+  const downloadAll = async () => {
+    setZipping(true);
+    try {
+      const zip = await downloadAllFiles(leadId);
+      const keep = (how: 'save' | 'share') =>
+        saveZip(zip, how)
+          .then((done) => done && how === 'save' && onChanged(`📦 ${zip.name} saved.`))
+          .catch((e) => Alert.alert('Could not save', e instanceof Error ? e.message : ''));
+      Alert.alert('ZIP ready', `${zip.name} (${files.length} files)`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Share', onPress: () => keep('share') },
+        ...(Platform.OS === 'android' ? [{ text: 'Save to phone', onPress: () => keep('save') }] : []),
+      ]);
+    } catch (e) {
+      Alert.alert('Could not download', e instanceof Error ? e.message : '');
+    } finally {
+      setZipping(false);
+    }
+  };
+
   const remove = (f: LeadFile) => {
     if (f.uploaded_by !== profile?.id && !isAdmin) return;
-    Alert.alert('Remove this file?', `${f.name} will no longer show here. It stays in Google Drive.`, [
+    Alert.alert('Remove this file?', `${f.name} will be removed here and moved to Google Drive's Trash (it can be brought back from there for 30 days).`, [
       { text: 'Keep', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
         onPress: async () => {
           try {
-            await deleteLeadFile(f.id);
+            const drive = await deleteLeadFile(f.id);
             await load();
-            onChanged('File removed.');
+            onChanged(drive === 'trashed' ? 'File removed (moved to Google Drive’s Trash).' : 'File removed here; it is still in Google Drive.');
           } catch (e) {
             Alert.alert('Could not remove', e instanceof Error ? e.message : '');
           }
@@ -143,9 +168,25 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
       <View style={styles.header}>
         <Text style={styles.title}>📎 Files</Text>
         {connected && (
-          <Pressable onPress={() => setPicking(true)} disabled={!!uploading} hitSlop={8} accessibilityRole="button">
-            <Text style={styles.link}>＋ Upload</Text>
-          </Pressable>
+          <View style={styles.actions}>
+            {files.length >= 2 &&
+              (zipping ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Pressable
+                  onPress={downloadAll}
+                  disabled={!!uploading}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download all files as one ZIP"
+                >
+                  <Text style={styles.link}>⬇ All</Text>
+                </Pressable>
+              ))}
+            <Pressable onPress={() => setPicking(true)} disabled={!!uploading} hitSlop={8} accessibilityRole="button">
+              <Text style={styles.link}>＋ Upload</Text>
+            </Pressable>
+          </View>
         )}
       </View>
 
@@ -240,6 +281,7 @@ const styles = StyleSheet.create({
   hint: { fontSize: fontSize.caption, color: colors.textMuted },
   meta: { fontSize: fontSize.caption, color: colors.textMuted },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   fileRow: {
     flexDirection: 'row',
     alignItems: 'center',

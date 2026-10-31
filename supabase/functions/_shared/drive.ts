@@ -144,6 +144,17 @@ export async function uploadFile(name: string, mime: string, bytes: Uint8Array, 
   return r.id;
 }
 
+/** Move a file to Drive's Trash. false = the script is an older copy without "trash" */
+export async function trashFile(fileId: string): Promise<boolean> {
+  try {
+    await callScript(await connected(), 'trash', { id: fileId });
+    return true;
+  } catch (e) {
+    if (e instanceof Error && /Unknown action/.test(e.message)) return false;
+    throw e;
+  }
+}
+
 /** The file's content */
 export async function downloadFile(fileId: string): Promise<{ bytes: Uint8Array; mime: string }> {
   const r = await callScript<{ data: string; mime: string }>(await connected(), 'download', { id: fileId });

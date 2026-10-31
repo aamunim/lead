@@ -252,7 +252,7 @@ export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; acti
     kind: 'papers',
     label: 'Papers',
     icon: '📄',
-    actions: ['paper_received', 'paper_not_needed', 'paper_unticked', 'paper_returned', 'papers_moved', 'file_added', 'file_deleted'],
+    actions: ['paper_received', 'paper_not_needed', 'paper_unticked', 'paper_returned', 'papers_moved', 'file_added', 'file_deleted', 'files_downloaded'],
   },
   {
     kind: 'fee',
@@ -417,6 +417,8 @@ export function describeChange(
       return { text: `📎 File added: ${q(d.name)}`, warn: false };
     case 'file_deleted':
       return { text: `📎 File removed: ${q(d.name)}`, warn: true };
+    case 'files_downloaded':
+      return { text: `📦 Downloaded all files (${d.count ?? 0})`, warn: false };
     case 'payment_refunded':
       return {
         text: `↩ Refund ৳${Math.round(Number(d.amount ?? 0)).toLocaleString('en-IN')} (${q(d.method)}) · ${q(d.receipt_no)}${d.reason ? ` · ${q(d.reason)}` : ''}`,

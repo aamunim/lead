@@ -8,6 +8,10 @@
  * Settings → Google Drive.
  * Only the app's server knows the URL and the SECRET; without the SECRET
  * every request is refused.
+ *
+ * Updating an older copy: paste this file over the old code but KEEP your
+ * own SECRET line, then Deploy → Manage deployments → ✏️ → Version: New
+ * version → Deploy. The URL stays the same.
  */
 const SECRET = 'PUT-A-LONG-RANDOM-TEXT-HERE'; // e.g. 30+ letters and numbers, keep it private
 
@@ -38,6 +42,12 @@ function doPost(e) {
         const file = DriveApp.getFileById(req.id);
         const blob = file.getBlob();
         return out({ name: file.getName(), mime: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) });
+      }
+
+      case 'trash': {
+        // Removed in the app: to Drive's Trash (Google empties it after 30 days)
+        DriveApp.getFileById(req.id).setTrashed(true);
+        return out({ ok: true });
       }
 
       default:

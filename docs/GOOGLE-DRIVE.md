@@ -26,17 +26,24 @@ npx supabase db push
 npx supabase functions deploy drive-connect
 npx supabase functions deploy drive-upload
 npx supabase functions deploy drive-file
+npx supabase functions deploy drive-delete
+npx supabase functions deploy drive-zip
 ```
 
 ## 3. In the app (admin)
 **Settings → Google Drive** → paste the **Web app URL** and the **same secret** → **Connect Google Drive**.
-A **Lead Management** folder is made in that Drive: `Lead Management / <Lead – phone> / Papers`.
+A **Lead Management** folder is made in that Drive: `Lead Management / <Student ID Name, or Name – phone> / Papers`.
 
 ## Who sees files
 - Everyone sees the files **they** added (on leads they can see).
 - **Admins** see all. **Settings → Google Drive → Who sees everyone's files** can add roles or people.
-- Removing a file in the app hides it; it stays in Google Drive.
+- Removing a file in the app moves it to Google Drive's **Trash** (Google empties it after 30 days; until then it can be restored from drive.google.com → Trash). Files removed before this change are still in Drive: delete them there by hand if you want.
+- **⬇ All** on a lead's Files card downloads every file you may see as one ZIP (Papers / Voice notes / Others); save it to a folder or share it.
+
+## Updating the script
+When `docs/drive-script.gs` changes (e.g. the Trash step), paste the new code over the old one in script.google.com but **keep your own `SECRET` line**, then **Deploy → Manage deployments → ✏️ → Version: New version → Deploy**. The URL stays the same, nothing changes in the app. Until then, removing a file leaves it in Drive.
 
 ## Limits
 - One file up to ~35 MB (Apps Script's request size). Photos, PDFs and voice notes are far below.
+- **⬇ All**: up to 60 files and 60 MB together in one ZIP; above that, open files one by one.
 - A free Gmail has 15 GB (shared with Gmail and Photos).
