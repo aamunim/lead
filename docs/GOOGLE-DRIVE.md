@@ -40,6 +40,11 @@ A **Lead Management** folder is made in that Drive: `Lead Management / <Student 
 - Removing a file in the app moves it to Google Drive's **Trash** (Google empties it after 30 days; until then it can be restored from drive.google.com → Trash). Files removed before this change are still in Drive: delete them there by hand if you want.
 - **⬇ All** on a lead's Files card downloads every file you may see as one ZIP (Papers / Voice notes / Others); save it to a folder or share it.
 
+## 🎙 Voice notes and 📷 camera (app 2.6.0 and later)
+- Every text note (call popup, quick note, next-call hand over, fee, discount, payment, refund, papers, campus visit, stage, admission, lost, reopen, cancel, lead edit) has a **🎙 Voice note** button. The recording (≈ 0.5 MB a minute, stops by itself after an hour) is saved straight to `<Lead> / Voice notes` and shows on the lead's timeline (tap to play, 1x / 1.5x / 2x).
+- **＋ Upload** on the Files card asks **📷 Take a photo** or **📁 Choose a file**; one photo per page ("Another page?"). Audio files (e.g. call recordings) can be chosen too.
+- These need the 2.6.0 build (microphone + camera). Older builds keep working; the 🎙 and 📷 buttons just don't show there.
+
 ## Updating the script
 When `docs/drive-script.gs` changes (e.g. the Trash step), paste the new code over the old one in script.google.com but **keep your own `SECRET` line**, then **Deploy → Manage deployments → ✏️ → Version: New version → Deploy**. The URL stays the same, nothing changes in the app. Until then, removing a file leaves it in Drive.
 

@@ -33,6 +33,8 @@ export type LeadFile = {
   mime_type: string | null;
   size_bytes: number | null;
   duration_sec: number | null;
+  /** 🎙 Where a voice note was recorded: call, note, fee, … */
+  context?: string | null;
   uploaded_by: string | null;
   created_at: string;
 };
@@ -126,7 +128,7 @@ export async function disconnectDrive(): Promise<void> {
 export async function listLeadFiles(leadId: string): Promise<LeadFile[]> {
   const { data, error } = await supabase
     .from('lead_files')
-    .select('id, lead_id, kind, paper_id, call_id, name, mime_type, size_bytes, duration_sec, uploaded_by, created_at')
+    .select('id, lead_id, kind, paper_id, call_id, name, mime_type, size_bytes, duration_sec, context, uploaded_by, created_at')
     .eq('lead_id', leadId)
     .order('created_at', { ascending: false });
   if (error) throw toError(error);
@@ -142,12 +144,14 @@ export async function uploadLeadFile(input: {
   name: string;
   mimeType: string;
   durationSec?: number | null;
+  context?: string | null;
 }): Promise<LeadFile> {
   // The phone's own upload (multipart): the app's fetch can't send a file from its uri
   const parameters: Record<string, string> = { lead_id: input.leadId, kind: input.kind, name: input.name };
   if (input.paperId) parameters.paper_id = input.paperId;
   if (input.callId) parameters.call_id = input.callId;
   if (input.durationSec) parameters.duration_sec = String(input.durationSec);
+  if (input.context) parameters.context = input.context;
 
   let res: { status: number; body: string };
   try {
@@ -247,8 +251,8 @@ export async function saveZip(zip: LeadZip, how: 'save' | 'share'): Promise<bool
   return true;
 }
 
-/** Download through the server and open it in the phone's viewer */
-export async function openLeadFile(f: LeadFile): Promise<void> {
+/** Download through the server into the phone's cache (kept for next time) */
+export async function downloadLeadFile(f: Pick<LeadFile, 'id' | 'name'>): Promise<File> {
   const safeName = `${f.id.slice(0, 8)}-${f.name.replace(/[^\w.\- ]+/g, '_')}`;
   const target = new File(Paths.cache, safeName);
   if (!target.exists) {
@@ -261,6 +265,12 @@ export async function openLeadFile(f: LeadFile): Promise<void> {
       throw new Error(e instanceof Error && /404/.test(e.message) ? 'File not found, or you may not open it.' : 'Could not download the file.');
     }
   }
+  return target;
+}
+
+/** Download through the server and open it in the phone's viewer */
+export async function openLeadFile(f: LeadFile): Promise<void> {
+  const target = await downloadLeadFile(f);
 
   if (Platform.OS === 'android') {
     try {

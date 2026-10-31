@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lead Management",
     "slug": "lead-management",
-    "version": "2.5.4-beta",
+    "version": "2.6.0-beta",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "leadmanagement",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.abamunim.leads",
-      "versionCode": 19,
+      "versionCode": 20,
       "adaptiveIcon": {
         "backgroundColor": "#3F5BD3",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -50,6 +50,19 @@
         }
       ],
       "expo-sharing",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Lead Management uses the microphone only while you record a voice note."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Lead Management uses the camera only when you take a photo of a paper.",
+          "photosPermission": "Lead Management opens your photos only when you choose one to upload."
+        }
+      ],
       "@react-native-community/datetimepicker",
       [
         "expo-contacts",

@@ -30,6 +30,7 @@ import {
 import { listPipelineStages, moveLeadStage } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 // =====================================================================
 // 📄 Papers card on the lead page
@@ -255,6 +256,7 @@ export function PapersCard({ leadId, stageKind, stageKey, onChanged, refreshKey 
 
       {detail && (
         <PaperDetailSheet
+          leadId={leadId}
           paper={detail}
           onClose={() => setDetail(null)}
           onSave={async (value) => {
@@ -359,11 +361,13 @@ function PaperRow({
 // Details of one paper
 // =====================================================================
 function PaperDetailSheet({
+  leadId,
   paper,
   onClose,
   onSave,
   onReturn,
 }: {
+  leadId: string;
   paper: LeadPaper;
   onClose: () => void;
   onSave: (value: { status: PaperStatus | null; copyType: CopyType | null; keptAt: string; note: string }) => Promise<void>;
@@ -455,6 +459,7 @@ function PaperDetailSheet({
             maxLength={200}
             style={styles.input}
           />
+          <VoiceNoteButton leadId={leadId} context="papers" />
         </View>
       )}
 

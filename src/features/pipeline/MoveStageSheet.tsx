@@ -8,6 +8,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { TextField } from '@/shared/ui/TextField';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 // =====================================================================
 // Moving to a stage that needs a note and/or a date
@@ -33,10 +34,13 @@ export function MoveStageSheet({
   stage,
   isCurrent,
   subtitle,
+  leadId,
   onClose,
   onSave,
 }: {
   visible: boolean;
+  /** One lead: 🎙 voice notes can be added */
+  leadId?: string | null;
   stage: PipelineStage | null;
   /** e.g. the lead's name, or "5 leads" */
   subtitle?: string;
@@ -142,6 +146,7 @@ export function MoveStageSheet({
         multiline
         placeholder={stage?.askDate ? 'e.g. Coming with father, wants to see the lab' : 'What happened?'}
       />
+      <VoiceNoteButton leadId={leadId} context="stage" />
 
       {!stage?.askDate && stage?.followUpDays != null && (
         <Text style={styles.hint}>

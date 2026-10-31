@@ -16,6 +16,7 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { decideDiscount, discountQueue, getMyDiscountLimit, money, type QueueItem } from '@/features/fees/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 // =====================================================================
 // 💰 Discount requests waiting for approval
@@ -170,6 +171,7 @@ function Request({
             placeholderTextColor={colors.textMuted}
             style={styles.input}
           />
+          <VoiceNoteButton leadId={i.lead_id} context="discount" />
           <View style={styles.row}>
             <View style={styles.flex}>
               <Button title="✕ Not now" variant="secondary" onPress={() => onDecide(false)} disabled={busy} fullWidth />

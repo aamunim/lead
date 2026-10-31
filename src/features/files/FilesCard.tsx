@@ -20,6 +20,9 @@ import { getLeadPapers, type LeadPaper } from '@/features/papers/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
+import { VoicePlayer, isAudio } from '@/features/voice/VoiceNote';
+import { hasCamera } from '@/features/voice/native';
+import { clock } from '@/features/voice/format';
 
 // =====================================================================
 // 📎 Files on the lead page (kept in the institute's Google Drive)
@@ -36,7 +39,8 @@ type Props = {
   onChanged: (message?: string) => void;
 };
 
-const TYPES = ['image/*', 'application/pdf'];
+// Photos, PDFs and audio (e.g. the phone's call recordings)
+const TYPES = ['image/*', 'application/pdf', 'audio/*'];
 
 const when = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
@@ -59,6 +63,8 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
   const [uploading, setUploading] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
   const [zipping, setZipping] = useState(false);
+  // ▶ A voice note / audio file being played in the app
+  const [playing, setPlaying] = useState<LeadFile | null>(null);
   const more = useShowMore(files, 4);
 
   const load = useCallback(async () => {
@@ -86,32 +92,83 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
 
   const paperName = (id: string | null) => papers.find((p) => p.paperId === id)?.name ?? null;
 
-  const upload = async (paper: LeadPaper | null) => {
+  // 📷 Camera (this build has it) or 📁 a file from the phone / Google Drive app
+  const upload = (paper: LeadPaper | null) => {
     setPicking(false);
-    const picked = await DocumentPicker.getDocumentAsync({ type: TYPES, copyToCacheDirectory: true, multiple: false });
-    if (picked.canceled || !picked.assets?.[0]) return;
-    const a = picked.assets[0];
-    setUploading(paper?.name ?? a.name);
+    if (!hasCamera) {
+      pickFile(paper);
+      return;
+    }
+    Alert.alert(paper?.name ?? 'Upload', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: '📁 Choose a file', onPress: () => pickFile(paper) },
+      { text: '📷 Take a photo', onPress: () => takePhoto(paper, 1) },
+    ]);
+  };
+
+  const send = async (paper: LeadPaper | null, file: { uri: string; name: string; mimeType: string }) => {
+    setUploading(paper?.name ?? file.name);
     try {
-      const ext = a.name.includes('.') ? a.name.slice(a.name.lastIndexOf('.')) : '';
       await uploadLeadFile({
         leadId,
-        kind: paper ? 'paper' : 'other',
+        kind: paper ? 'paper' : file.mimeType.startsWith('audio/') ? 'voice' : 'other',
         paperId: paper?.paperId ?? null,
-        uri: a.uri,
-        name: paper ? `${paper.name}${ext}` : a.name,
-        mimeType: a.mimeType ?? 'application/octet-stream',
+        uri: file.uri,
+        name: file.name,
+        mimeType: file.mimeType,
       });
       await load();
-      onChanged(`📎 ${paper?.name ?? a.name} saved to Google Drive.`);
+      onChanged(`📎 ${paper?.name ?? file.name} saved to Google Drive.`);
+      return true;
     } catch (e) {
       Alert.alert('Could not upload', e instanceof Error ? e.message : '');
+      return false;
     } finally {
       setUploading(null);
     }
   };
 
+  const pickFile = async (paper: LeadPaper | null) => {
+    const picked = await DocumentPicker.getDocumentAsync({ type: TYPES, copyToCacheDirectory: true, multiple: false });
+    if (picked.canceled || !picked.assets?.[0]) return;
+    const a = picked.assets[0];
+    const ext = a.name.includes('.') ? a.name.slice(a.name.lastIndexOf('.')) : '';
+    await send(paper, {
+      uri: a.uri,
+      name: paper ? `${paper.name}${ext}` : a.name,
+      mimeType: a.mimeType ?? 'application/octet-stream',
+    });
+  };
+
+  // One photo per page; after each, "Another page?"
+  const takePhoto = async (paper: LeadPaper | null, page: number) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ImagePicker = require('expo-image-picker') as typeof import('expo-image-picker');
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Camera not allowed', 'Allow it in the phone’s Settings → Apps → Lead Management → Permissions → Camera.');
+      return;
+    }
+    const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: true });
+    if (shot.canceled || !shot.assets?.[0]) return;
+    const base = paper?.name ?? `Photo ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    const ok = await send(paper, {
+      uri: shot.assets[0].uri,
+      name: `${base}${page > 1 ? ` (${page})` : ''}.jpg`,
+      mimeType: shot.assets[0].mimeType ?? 'image/jpeg',
+    });
+    if (!ok) return;
+    Alert.alert('Another page?', paper ? `Take one more photo for ${paper.name}?` : undefined, [
+      { text: 'Done', style: 'cancel' },
+      { text: '📷 Next page', onPress: () => takePhoto(paper, page + 1) },
+    ]);
+  };
+
   const open = async (f: LeadFile) => {
+    if (isAudio(f)) {
+      setPlaying(f);
+      return;
+    }
     setOpening(f.id);
     try {
       await openLeadFile(f);
@@ -226,13 +283,17 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
               {f.kind === 'paper' && paperName(f.paper_id) ? paperName(f.paper_id) : f.name}
             </Text>
             <Text style={styles.meta} numberOfLines={1}>
-              {[sizeText(f.size_bytes), when(f.created_at), nameOf(f.uploaded_by)].filter(Boolean).join(' · ')}
+              {[f.duration_sec ? `▶ ${clock(f.duration_sec)}` : sizeText(f.size_bytes), when(f.created_at), nameOf(f.uploaded_by)]
+                .filter(Boolean)
+                .join(' · ')}
             </Text>
           </View>
           {opening === f.id ? <ActivityIndicator color={colors.primary} /> : <Text style={styles.chevron}>›</Text>}
         </Pressable>
       ))}
       <ShowMoreButton {...more} />
+
+      <VoicePlayer file={playing} onClose={() => setPlaying(null)} />
 
       {/* Which paper is this? */}
       <Modal visible={picking} transparent animationType="slide" onRequestClose={() => setPicking(false)}>
@@ -242,7 +303,11 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
             <View style={styles.handle} />
             <ScrollView contentContainerStyle={styles.sheetContent}>
               <Text style={styles.sheetTitle}>Upload: which paper?</Text>
-              <Text style={styles.meta}>Then choose a photo or PDF (from the phone, or the Google Drive app).</Text>
+              <Text style={styles.meta}>
+                {hasCamera
+                  ? 'Then take a photo, or choose a photo / PDF / audio file (from the phone, or the Google Drive app).'
+                  : 'Then choose a photo, PDF or audio file (from the phone, or the Google Drive app).'}
+              </Text>
               <View style={styles.chips}>
                 {papers.map((p) => {
                   const has = files.some((f) => f.paper_id === p.paperId);

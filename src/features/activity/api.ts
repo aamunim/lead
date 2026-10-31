@@ -414,7 +414,7 @@ export function describeChange(
         warn: true,
       };
     case 'file_added':
-      return { text: `📎 File added: ${q(d.name)}`, warn: false };
+      return { text: d.kind === 'voice' ? '🎙 Voice note added' : `📎 File added: ${q(d.name)}`, warn: false };
     case 'file_deleted':
       return { text: `📎 File removed: ${q(d.name)}`, warn: true };
     case 'files_downloaded':

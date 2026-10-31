@@ -266,6 +266,7 @@ export type Database = {
       lead_files: {
         Row: {
           call_id: string | null
+          context: string | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -282,6 +283,7 @@ export type Database = {
         }
         Insert: {
           call_id?: string | null
+          context?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -298,6 +300,7 @@ export type Database = {
         }
         Update: {
           call_id?: string | null
+          context?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null

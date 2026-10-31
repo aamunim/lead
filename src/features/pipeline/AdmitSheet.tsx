@@ -39,6 +39,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { TextField } from '@/shared/ui/TextField';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 type Props = {
   visible: boolean;
@@ -559,6 +560,7 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
                       multiline
                       placeholder="e.g. Paid admission fee"
                     />
+                    <VoiceNoteButton leadId={lead.id} context="admission" />
                   </>
                 )}
 
