@@ -151,7 +151,7 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
     tiles: [
       {
         title: 'Website',
-        description: 'app.sparc.college on a computer: on/off, who may use it',
+        description: 'lead.ittc.edu.bd on a computer: on/off, who may use it',
         icon: '🌐',
         href: '/settings/web' as Href,
       },

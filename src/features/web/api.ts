@@ -6,7 +6,7 @@ import { getSetting, updateSetting } from '@/features/settings/api';
 import type { Json } from '@/shared/types/database';
 
 // =====================================================================
-// 🌐 The website (app.sparc.college): the same app in a browser, with
+// 🌐 The website (lead.ittc.edu.bd): the same app in a browser, with
 //   some modules only (Students, Reports, Team activity, Import / Export,
 //   Discounts, Templates, Notifications). Settings → Website decides who
 //   may use it; admins always may.

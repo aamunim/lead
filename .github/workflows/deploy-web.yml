@@ -1,5 +1,5 @@
 # =====================================================================
-# 🌐 Website: build and upload to app.sparc.college (Namecheap cPanel)
+# 🌐 Website: build and upload to lead.ittc.edu.bd (Namecheap cPanel)
 #   Runs by itself after every merge to main (and from Actions → "Deploy
 #   website" → Run workflow). Builds the web version of the app and
 #   uploads it by FTP to the subdomain's folder. Only changed files are
@@ -63,7 +63,7 @@ jobs:
         if: steps.check.outputs.ready == 'true'
         run: npx expo export --platform web --output-dir dist
 
-      - name: Upload to app.sparc.college
+      - name: Upload to lead.ittc.edu.bd
         if: steps.check.outputs.ready == 'true'
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
