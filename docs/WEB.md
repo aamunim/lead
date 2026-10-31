@@ -1,4 +1,4 @@
-# 🌐 Website: app.sparc.college
+# 🌐 Website: lead.ittc.edu.bd
 
 The same app in a browser, for a computer. Same accounts, same data, same rules
 for who sees and changes what. Only some modules are on the website (now:
@@ -14,25 +14,32 @@ Every merge to `main` builds the website and uploads it to Namecheap by FTP
 
 ## One-time setup (Namecheap shared hosting, cPanel)
 
-### 1. The subdomain
-cPanel → **Domains** → **Create A New Domain** →
-- Domain: `app.sparc.college`
-- Uncheck "Share document root", document root: `app.sparc.college`
-  (i.e. `/home/<cpanel-user>/app.sparc.college`)
+### 1. The address
+The website lives on the Namecheap hosting (the same cPanel as sparc.college),
+but the address is under **ittc.edu.bd**, whose DNS is managed elsewhere (where
+ittc.edu.bd was registered / its DNS panel).
 
-If sparc.college uses Namecheap's hosting nameservers, the DNS record is made by
-itself. If the DNS is elsewhere, add an **A record** `app` → the server IP shown
-in cPanel (right side, "Shared IP Address").
+a) **DNS of ittc.edu.bd** (its own DNS panel): add an **A record**
+   - Name / Host: `lead`
+   - Value / Points to: the Namecheap server IP (cPanel, right side,
+     "Shared IP Address")
+   - TTL: default. It can take from minutes up to a few hours to work.
+
+b) **Namecheap cPanel** → **Domains** → **Create A New Domain** →
+   - Domain: `lead.ittc.edu.bd`
+   - Uncheck "Share document root", document root: `lead.ittc.edu.bd`
+     (i.e. `/home/<cpanel-user>/lead.ittc.edu.bd`)
 
 ### 2. HTTPS
-cPanel → **SSL/TLS Status** → tick `app.sparc.college` → **Run AutoSSL**
-(takes a few minutes).
+cPanel → **SSL/TLS Status** → tick `lead.ittc.edu.bd` → **Run AutoSSL**
+(takes a few minutes; works only after the DNS record in 1a is live).
 
 ### 3. An FTP account only for this folder
 cPanel → **FTP Accounts** → Add FTP Account:
-- Log in: `deploy` (becomes `deploy@sparc.college`)
+- Log in: `deploy` (becomes `deploy@sparc.college`: FTP accounts carry the
+  hosting's main domain)
 - Password: a long new password (use the generator)
-- Directory: `app.sparc.college` (**only** this folder)
+- Directory: `lead.ittc.edu.bd` (**only** this folder)
 
 "Configure FTP Client" next to it shows the **FTP server** (e.g. `ftp.sparc.college`).
 
@@ -51,11 +58,11 @@ Never paste these in a chat or a screenshot.
 
 ### 5. First upload
 GitHub → **Actions → Deploy website → Run workflow**. When it is green, open
-**https://app.sparc.college** and sign in.
+**https://lead.ittc.edu.bd** and sign in.
 
 ### 6. (Optional) Supabase
 Supabase → **Authentication → URL Configuration** → add
-`https://app.sparc.college` to **Redirect URLs** (used by "forgot password"
+`https://lead.ittc.edu.bd` to **Redirect URLs** (used by "forgot password"
 links).
 
 ## How it is built

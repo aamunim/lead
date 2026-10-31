@@ -1,4 +1,4 @@
-# 🌐 app.sparc.college (Namecheap shared hosting, Apache)
+# 🌐 lead.ittc.edu.bd (Namecheap shared hosting, Apache)
 # Every address that is not a real file opens the app (it finds the page itself)
 <IfModule mod_rewrite.c>
   RewriteEngine On

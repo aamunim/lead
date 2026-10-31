@@ -9,7 +9,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
 // =====================================================================
-// ⚙️ Settings → Website (app.sparc.college): on/off and who may use it
+// ⚙️ Settings → Website (lead.ittc.edu.bd): on/off and who may use it
 //   Inside, people see and change only what they may in the app.
 // =====================================================================
 
@@ -82,7 +82,7 @@ export default function WebSettingsScreen() {
       <View style={styles.card}>
         <View style={styles.switchRow}>
           <View style={styles.flex}>
-            <Text style={styles.rowTitle}>🌐 Website · app.sparc.college</Text>
+            <Text style={styles.rowTitle}>🌐 Website · lead.ittc.edu.bd</Text>
             <Text style={styles.rowText}>
               {settings.enabled
                 ? 'On. People below can sign in on a computer with the same email and password (Students, Reports, Team activity, Import / Export, Discounts, Templates, Notifications).'
