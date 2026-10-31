@@ -130,7 +130,7 @@ export function canUndo(batch: ImportBatch): boolean {
 const EXPORT_SELECT = `
   name, phone, whatsapp_number, whatsapp_username, alt_phone, email, area,
   guardian_name, guardian_phone, guardian_relation,
-  rating, notes, referred_by, created_at, next_follow_up_at, last_contacted_at, visit_status, visit_at,
+  rating, notes, referred_by, created_at, created_by, import_batch_id, next_follow_up_at, last_contacted_at, visit_status, visit_at,
   fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due,
   stage:pipeline_stages(name),
   source:lead_sources(name),
@@ -156,6 +156,8 @@ type ExportLead = {
   notes: string | null;
   referred_by: string | null;
   created_at: string;
+  created_by: string | null;
+  import_batch_id: string | null;
   next_follow_up_at: string | null;
   last_contacted_at: string | null;
   visit_status: string | null;
@@ -179,7 +181,7 @@ const EXPORT_HEADERS = [
   'Name', 'Phone', 'WhatsApp number', 'WhatsApp username', 'Alternative phone', 'Email', 'Area',
   'Guardian name', 'Guardian phone', 'Guardian relation',
   'Courses', 'Stage', 'Rating', 'Source', 'Campaign', 'Referred by', 'Lead type', 'Tags',
-  'Assigned to', 'Created', 'Next follow-up', 'Last contacted', 'Campus visit',
+  'Assigned to', 'Created', 'Created by', 'Next follow-up', 'Last contacted', 'Campus visit',
   'Fee status', 'Full fee', 'Discount', 'To pay', 'Paid', 'Due', 'Notes',
 ];
 
@@ -251,6 +253,12 @@ export async function exportLeads(filters: ExportFilters, userId: string): Promi
   const leads = await fetchLeadsForExport(filters);
   if (leads.length === 0) throw new Error('No leads match these filters.');
 
+  // Who added each lead (created_by points at the sign-in, so names come from profiles)
+  const { data: people } = await supabase.from('profiles').select('id, full_name');
+  const nameOf = new Map((people ?? []).map((p) => [p.id, p.full_name ?? '']));
+  const createdBy = (l: ExportLead) =>
+    l.created_by ? `${nameOf.get(l.created_by) ?? ''}${l.import_batch_id ? ' (imported)' : ''}` : '';
+
   const rows = leads.map((l) => [
     l.name,
     l.phone,
@@ -272,6 +280,7 @@ export async function exportLeads(filters: ExportFilters, userId: string): Promi
     l.lead_tags.map((t) => t.tag?.name).filter(Boolean).join(', '),
     l.assignee?.full_name ?? '',
     dateText(l.created_at),
+    createdBy(l),
     dateText(l.next_follow_up_at),
     dateText(l.last_contacted_at),
     visitText(l.visit_status, l.visit_at),

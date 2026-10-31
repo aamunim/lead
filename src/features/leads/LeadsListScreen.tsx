@@ -37,6 +37,18 @@ import {
 import { LeadBoard } from '@/features/board/LeadBoard';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
+import { AddedChips } from '@/features/leads/AddedChips';
+import {
+  NO_ADDED,
+  addedQuery,
+  addedRange,
+  getLeadsAdded,
+  listLeadCreators,
+  type AddedChoice,
+  type AddedDay,
+  type LeadCreator,
+  type LeadsAddedRow,
+} from '@/features/leads/added';
 import { canHandOver } from '@/features/settings/assignment';
 import { LeadQuickSheet, type QuickField } from '@/features/leads/LeadQuickSheet';
 import { LeadSortSheet, defaultSortFor, loadLeadSort, saveLeadSort, sortLabel } from '@/features/leads/LeadSortSheet';
@@ -115,7 +127,7 @@ function followUpLabel(iso: string | null): { text: string; overdue: boolean } |
 // =====================================================================
 export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students' }) {
   const students = mode === 'students';
-  const { profile, hasPermission, assignmentOn, sharedMode, canAssign, assignment } = useAuth();
+  const { profile, hasPermission, assignmentOn, sharedMode, assignment } = useAuth();
   // Everyone may give leads to someone (Settings → Lead assignment → Hand over)
   const mayHandOver = canHandOver(assignment, hasPermission);
 
@@ -134,14 +146,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         { key: 'papers', label: '📄 Papers missing' },
         { key: 'new_students', label: 'New this month' },
       ]
-    : [
-    { key: 'all', label: 'All' },
-    ...(assignmentOn && seesOthers ? [{ key: 'mine' as QuickFilter, label: 'Mine' }] : []),
-    { key: 'new', label: 'Not contacted' },
-    { key: 'hot', label: 'Hot' },
-    ...(assignmentOn && canAssign ? [{ key: 'unassigned' as QuickFilter, label: 'Unassigned' }] : []),
-    { key: 'closed', label: 'Closed' },
-  ];
+    : // Leads: "All", then who added them and when (➕ chips below)
+      [{ key: 'all', label: 'All' }];
 
   // Many leads lost at once: only for people who edit their team's or all leads
   const canBulkLost = hasPermission('leads.edit_team') || hasPermission('leads.edit_all');
@@ -166,6 +172,40 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   const showAssignee = assignmentOn && seesOthers;
 
   const [quick, setQuick] = useState<QuickFilter>('all');
+  // ➕ Leads added by (👤) and when (Today, Yesterday, …): the Leads tab only
+  const [added, setAdded] = useState<AddedChoice>(NO_ADDED);
+  const [creators, setCreators] = useState<LeadCreator[]>([]);
+  const [addedCounts, setAddedCounts] = useState<LeadsAddedRow[]>([]);
+  // Admins (and "see all leads") may see everyone's: no "added by" limit for "All users"
+  const seesAllAdded = isAdmin || hasPermission('leads.view_all');
+  const addedQ = useMemo(
+    () =>
+      students
+        ? null
+        : addedQuery(added, seesAllAdded, creators.length > 0 ? creators.map((c) => c.id) : profile?.id ? [profile.id] : []),
+    [students, added, seesAllAdded, creators, profile?.id],
+  );
+  useEffect(() => {
+    if (students) return;
+    listLeadCreators()
+      .then(setCreators)
+      .catch(() => setCreators([]));
+  }, [students]);
+  // "All users" and a period: how many each person added
+  useEffect(() => {
+    const range = students || added.userId ? null : addedRange(added);
+    if (!range) {
+      setAddedCounts([]);
+      return;
+    }
+    let live = true;
+    getLeadsAdded(range.from, range.to)
+      .then((rows) => live && setAddedCounts(rows))
+      .catch(() => live && setAddedCounts([]));
+    return () => {
+      live = false;
+    };
+  }, [students, added]);
   // Opened from a notification about many leads: show just those
   const [idsFilter, setIdsFilter] = useState<string[] | null>(null);
 
@@ -315,6 +355,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         sort,
         students,
         ids: idsFilter,
+        added: addedQ,
         page: 0,
       });
       if (myRequest !== requestId.current) return;
@@ -331,7 +372,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         setRefreshing(false);
       }
     }
-  }, [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort, idsFilter]);
+  }, [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort, idsFilter, addedQ]);
 
   const loadSavedFilters = useCallback(async () => {
     try {
@@ -359,7 +400,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   useEffect(() => {
     setSelected(new Set());
     setMatchingCache([]);
-  }, [debouncedSearch, quick, effectiveFilters]);
+  }, [debouncedSearch, quick, effectiveFilters, addedQ]);
 
   // --- after a call from the list: open the popup on return -----------
   useEffect(() => {
@@ -398,6 +439,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         sort,
         students,
         ids: idsFilter,
+        added: addedQ,
         page: next,
       });
       setLeads((list) => [...list, ...result.items]);
@@ -412,7 +454,26 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
   // --- filters ------------------------------------------------------------
   // Opened from Reports (a funnel bar): show the leads in that stage
-  const { stage: stageParam, ids: idsParam } = useLocalSearchParams<{ stage?: string; ids?: string }>();
+  const {
+    stage: stageParam,
+    ids: idsParam,
+    addedBy,
+    addedDay,
+    addedFrom,
+    addedTo,
+  } = useLocalSearchParams<{ stage?: string; ids?: string; addedBy?: string; addedDay?: string; addedFrom?: string; addedTo?: string }>();
+  // Opened from Team activity / Home: leads added by someone, in a period
+  useEffect(() => {
+    if (!addedBy && !addedDay) return;
+    setLoading(true);
+    setAdded({
+      userId: addedBy ? String(addedBy) : null,
+      day: addedDay ? (String(addedDay) as AddedDay) : null,
+      from: addedFrom ? String(addedFrom) : undefined,
+      to: addedTo ? String(addedTo) : undefined,
+    });
+    router.setParams({ addedBy: undefined, addedDay: undefined, addedFrom: undefined, addedTo: undefined });
+  }, [addedBy, addedDay, addedFrom, addedTo]);
   useEffect(() => {
     if (!idsParam) return;
     setLoading(true);
@@ -557,6 +618,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         sort,
         students,
         ids: idsFilter,
+        added: addedQ,
       });
       setMatchingCache(all);
       setSelected(new Set(all.map((l) => l.id)));
@@ -580,7 +642,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
   const markedLeads = [...selected].map((id) => pool.get(id)).filter(Boolean) as LeadListItem[];
 
-  const listIsFiltered = filterCount > 0 || quick !== 'all' || !!debouncedSearch;
+  const listIsFiltered = filterCount > 0 || quick !== 'all' || !!debouncedSearch || !!addedQ;
 
   return (
     <View style={styles.screen}>
@@ -636,13 +698,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           style={styles.chipsScroll}
         >
           {quickFilters.map((f) => {
-            const on = f.key === quick;
+            const on = f.key === quick && (f.key !== 'all' || !addedQ);
             return (
               <Pressable
                 key={f.key}
                 onPress={() => {
                   setLoading(true);
                   setQuick(f.key);
+                  if (f.key === 'all') setAdded(NO_ADDED);
                 }}
                 style={[styles.chip, on && styles.chipOn]}
                 accessibilityRole="button"
@@ -652,6 +715,19 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               </Pressable>
             );
           })}
+
+          {/* ➕ Added by / when */}
+          {!students && (
+            <AddedChips
+              choice={added}
+              creators={creators}
+              myId={profile?.id ?? null}
+              onChange={(next) => {
+                setLoading(true);
+                setAdded(next);
+              }}
+            />
+          )}
 
           {savedFilters.length > 0 && <View style={styles.chipDivider} />}
 
@@ -754,9 +830,36 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         </View>
       )}
 
+      {/* ➕ How many each person added in the chosen period (tap one to show theirs) */}
+      {!selecting && !students && addedCounts.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipsScroll}
+          contentContainerStyle={styles.addedCounts}
+        >
+          {addedCounts.map((c) => (
+            <Pressable
+              key={c.user_id}
+              onPress={() => {
+                setLoading(true);
+                setAdded((a) => ({ ...a, userId: c.user_id }));
+              }}
+              hitSlop={6}
+              accessibilityRole="button"
+            >
+              <Text style={styles.addedCount}>
+                {c.user_id === profile?.id ? 'Me' : (c.name ?? 'No name')} <Text style={styles.addedCountNum}>{c.total}</Text>
+                {c.imported > 0 ? ` (${c.imported} imported)` : ''}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
       {showBoard ? (
         <LeadBoard
-          query={{ search: debouncedSearch, quick, userId: profile?.id, filters: effectiveFilters, closedMode, sort, ids: idsFilter }}
+          query={{ search: debouncedSearch, quick, userId: profile?.id, filters: effectiveFilters, closedMode, sort, ids: idsFilter, added: addedQ }}
           closedColumns={boardSettings.closed_columns}
           showAssignee={showAssignee}
           reloadKey={boardReload}
@@ -1329,6 +1432,9 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.text, borderColor: colors.text },
   chipText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.textMuted },
   chipTextOn: { color: colors.surface },
+  addedCounts: { flexDirection: 'row', gap: spacing.lg, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  addedCount: { fontSize: fontSize.caption, color: colors.textMuted },
+  addedCountNum: { fontWeight: fontWeight.bold, color: colors.text },
   chipDivider: { width: 1, height: 20, backgroundColor: colors.border },
   savedChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderColor: colors.primary },
   savedChipOn: { backgroundColor: colors.primary },

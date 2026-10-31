@@ -1,5 +1,6 @@
 import { supabase } from '@/shared/lib/supabase';
 import type { Json, Tables } from '@/shared/types/database';
+import type { AddedQuery } from '@/features/leads/added';
 
 import {
   applyLeadFilters,
@@ -202,6 +203,8 @@ export type LeadQuery = {
   sort?: LeadSort;
   /** 🎓 Only admitted students (the Students tab) */
   students?: boolean;
+  /** ➕ Added by these people, in this period (the Leads tab's user + date chips) */
+  added?: AddedQuery | null;
 };
 
 export type DuplicateLead = {
@@ -275,6 +278,7 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
     sort = DEFAULT_SORT,
     ids = null,
     students = false,
+    added = null,
   } = options;
 
   let query = supabase
@@ -308,10 +312,15 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
   if (quick === 'unassigned') query = query.is('assigned_to', null);
   if (quick === 'new') query = query.is('last_contacted_at', null);
 
+  // ➕ Added by / when (closed leads count too: they were added all the same)
+  if (added?.by) query = query.in('created_by', added.by.length > 0 ? added.by : ['00000000-0000-0000-0000-000000000000']);
+  if (added?.from) query = query.gte('created_at', added.from);
+  if (added?.to) query = query.lt('created_at', added.to);
+
   // Closed leads (Admitted / Lost / Cancelled)
   if (ids && ids.length > 0) query = query.in('id', ids);
 
-  const wantsClosed = !!stageId || needsClosedLeads(filters) || !!(ids && ids.length > 0);
+  const wantsClosed = !!stageId || needsClosedLeads(filters) || !!(ids && ids.length > 0) || !!added;
   if (students) {
     // 🎓 Admitted students only (a cancelled admission clears admitted_at)
     query = query.not('admitted_at', 'is', null);
