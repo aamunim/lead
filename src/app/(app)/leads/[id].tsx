@@ -76,6 +76,7 @@ import { VOICE_CONTEXT, clock } from '@/features/voice/format';
 import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 import { deleteLeadFile, isRecordedVoice, listLeadFiles, type LeadFile } from '@/features/files/api';
 import { onVoiceSaved } from '@/features/voice/useVoiceNotes';
+import { isWeb } from '@/features/web/api';
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -832,7 +833,8 @@ export default function LeadDetailScreen() {
 
           {/* Contact buttons */}
           <View style={styles.actions}>
-            {!!lead.phone && (
+            {/* 🌐 No phone calls (or SMS) from a computer */}
+            {!!lead.phone && !isWeb && (
               <ActionButton label="Call" icon="📞" color={colors.success} onPress={() => call(lead.phone!)} />
             )}
             <ActionButton
@@ -842,7 +844,7 @@ export default function LeadDetailScreen() {
               onPress={() => (tapOpensTemplates ? setTemplateChannel('whatsapp') : whatsapp())}
               onLongPress={templates.allowed ? () => setTemplateChannel('whatsapp') : undefined}
             />
-            {!!lead.phone && (
+            {!!lead.phone && !isWeb && (
               <ActionButton
                 label="SMS"
                 icon="✉️"

@@ -1,0 +1,76 @@
+# =====================================================================
+# 🌐 Website: build and upload to app.sparc.college (Namecheap cPanel)
+#   Runs by itself after every merge to main (and from Actions → "Deploy
+#   website" → Run workflow). Builds the web version of the app and
+#   uploads it by FTP to the subdomain's folder. Only changed files are
+#   sent. Setup: docs/WEB.md.
+#   Repository secrets (Settings → Secrets and variables → Actions):
+#     WEB_SUPABASE_URL, WEB_SUPABASE_ANON_KEY  (same as the app's .env)
+#     FTP_SERVER, FTP_USERNAME, FTP_PASSWORD    (cPanel → FTP Accounts)
+# =====================================================================
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'assets/**'
+      - 'public/**'
+      - 'app.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.WEB_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.WEB_SUPABASE_ANON_KEY }}
+      HAS_FTP: ${{ secrets.FTP_SERVER != '' && secrets.FTP_USERNAME != '' && secrets.FTP_PASSWORD != '' }}
+    steps:
+      - name: Check the secrets
+        id: check
+        run: |
+          if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ] || [ -z "$EXPO_PUBLIC_SUPABASE_ANON_KEY" ] || [ "$HAS_FTP" != "true" ]; then
+            echo "::warning::The website is not set up yet (docs/WEB.md): add WEB_SUPABASE_URL, WEB_SUPABASE_ANON_KEY, FTP_SERVER, FTP_USERNAME, FTP_PASSWORD."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install packages
+        if: steps.check.outputs.ready == 'true'
+        run: npm ci
+
+      - name: Build the website
+        if: steps.check.outputs.ready == 'true'
+        run: npx expo export --platform web --output-dir dist
+
+      - name: Upload to app.sparc.college
+        if: steps.check.outputs.ready == 'true'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          security: loose
+          local-dir: ./dist/
+          server-dir: ./

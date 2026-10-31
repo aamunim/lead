@@ -6,6 +6,7 @@ import { AppState } from 'react-native';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { canSeeStudents, getStudentsSettings } from '@/features/students/api';
 import { colors, fontWeight } from '@/shared/theme';
+import { isWeb } from '@/features/web/api';
 
 export default function TabsLayout() {
   const { profile, hasPermission } = useAuth();
@@ -28,7 +29,8 @@ export default function TabsLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        // 🌐 Website: the menu on the left replaces the tabs
+        tabBarStyle: isWeb ? { display: 'none' } : { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarLabelStyle: { fontWeight: fontWeight.semibold },
         headerStyle: { backgroundColor: colors.primary },
         headerTintColor: colors.textOnPrimary,

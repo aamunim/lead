@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { checkNow, isOnline, onNetworkChange } from '@/shared/lib/network';
@@ -55,7 +55,9 @@ export function OfflineBanner() {
         <View style={[styles.bar, styles.barOff]} accessibilityLiveRegion="assertive">
           <View style={styles.flex}>
             <Text style={styles.title}>📵 No internet: changes can’t be saved right now</Text>
-            <Text style={styles.text}>Calls stay on this phone and sync when the internet is back.</Text>
+            {Platform.OS !== 'web' && (
+              <Text style={styles.text}>Calls stay on this phone and sync when the internet is back.</Text>
+            )}
           </View>
           <Pressable onPress={retry} hitSlop={8} disabled={checking} accessibilityRole="button">
             <Text style={styles.retry}>{checking ? '…' : 'Retry'}</Text>
