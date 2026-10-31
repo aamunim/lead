@@ -74,6 +74,8 @@ import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
 import { VoicePlayer } from '@/features/voice/VoiceNote';
 import { VOICE_CONTEXT, clock } from '@/features/voice/format';
 import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
+import { deleteLeadFile, isRecordedVoice, listLeadFiles, type LeadFile } from '@/features/files/api';
+import { onVoiceSaved } from '@/features/voice/useVoiceNotes';
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -84,7 +86,9 @@ const RATING_COLOR: Record<string, string> = {
 /** One line in "Calls & notes" */
 type FeedItem =
   | { kind: 'call'; key: string; at: string; call: CallLog }
-  | { kind: 'note'; key: string; at: string; note: LeadNote };
+  | { kind: 'note'; key: string; at: string; note: LeadNote }
+  /** 🎙 A voice note not tied to a call (note, hand over, fee, visit, …) */
+  | { kind: 'voice'; key: string; at: string; voice: LeadFile };
 
 /** When a note was written: exact time, only the day, or none (typed on the edit screen) */
 function noteWhen(n: LeadNote): string {
@@ -135,6 +139,8 @@ export default function LeadDetailScreen() {
   const [playing, setPlaying] = useState<PlayableFile | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
+  // 🎙 Voice notes (recorded with the 🎙 buttons): shown in Calls & notes
+  const [voices, setVoices] = useState<LeadFile[]>([]);
   const [followUp, setFollowUp] = useState<FollowUp | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [stageNames, setStageNames] = useState<Map<string, string>>(new Map());
@@ -183,6 +189,16 @@ export default function LeadDetailScreen() {
     [],
   );
 
+  const loadVoices = useCallback(() => {
+    if (!id) return;
+    listLeadFiles(id)
+      .then((files) => setVoices(files.filter(isRecordedVoice)))
+      .catch(() => setVoices([]));
+  }, [id]);
+
+  // A voice note saved from any sheet on this page: show it at once
+  useEffect(() => onVoiceSaved((leadId) => leadId === id && loadVoices()), [id, loadVoices]);
+
   const load = useCallback(async () => {
     if (!id) return;
     try {
@@ -199,6 +215,7 @@ export default function LeadDetailScreen() {
         listHolidays(year).catch(() => []),
         listHolidays(year + 1).catch(() => []),
       ]);
+      loadVoices();
       setLead(l);
       setActivity(a);
       setCalls(c);
@@ -219,7 +236,7 @@ export default function LeadDetailScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [id]);
+  }, [id, loadVoices]);
 
   // Reload when coming back from the edit screen
   useFocusEffect(
@@ -620,13 +637,52 @@ export default function LeadDetailScreen() {
   };
 
   // --- calls and notes, newest first ----------------------------------
+  // 🎙 Voice notes from the call popup sit inside their call; the rest are their own lines
+  const voicesByCall = useMemo(() => {
+    const ids = new Set(calls.map((c) => c.id));
+    const map = new Map<string, LeadFile[]>();
+    for (const v of voices) {
+      if (!v.call_id || !ids.has(v.call_id)) continue;
+      map.set(v.call_id, [...(map.get(v.call_id) ?? []), v].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)));
+    }
+    return map;
+  }, [calls, voices]);
+
   const feed = useMemo<FeedItem[]>(() => {
     const notes = lead ? splitLeadNotes(lead.notes, lead.created_at, activity) : [];
+    const ids = new Set(calls.map((c) => c.id));
     return [
       ...calls.map((c): FeedItem => ({ kind: 'call', key: c.id, at: c.called_at, call: c })),
       ...notes.map((n): FeedItem => ({ kind: 'note', key: n.key, at: n.at, note: n })),
+      ...voices
+        .filter((v) => !v.call_id || !ids.has(v.call_id))
+        .map((v): FeedItem => ({ kind: 'voice', key: v.id, at: v.created_at, voice: v })),
     ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  }, [lead, calls, activity]);
+  }, [lead, calls, activity, voices]);
+
+  // 🗑 Remove a voice note (the person who recorded it, or an admin; it goes to Drive's Trash)
+  const onLongPressVoice = (v: LeadFile) => {
+    if (v.uploaded_by !== profile?.id && !hasPermission('settings.manage')) {
+      Alert.alert('Can’t delete', 'Only the person who recorded it, or an admin, can delete a voice note.');
+      return;
+    }
+    Alert.alert('Delete this voice note?', 'It is removed here and moved to Google Drive’s Trash (30 days to bring it back).', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteLeadFile(v.id);
+            showToast('Voice note deleted.');
+            load();
+          } catch (e) {
+            Alert.alert('Could not delete', e instanceof Error ? e.message : '');
+          }
+        },
+      },
+    ]);
+  };
 
   // The note from whoever gave this lead to its person (hand over)
   const handover = useMemo(() => {
@@ -636,9 +692,11 @@ export default function LeadDetailScreen() {
     return a && d.note && d.to === lead.assigned_to ? { item: a, note: d.note } : null;
   }, [activity, lead?.assigned_to]);
 
-  // Newest call and newest note, for the top card
+  // Newest call and newest note (written or 🎙), for the top card
   const lastCall = feed.find((f) => f.kind === 'call')?.call ?? null;
-  const lastNote = feed.find((f) => f.kind === 'note')?.note ?? null;
+  const lastNoteItem = feed.find((f) => f.kind === 'note' || f.kind === 'voice') ?? null;
+  const lastNote = lastNoteItem?.kind === 'note' ? lastNoteItem.note : null;
+  const lastVoice = lastNoteItem?.kind === 'voice' ? lastNoteItem.voice : null;
 
   // Calls & notes: everything, only phone, or only WhatsApp
   const [feedFilter, setFeedFilter] = useState<'all' | CallChannel>('all');
@@ -647,7 +705,11 @@ export default function LeadDetailScreen() {
     () =>
       feedFilter === 'all'
         ? feed
-        : feed.filter((f) => f.kind === 'call' && (f.call.channel ?? 'phone') === feedFilter),
+        : feed.filter(
+            (f) =>
+              (f.kind === 'call' && (f.call.channel ?? 'phone') === feedFilter) ||
+              (f.kind === 'voice' && f.voice.context === (feedFilter === 'phone' ? 'call' : 'whatsapp')),
+          ),
     [feed, feedFilter],
   );
 
@@ -792,7 +854,7 @@ export default function LeadDetailScreen() {
           </View>
 
           {/* Last call and last note at a glance */}
-          {(lastCall || lastNote) && (
+          {(lastCall || lastNote || lastVoice) && (
             <View style={styles.recent}>
               {lastCall && (
                 <View style={styles.recentRow}>
@@ -818,6 +880,22 @@ export default function LeadDetailScreen() {
                         “{lastCall.notes}”
                       </Text>
                     )}
+                    <VoiceChips list={voicesByCall.get(lastCall.id)} onPlay={setPlaying} onLongPress={onLongPressVoice} />
+                  </View>
+                </View>
+              )}
+              {lastVoice && (
+                <View style={styles.recentRow}>
+                  <Text style={styles.recentIcon}>📝</Text>
+                  <View style={styles.flex}>
+                    <Text style={styles.recentTitle} numberOfLines={1}>
+                      Last note: <Text style={styles.recentNote}>🎙 Voice note</Text>
+                    </Text>
+                    <VoiceChips list={[lastVoice]} onPlay={setPlaying} onLongPress={onLongPressVoice} />
+                    <Text style={styles.timelineMeta}>
+                      {formatDateTime(lastVoice.created_at)}
+                      {nameOf(lastVoice.uploaded_by) ? ` · ${nameOf(lastVoice.uploaded_by)}` : ''}
+                    </Text>
                   </View>
                 </View>
               )}
@@ -1009,6 +1087,35 @@ export default function LeadDetailScreen() {
             </Text>
           ) : (
             feedMore.visible.map((item) => {
+              if (item.kind === 'voice') {
+                const v = item.voice;
+                const where = VOICE_CONTEXT[v.context ?? ''];
+                return (
+                  <Pressable
+                    key={item.key}
+                    style={({ pressed }) => [styles.callRow, pressed && styles.pressed]}
+                    onPress={() => setPlaying(v)}
+                    onLongPress={() => onLongPressVoice(v)}
+                    delayLongPress={400}
+                    accessibilityRole="button"
+                    accessibilityHint="Plays the voice note. Long press to delete"
+                  >
+                    <View style={[styles.dirBadge, { backgroundColor: colors.primarySoft }]}>
+                      <Text style={styles.noteIcon}>🎙</Text>
+                    </View>
+                    <View style={styles.flex}>
+                      <Text style={[styles.callOutcome, { color: colors.primary }]}>
+                        Voice note{where && where !== 'Note' ? ` · ${where}` : ''}
+                      </Text>
+                      <Text style={styles.voicePlay}>▶ {v.duration_sec ? clock(v.duration_sec) : 'Play'}</Text>
+                      <Text style={styles.timelineMeta}>
+                        {formatDateTime(v.created_at)}
+                        {nameOf(v.uploaded_by) ? ` · ${nameOf(v.uploaded_by)}` : ''}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              }
               if (item.kind === 'note') {
                 const n = item.note;
                 return (
@@ -1068,6 +1175,7 @@ export default function LeadDetailScreen() {
                       )}
                     </View>
                     {c.notes && <NoteText text={c.notes} />}
+                    <VoiceChips list={voicesByCall.get(c.id)} onPlay={setPlaying} onLongPress={onLongPressVoice} />
                     <Text style={styles.timelineMeta}>
                       {formatDateTime(c.called_at)}
                       {c.caller ? ` · ${personName(c.caller)}` : ''}
@@ -1086,7 +1194,7 @@ export default function LeadDetailScreen() {
           {calls.some((c) => c.source === 'phone' || c.phone_verified) && (
             <Text style={styles.hint}>📱 = taken from the phone’s call log (real time and length)</Text>
           )}
-          {feed.length > 0 && <Text style={styles.hint}>Long-press a call or note to delete it.</Text>}
+          {feed.length > 0 && <Text style={styles.hint}>Long-press a call, note or voice note to delete it.</Text>}
         </Section>
 
         {/* Interest */}
@@ -1432,6 +1540,16 @@ const styles = StyleSheet.create({
   phoneTag: { fontSize: 12 },
   callNotes: { fontSize: fontSize.small, color: colors.text, marginTop: 2 },
   timelineRow: { flexDirection: 'row', gap: spacing.md },
+  voicePlay: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
+  voiceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: 2 },
+  voiceChip: {
+    paddingVertical: 2,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  voiceChipText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.primary },
   timelineMarker: { alignItems: 'center', width: 12 },
   timelineDot: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.primary, marginTop: 4 },
   timelineLine: { flex: 1, width: 2, backgroundColor: colors.border, marginTop: 2 },
@@ -1453,3 +1571,34 @@ const styles = StyleSheet.create({
   undoBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   undoText: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: '#93C5FD' },
 });
+
+/** 🎙 The voice notes of a call: tap to play, long press to delete */
+function VoiceChips({
+  list,
+  onPlay,
+  onLongPress,
+}: {
+  list: LeadFile[] | undefined;
+  onPlay: (f: LeadFile) => void;
+  onLongPress: (f: LeadFile) => void;
+}) {
+  if (!list || list.length === 0) return null;
+  return (
+    <View style={styles.voiceChips}>
+      {list.map((v) => (
+        <Pressable
+          key={v.id}
+          onPress={() => onPlay(v)}
+          onLongPress={() => onLongPress(v)}
+          delayLongPress={400}
+          hitSlop={4}
+          style={({ pressed }) => [styles.voiceChip, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={`Play voice note${v.duration_sec ? `, ${clock(v.duration_sec)}` : ''}`}
+        >
+          <Text style={styles.voiceChipText}>🎙 {v.duration_sec ? clock(v.duration_sec) : ''} ▶</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}

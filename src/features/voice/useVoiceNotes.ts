@@ -31,3 +31,20 @@ export function useVoiceNotes(): boolean {
   }, []);
   return ok;
 }
+
+// ---------------------------------------------------------------------
+// A voice note was saved (from any sheet): the lead page shows it at once
+// ---------------------------------------------------------------------
+type VoiceListener = (leadId: string) => void;
+const listeners = new Set<VoiceListener>();
+
+export function onVoiceSaved(listener: VoiceListener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function emitVoiceSaved(leadId: string): void {
+  listeners.forEach((l) => l(leadId));
+}

@@ -9,6 +9,7 @@ import {
   downloadAllFiles,
   getDriveStatus,
   getFilesSettings,
+  isRecordedVoice,
   listLeadFiles,
   openLeadFile,
   saveZip,
@@ -77,7 +78,8 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
       ]);
       setEnabled(s.enabled);
       setConnected(d.connected);
-      setFiles(f);
+      // 🎙 Voice notes from the 🎙 buttons show in Calls & notes instead
+      setFiles(f.filter((x) => !isRecordedVoice(x)));
       setPapers(p?.papers ?? []);
     } finally {
       setLoading(false);
