@@ -98,6 +98,17 @@ export async function signIn(input: SignInInput) {
   return data;
 }
 
+/** 🔐 The signed-in user sets a new password of their own (also after an admin reset) */
+export async function changeMyPassword(password: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    if (/different from the old/i.test(error.message)) throw new Error('Please choose a password different from the old one.');
+    throw new Error(friendlyAuthError(error.message));
+  }
+  const { error: flagError } = await supabase.rpc('password_changed');
+  if (flagError) throw new Error(friendlyAuthError(flagError.message));
+}
+
 export async function signOut() {
   // This phone stops getting this user's pushes (while still signed in)
   await unregisterPush();

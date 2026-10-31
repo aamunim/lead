@@ -32,6 +32,7 @@ export type AuthStatus =
   | 'needs_setup'       // no Super Admin yet → first-run setup
   | 'signed_out'        // → login screen
   | 'pending_approval'  // signed in, but an admin has not activated the account
+  | 'must_change_password' // an admin reset the password: pick your own first
   | 'active';           // → the app
 
 type AuthContextValue = {
@@ -188,6 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (profileLoading && !profile) return 'loading';
     if (errorMessage && !profile) return 'error';
     if (!profile || !profile.is_active) return 'pending_approval';
+    if (profile.must_change_password) return 'must_change_password';
     return 'active';
   }, [errorMessage, sessionLoaded, setupComplete, session, profileLoading, profile]);
 

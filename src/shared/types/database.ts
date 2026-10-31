@@ -1873,6 +1873,7 @@ export type Database = {
           full_name: string | null
           id: string
           is_active: boolean
+          must_change_password: boolean
           phone: string | null
           role_key: string
           team_lead_id: string | null
@@ -1886,6 +1887,7 @@ export type Database = {
           full_name?: string | null
           id: string
           is_active?: boolean
+          must_change_password?: boolean
           phone?: string | null
           role_key?: string
           team_lead_id?: string | null
@@ -1899,6 +1901,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           is_active?: boolean
+          must_change_password?: boolean
           phone?: string | null
           role_key?: string
           team_lead_id?: string | null
@@ -2488,6 +2491,7 @@ export type Database = {
         Returns: { id: string; is_active: boolean; name: string | null }[]
       }
       link_voice_notes: { Args: { p_call_id: string; p_file_ids: string[] }; Returns: number }
+      password_changed: { Args: never; Returns: undefined }
       leads_added: {
         Args: { p_from: string; p_to: string }
         Returns: { imported: number; name: string | null; total: number; user_id: string }[]

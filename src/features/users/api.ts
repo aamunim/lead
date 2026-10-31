@@ -125,3 +125,26 @@ export async function listTeamLeads(): Promise<TeamLeadOption[]> {
   if (error) throw toError(error.message);
   return data ?? [];
 }
+// ---------------------------------------------------------------------
+// 🔑 Reset a user's password (admins; Edge Function admin-reset-password)
+// ---------------------------------------------------------------------
+/** An easy-to-read new password, e.g. "ittc-4827-kp" */
+export function makePassword(): string {
+  const digits = String(Math.floor(1000 + Math.random() * 9000));
+  const letters = 'abcdefghjkmnpqrstuvwxyz';
+  const two = Array.from({ length: 2 }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
+  return `ittc-${digits}-${two}`;
+}
+
+export async function resetUserPassword(userId: string, password: string, mustChange: boolean): Promise<void> {
+  const { error } = await supabase.functions.invoke('admin-reset-password', {
+    body: { user_id: userId, password, must_change: mustChange },
+  });
+  if (!error) return;
+  // The server's own words (e.g. "Only an admin can reset passwords.")
+  const context = (error as { context?: Response }).context;
+  const body = context ? await context.json().catch(() => null) : null;
+  if (body?.error) throw new Error(body.error);
+  if (context?.status === 404) throw new Error('The password reset is not set up on the server yet.');
+  throw new Error(/fetch|network/i.test(error.message) ? 'No internet connection. Please try again.' : error.message);
+}
