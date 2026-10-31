@@ -74,6 +74,7 @@ import { visitBadge } from '@/features/visits/api';
 import { LostSheet } from '@/features/pipeline/LostSheet';
 import { getAdmissionSettings } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { isWeb } from '@/features/web/api';
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -1304,7 +1305,8 @@ function LeadCard({
 
       {!selecting && (
         <View style={styles.contact}>
-          {!!lead.phone && (
+          {/* 🌐 No phone calls from a computer */}
+          {!!lead.phone && !isWeb && (
             <ContactButton icon="call" color={colors.success} label={`Call ${lead.name}`} onPress={onCall} />
           )}
           <ContactButton
@@ -1314,7 +1316,7 @@ function LeadCard({
             onPress={onWhatsApp}
             onLongPress={onTemplate && (() => onTemplate('whatsapp'))}
           />
-          {!!lead.phone && (
+          {!!lead.phone && !isWeb && (
             <ContactButton
               icon="chatbubble-ellipses"
               color={colors.info}

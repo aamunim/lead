@@ -150,6 +150,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
     title: 'TEAM',
     tiles: [
       {
+        title: 'Website',
+        description: 'app.sparc.college on a computer: on/off, who may use it',
+        icon: '🌐',
+        href: '/settings/web' as Href,
+      },
+      {
         title: 'Users',
         description: 'Approve, set roles, deactivate',
         icon: '👥',

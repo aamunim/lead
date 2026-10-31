@@ -1,9 +1,10 @@
 import Constants from 'expo-constants';
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { Redirect, router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { signOut } from '@/features/auth/api';
+import { isWeb } from '@/features/web/api';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { canSyncCalls, isCallLogAvailable, isCallSyncEnabled } from '@/features/call-sync/api';
 import { listSyncHealth } from '@/features/call-sync/health';
@@ -17,6 +18,11 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
 export default function MoreScreen() {
+  if (isWeb) return <Redirect href="/students" />;
+  return <PhoneMore />;
+}
+
+function PhoneMore() {
   const { profile, session, hasPermission } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);

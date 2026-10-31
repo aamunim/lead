@@ -30,6 +30,9 @@
     },
     "web": {
       "output": "single",
+      "name": "Lead Management",
+      "shortName": "Leads",
+      "lang": "en",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
