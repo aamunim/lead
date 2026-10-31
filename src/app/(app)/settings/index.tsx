@@ -91,6 +91,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
       },
       ...listsInGroup('leads'),
       {
+        title: 'Lead cards',
+        description: 'Last call and note on the cards, “no contact for N days”',
+        icon: '🗂',
+        href: '/settings/cards' as Href,
+      },
+      {
         title: 'Lead filters',
         description: 'Which filters users see, in what order',
         icon: '🔎',

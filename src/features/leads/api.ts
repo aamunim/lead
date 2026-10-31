@@ -8,6 +8,7 @@ import {
   needsClosedLeads,
   type LeadFilters,
 } from '@/features/leads/filters';
+import { LAST_SELECT, type LeadLast } from '@/features/leads/lastActivity';
 
 // =====================================================================
 // Phone helpers (same rules as the database)
@@ -91,6 +92,8 @@ export type LeadListItem = Pick<
   /** The course and batch the student is admitted to */
   admitted_course: Named | null;
   admitted_batch: Named | null;
+  /** 📞📝 Last call and last note (kept by the database) */
+  last: LeadLast | null;
 };
 
 export type LeadDetail = Tables<'leads'> & {
@@ -261,7 +264,8 @@ const LIST_SELECT = `
   source:lead_sources(id, name),
   assignee:assigned_to(id, full_name),
   lead_courses(course:courses(id, name)),
-  lead_tags(tag_id)
+  lead_tags(tag_id),
+  ${LAST_SELECT}
 `;
 
 const DETAIL_SELECT = `

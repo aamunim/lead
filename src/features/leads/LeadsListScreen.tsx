@@ -85,6 +85,12 @@ import {
   otherMatch,
   removeRecentSearch,
 } from '@/features/leads/search';
+import { ago, callDot, callLineText, daysSince, getCardSettings, loadDetailed, saveDetailed } from '@/features/leads/lastActivity';
+import { clock } from '@/features/voice/format';
+import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
+import { listAssignableUsers } from '@/features/leads/api';
+import { VoicePlayer } from '@/features/voice/VoiceNote';
+import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -183,6 +189,21 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   const showAssignee = assignmentOn && seesOthers;
 
   const [quick, setQuick] = useState<QuickFilter>('all');
+  // 📞📝 Cards: last call / last note lines (Detailed) or not (Compact), on this phone
+  const [detailed, setDetailed] = useState(true);
+  const [staleDays, setStaleDays] = useState(0);
+  const [names, setNames] = useState<Map<string, string>>(new Map());
+  const [peekLead, setPeekLead] = useState<LeadListItem | null>(null);
+  const [noteFor, setNoteFor] = useState<LeadListItem | null>(null);
+  const [playing, setPlaying] = useState<PlayableFile | null>(null);
+  useEffect(() => {
+    loadDetailed().then(setDetailed);
+    getCardSettings().then((s) => setStaleDays(s.stale_days));
+    listAssignableUsers({ includeInactive: true })
+      .then((u) => setNames(new Map(u.map((p) => [p.id, (p.full_name ?? '').split(' ')[0] || 'Someone']))))
+      .catch(() => undefined);
+  }, []);
+  const nameOf = useCallback((id: string | null) => (id ? (names.get(id) ?? null) : null), [names]);
   // ➕ Leads added by (👤) and when (Today, Yesterday, …): the Leads tab only
   const [added, setAdded] = useState<AddedChoice>(NO_ADDED);
   const [creators, setCreators] = useState<LeadCreator[]>([]);
@@ -884,6 +905,26 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               <Text style={styles.clearFilters}>Clear filters</Text>
             </Pressable>
           )}
+          {/* 📞📝 Compact (as before) / Detailed (last call and note) */}
+          {!showBoard && (
+            <View style={styles.viewToggle}>
+            <Pressable
+              onPress={() => {
+                setDetailed((d) => {
+                  saveDetailed(!d);
+                  return !d;
+                });
+              }}
+              hitSlop={8}
+              style={[styles.viewBtn, detailed && styles.viewBtnOn]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: detailed }}
+              accessibilityLabel={detailed ? 'Detailed cards: showing the last call and note. Switch to compact' : 'Compact cards. Show the last call and note'}
+            >
+              <Ionicons name={detailed ? 'reader' : 'reader-outline'} size={14} color={detailed ? colors.textOnPrimary : colors.textMuted} />
+            </Pressable>
+            </View>
+          )}
           {boardAllowed && (
             <View style={styles.viewToggle}>
               {(['list', 'board'] as LeadsView[]).map((v) => {
@@ -1028,6 +1069,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             <LeadCard
               lead={item}
               search={debouncedSearch}
+              detailed={detailed}
+              staleDays={staleDays}
+              nameOf={nameOf}
+              onPeek={() => setPeekLead(item)}
+              onPlayVoice={(fileId, seconds) => setPlaying({ id: fileId, name: `Voice note · ${item.name}`, duration_sec: seconds })}
               student={students}
               showAssignee={showAssignee}
               selecting={selecting}
@@ -1153,6 +1199,38 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         hiddenFields={students ? ['stage', 'lost_reason', 'visit'] : []}
       />
 
+      {/* 👁 The last calls and notes of one lead */}
+      {peekLead && (
+        <LeadPeekSheet
+          lead={peekLead}
+          nameOf={nameOf}
+          onClose={() => setPeekLead(null)}
+          onOpen={() => {
+            const id = peekLead.id;
+            setPeekLead(null);
+            router.push(`/leads/${id}` as Href);
+          }}
+          onAddNote={() => {
+            setNoteFor(peekLead);
+            setPeekLead(null);
+          }}
+        />
+      )}
+      {noteFor && (
+        <LeadQuickSheet
+          visible
+          field="note"
+          leads={[noteFor]}
+          onClose={() => setNoteFor(null)}
+          onSaved={(message) => {
+            setNoteFor(null);
+            showToast(message);
+            loadFirstPage();
+          }}
+        />
+      )}
+      <VoicePlayer file={playing} onClose={() => setPlaying(null)} />
+
       {sheetField && (
         <LeadQuickSheet
           visible={!!sheetField}
@@ -1237,6 +1315,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 function LeadCard({
   lead,
   search = '',
+  detailed = true,
+  staleDays = 0,
+  nameOf = () => null,
+  onPeek,
+  onPlayVoice,
   student = false,
   showAssignee,
   selecting,
@@ -1251,6 +1334,14 @@ function LeadCard({
   lead: LeadListItem;
   /** 🔍 The search: its match is highlighted, or shown under the name */
   search?: string;
+  /** 📞📝 Show the last call and last note lines */
+  detailed?: boolean;
+  /** Open leads without contact for this many days turn orange (0 = off) */
+  staleDays?: number;
+  nameOf?: (id: string | null) => string | null;
+  /** Tap on the last call / note: the last few, without opening the lead */
+  onPeek?: () => void;
+  onPlayVoice?: (fileId: string, seconds: number | null) => void;
   /** On the Students list: student ID, course · batch, no "Admitted" badge */
   student?: boolean;
   showAssignee: boolean;
@@ -1284,6 +1375,16 @@ function LeadCard({
   ).filter(Boolean);
 
   const matchLine = search ? otherMatch(lead, search) : null;
+
+  // 📞📝 Last call and last note (open leads also: ⏳ no contact for a while)
+  const last = lead.last;
+  const callText = detailed && last ? callLineText(last, nameOf) : null;
+  const since = daysSince(lead.last_contacted_at);
+  const stale =
+    detailed && kind === 'open' && staleDays > 0 && (since === null ? !last?.call_at : since >= staleDays);
+  const staleText = !stale ? null : since === null ? '🆕 Not called yet' : `⏳ No contact for ${since} days`;
+  const noteVoice = last?.note_kind === 'voice' && !!last.note_voice_file;
+  const noteText = detailed && last?.note_at ? (noteVoice ? null : last.note_text) : null;
 
   // 📄 3/5: open leads and admitted students (not lost / cancelled)
   const papers =
@@ -1338,6 +1439,40 @@ function LeadCard({
           <Text style={styles.matchLine} numberOfLines={1}>
             🔍 {matchLine}
           </Text>
+        )}
+
+        {/* 📞 Last call (or ⏳ no contact for a while) */}
+        {(!!callText || !!staleText) && (
+          <Pressable onPress={onPeek} hitSlop={4} style={styles.lastRow} accessibilityRole="button" accessibilityHint="Shows the last calls and notes">
+            {!!callText && <View style={[styles.lastDot, { backgroundColor: callDot(last?.call_outcome ?? null) }]} />}
+            <Text style={[styles.lastText, !!staleText && styles.lastStale]} numberOfLines={1}>
+              {[callText, staleText].filter(Boolean).join(' · ')}
+            </Text>
+          </Pressable>
+        )}
+
+        {/* 📝 Last note (one line; the whole of it in the peek) or 🎙 a voice note */}
+        {detailed && noteVoice && last && (
+          <Pressable
+            onPress={() => onPlayVoice?.(last.note_voice_file as string, last.note_voice_sec)}
+            hitSlop={4}
+            style={styles.lastRow}
+            accessibilityRole="button"
+            accessibilityLabel="Play the last voice note"
+          >
+            <Text style={styles.lastVoice} numberOfLines={1}>
+              🎙 Voice note{last.note_voice_sec ? ` · ${clock(last.note_voice_sec)}` : ''} ▶
+              <Text style={styles.lastMuted}>{last.note_at ? ` · ${ago(last.note_at)}` : ''}</Text>
+            </Text>
+          </Pressable>
+        )}
+        {!!noteText && last && (
+          <Pressable onPress={onPeek} hitSlop={4} style={styles.lastRow} accessibilityRole="button" accessibilityHint="Shows the whole note">
+            <Text style={styles.lastNote} numberOfLines={1}>
+              📝 “{noteText}{last.note_more ? '…' : ''}”
+              <Text style={styles.lastMuted}>{last.note_at ? ` · ${ago(last.note_at)}` : ''}</Text>
+            </Text>
+          </Pressable>
         )}
 
         <View style={styles.cardBottom}>
@@ -1497,6 +1632,13 @@ const styles = StyleSheet.create({
   },
   search: { flex: 1, fontSize: fontSize.body, color: colors.text, paddingVertical: 0 },
   matchLine: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
+  lastRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  lastDot: { width: 7, height: 7, borderRadius: 4 },
+  lastText: { flexShrink: 1, fontSize: fontSize.caption, color: colors.textMuted },
+  lastStale: { color: colors.warning, fontWeight: fontWeight.semibold },
+  lastNote: { flexShrink: 1, fontSize: fontSize.caption, color: colors.text, fontStyle: 'italic' },
+  lastVoice: { flexShrink: 1, fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.primary },
+  lastMuted: { fontStyle: 'normal', fontWeight: fontWeight.regular, color: colors.textMuted },
   searchAllBtn: {
     marginTop: spacing.md,
     paddingVertical: spacing.sm,
