@@ -45,6 +45,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { TextField } from '@/shared/ui/TextField';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 const RATINGS: { value: Rating; label: string; color: string }[] = [
   { value: 'hot', label: 'Hot', color: colors.hot },
@@ -478,7 +479,10 @@ export function CallResultSheet({
   );
 
   const noteField = (
-    <TextField label="Note" value={notes} onChangeText={setNotes} multiline placeholder="What did they say?" />
+    <View style={styles.field}>
+      <TextField label="Note" value={notes} onChangeText={setNotes} multiline placeholder="What did they say?" />
+      <VoiceNoteButton leadId={lead?.id} context="call" />
+    </View>
   );
 
   const followUpField = (

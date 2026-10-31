@@ -26,6 +26,7 @@ import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
 import { TextField } from '@/shared/ui/TextField';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 // =====================================================================
 // 🏫 Campus visit card on the lead page (under the pipeline)
@@ -203,6 +204,7 @@ export function VisitCard({ leadId, stageKind, stateKey, onChanged }: Props) {
 
       <PlanSheet
         visible={sheet === 'plan'}
+        leadId={leadId}
         initial={planned?.planned_at ? new Date(planned.planned_at) : null}
         onClose={() => setSheet(null)}
         onSave={async (at, note) => {
@@ -213,6 +215,7 @@ export function VisitCard({ leadId, stageKind, stateKey, onChanged }: Props) {
 
       <FinishSheet
         visible={sheet === 'visited' || sheet === 'missed'}
+        leadId={leadId}
         status={sheet === 'missed' ? 'missed' : 'visited'}
         walkIn={!planned}
         onClose={() => setSheet(null)}
@@ -248,11 +251,13 @@ function quickDates(): { key: string; label: string; date: Date }[] {
 
 function PlanSheet({
   visible,
+  leadId,
   initial,
   onClose,
   onSave,
 }: {
   visible: boolean;
+  leadId: string;
   initial: Date | null;
   onClose: () => void;
   onSave: (at: Date, note: string) => Promise<void>;
@@ -336,6 +341,7 @@ function PlanSheet({
         multiline
         placeholder="e.g. Coming with father, wants to see the lab"
       />
+      <VoiceNoteButton leadId={leadId} context="visit" />
 
       {error && <ErrorBox text={error} />}
       <Button title="Save" onPress={save} loading={saving} fullWidth />
@@ -349,12 +355,14 @@ function PlanSheet({
 // =====================================================================
 function FinishSheet({
   visible,
+  leadId,
   status,
   walkIn,
   onClose,
   onSave,
 }: {
   visible: boolean;
+  leadId: string;
   status: 'visited' | 'missed';
   /** Visited without a plan */
   walkIn: boolean;
@@ -401,6 +409,7 @@ function FinishSheet({
         multiline
         placeholder={visited ? 'e.g. Saw the lab, liked the hostel' : 'e.g. Said he was sick, will come next week'}
       />
+      <VoiceNoteButton leadId={leadId} context="visit" />
       {error && <ErrorBox text={error} />}
       <Button title={visited ? '✓ Save visit' : 'Save'} onPress={save} loading={saving} fullWidth />
       <Button title="Cancel" variant="ghost" onPress={onClose} disabled={saving} fullWidth />

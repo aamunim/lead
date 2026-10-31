@@ -21,6 +21,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { TextField } from '@/shared/ui/TextField';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 const NO_REVIVE = 'none';
 const CUSTOM = 'custom';
@@ -163,6 +164,7 @@ export function LostSheet({ visible, leads, onClose, onSaved }: Props) {
                   multiline
                   placeholder="e.g. Took admission at another institute"
                 />
+                {!bulk && <VoiceNoteButton leadId={leads[0]?.id} context="lost" />}
 
                 {/* Try again later (one lead only) */}
                 {!bulk && (

@@ -30,6 +30,7 @@ import { createItem, listHolidays, listItems, type Holiday } from '@/features/se
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 export type QuickField = 'rating' | 'stage' | 'tags' | 'assign' | 'followup' | 'note';
 
@@ -403,6 +404,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
                   editable={!saving}
                   textAlignVertical="top"
                 />
+                {single && <VoiceNoteButton leadId={single.id} context="handover" />}
                 <Button
                   title={`Give ${single ? 'this lead' : `${count} leads`} to ${
                     options.find((o) => o.value === giveTo)?.label ?? 'them'
@@ -461,6 +463,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
               editable={!saving}
               textAlignVertical="top"
             />
+            {single && <VoiceNoteButton leadId={single.id} context="note" />}
             <Text style={styles.hint}>
               Added below the {single ? "lead's" : "leads'"} notes, with today's date and your name. Old notes stay.
             </Text>
@@ -575,6 +578,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
         stage={moveStage}
         isCurrent={false}
         subtitle={single ? single.name : `${count} leads`}
+        leadId={single?.id}
         onClose={() => setMoveStage(null)}
         onSave={async (stageNote, dueAt) => {
           if (!moveStage) return;

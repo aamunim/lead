@@ -1,7 +1,8 @@
 // =====================================================================
 // ⬆️ Upload a file for a lead to Google Drive
 //   POST multipart/form-data: file, lead_id, kind ('paper' | 'voice' |
-//   'other'), paper_id?, call_id?, name?, duration_sec?
+//   'other'), paper_id?, call_id?, name?, duration_sec?, context? (where a
+//   voice note was recorded: call, note, fee, …)
 //   The caller must be able to see the lead (row security). The file goes
 //   to Lead Management / <Student ID Name, or Name – Phone> / Papers |
 //   Voice notes. A paper's file also ticks that paper in the checklist
@@ -36,6 +37,7 @@ Deno.serve(async (req) => {
     const paperId = (form.get('paper_id') as string | null) || null;
     const callId = (form.get('call_id') as string | null) || null;
     const duration = Number(form.get('duration_sec') ?? '') || null;
+    const context = String(form.get('context') ?? '').slice(0, 40) || null;
     const name = String(form.get('name') || file.name || 'file').slice(0, 120);
     const mime = file.type || 'application/octet-stream';
 
@@ -53,6 +55,7 @@ Deno.serve(async (req) => {
         mime_type: mime,
         size_bytes: file.size,
         duration_sec: duration,
+        context,
         drive_file_id: driveId,
         uploaded_by: user.id,
       })
@@ -64,7 +67,7 @@ Deno.serve(async (req) => {
       lead_id: lead.id,
       user_id: user.id,
       action: 'file_added',
-      details: { name, kind, file_id: row.id, paper_id: paperId },
+      details: { name, kind, file_id: row.id, paper_id: paperId, duration_sec: duration, context },
     });
 
     // Tick the paper in the checklist (as the uploader; a failed tick doesn't fail the upload)

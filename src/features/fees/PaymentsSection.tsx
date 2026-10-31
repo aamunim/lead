@@ -24,6 +24,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 // =====================================================================
 // 💵 Payments on the Fee card (admitted students)
@@ -172,6 +173,7 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
         <ShowMoreButton {...more} />
         <RefundSheet
           visible={refunding}
+          leadId={leadId}
           paid={paid}
           settings={settings}
           onClose={() => setRefunding(false)}
@@ -258,6 +260,7 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
 
       <PaySheet
         visible={sheet === 'pay'}
+        leadId={leadId}
         due={due}
         next={next ? Number(next.amount) - next.covered : null}
         settings={settings}
@@ -307,6 +310,7 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
 // =====================================================================
 function PaySheet({
   visible,
+  leadId,
   due,
   next,
   settings,
@@ -315,6 +319,7 @@ function PaySheet({
   onSave,
 }: {
   visible: boolean;
+  leadId: string;
   due: number;
   next: number | null;
   settings: FeeSettings;
@@ -420,6 +425,7 @@ function PaySheet({
         placeholderTextColor={colors.textMuted}
         style={styles.input}
       />
+      <VoiceNoteButton leadId={leadId} context="payment" />
       {error && <Text style={styles.errorText}>{error}</Text>}
       <Button title="Save payment" onPress={save} loading={saving} fullWidth />
     </SmallSheet>
@@ -555,12 +561,14 @@ function PlanSheet({
 // =====================================================================
 function RefundSheet({
   visible,
+  leadId,
   paid,
   settings,
   onClose,
   onSave,
 }: {
   visible: boolean;
+  leadId: string;
   paid: number;
   settings: FeeSettings;
   onClose: () => void;
@@ -633,6 +641,7 @@ function RefundSheet({
         placeholderTextColor={colors.textMuted}
         style={styles.input}
       />
+      <VoiceNoteButton leadId={leadId} context="payment" />
       {error && <Text style={styles.errorText}>{error}</Text>}
       <Button title="Save refund" onPress={save} loading={saving} fullWidth />
     </SmallSheet>

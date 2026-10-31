@@ -31,6 +31,7 @@ import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 // =====================================================================
 // The pipeline part of the lead page:
@@ -314,6 +315,7 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
         visible={sheet === 'move'}
         stage={moveStage}
         isCurrent={!!moveStage && moveStage.id === lead.stage_id}
+        leadId={lead.id}
         onClose={() => {
           setSheet(null);
           setMoveStage(null);
@@ -328,6 +330,7 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
 
       <ReopenSheet
         visible={sheet === 'reopen'}
+        leadId={lead.id}
         stages={open}
         onClose={() => setSheet(null)}
         onSave={async (stageId, note) => {
@@ -339,6 +342,7 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
 
       <CancelAdmissionSheet
         visible={sheet === 'cancel'}
+        leadId={lead.id}
         leadName={lead.name}
         onClose={() => setSheet(null)}
         onSave={async (reason, note) => {
@@ -356,11 +360,13 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
 // =====================================================================
 function ReopenSheet({
   visible,
+  leadId,
   stages,
   onClose,
   onSave,
 }: {
   visible: boolean;
+  leadId: string;
   stages: PipelineStage[];
   onClose: () => void;
   onSave: (stageId: string, note: string) => Promise<void>;
@@ -411,6 +417,7 @@ function ReopenSheet({
         })}
       </View>
       <TextField label="Note (optional)" value={note} onChangeText={setNote} multiline placeholder="Why reopen?" />
+      <VoiceNoteButton leadId={leadId} context="reopen" />
       <Text style={styles.hint}>The lost / cancelled details stay in the lead’s history.</Text>
       {error && <ErrorBox text={error} />}
       <Button title="Reopen" onPress={save} loading={saving} disabled={!stageId} fullWidth />
@@ -424,11 +431,13 @@ function ReopenSheet({
 // =====================================================================
 function CancelAdmissionSheet({
   visible,
+  leadId,
   leadName,
   onClose,
   onSave,
 }: {
   visible: boolean;
+  leadId: string;
   leadName: string;
   onClose: () => void;
   onSave: (reason: string, note: string) => Promise<void>;
@@ -483,6 +492,7 @@ function CancelAdmissionSheet({
       </View>
       <TextField label="Reason *" value={reason} onChangeText={setReason} placeholder="Or type a reason" />
       <TextField label="Note (optional)" value={note} onChangeText={setNote} multiline placeholder="e.g. Refund given" />
+      <VoiceNoteButton leadId={leadId} context="cancel" />
       {error && <ErrorBox text={error} />}
       <Button title="Cancel admission" variant="danger" onPress={save} loading={saving} fullWidth />
       <Button title="Keep admission" variant="ghost" onPress={onClose} disabled={saving} fullWidth />

@@ -32,6 +32,7 @@ import { autoAssignee } from '@/features/settings/assignment';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 type Option = { value: string; label: string; color?: string };
 
@@ -574,6 +575,7 @@ export default function LeadFormScreen() {
                 </Field>
               )}
               <TextField label="Notes" value={form.notes} onChangeText={(v) => set('notes', v)} multiline />
+              {!isNew && <VoiceNoteButton leadId={id} context="lead" />}
             </View>
           </>
         )}

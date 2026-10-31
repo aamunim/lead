@@ -362,6 +362,7 @@ export function LeadBoard({
         stage={sheet?.type === 'move' ? sheet.stage : null}
         isCurrent={false}
         subtitle={active?.name}
+        leadId={active?.id}
         onClose={() => setSheet(null)}
         onSave={async (note, dueAt) => {
           if (sheet?.type !== 'move') return;

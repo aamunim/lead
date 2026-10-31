@@ -71,6 +71,9 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
+import { VoicePlayer } from '@/features/voice/VoiceNote';
+import { VOICE_CONTEXT, clock } from '@/features/voice/format';
+import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -128,6 +131,8 @@ export default function LeadDetailScreen() {
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [filesTick, setFilesTick] = useState(0);
+  // ▶ The voice note being played (from the timeline)
+  const [playing, setPlaying] = useState<PlayableFile | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [followUp, setFollowUp] = useState<FollowUp | null>(null);
@@ -497,6 +502,10 @@ export default function LeadDetailScreen() {
       case 'payment_received':
         return `💵 ${money(Number(d.amount ?? 0))} received (${d.method ?? ''}) · 🧾 ${d.receipt_no ?? ''}`;
       case 'file_added':
+        if (d.kind === 'voice') {
+          const where = VOICE_CONTEXT[String(d.context ?? '')];
+          return `🎙 Voice note${d.duration_sec ? ` (${clock(Number(d.duration_sec))})` : ''}${where ? ` · ${where}` : ''}  ▶`;
+        }
         return `📎 File added: ${d.name ?? ''}`;
       case 'file_deleted':
         return `📎 File removed: ${d.name ?? ''}`;
@@ -1135,8 +1144,23 @@ export default function LeadDetailScreen() {
           ) : (
             activityMore.visible.map((item, index) => {
               const who = actorName(item);
+              const det = (item.details ?? {}) as Record<string, unknown>;
+              const voice = item.action === 'file_added' && det.kind === 'voice' && typeof det.file_id === 'string';
               return (
-                <View key={item.id} style={styles.timelineRow}>
+                <Pressable
+                  key={item.id}
+                  style={styles.timelineRow}
+                  disabled={!voice}
+                  onPress={() =>
+                    setPlaying({
+                      id: String(det.file_id),
+                      name: String(det.name ?? 'Voice note'),
+                      duration_sec: Number(det.duration_sec ?? 0) || null,
+                    })
+                  }
+                  accessibilityRole={voice ? 'button' : undefined}
+                  accessibilityHint={voice ? 'Plays the voice note' : undefined}
+                >
                   <View style={styles.timelineMarker}>
                     <View style={styles.timelineDot} />
                     {index < activityMore.visible.length - 1 && <View style={styles.timelineLine} />}
@@ -1148,11 +1172,12 @@ export default function LeadDetailScreen() {
                       {who ? ` · ${who}` : ''}
                     </Text>
                   </View>
-                </View>
+                </Pressable>
               );
             })
           )}
           <ShowMoreButton {...activityMore} />
+          <VoicePlayer file={playing} onClose={() => setPlaying(null)} />
         </Section>
 
         {hasPermission('leads.delete') && (

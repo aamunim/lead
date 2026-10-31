@@ -27,6 +27,7 @@ import { listCourses } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
+import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 // =====================================================================
 // 💰 Fee & discount card on the lead page
@@ -287,6 +288,7 @@ export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, on
         <>
           <EventSheet
             visible={sheet === 'event'}
+            leadId={leadId}
             onClose={() => setSheet(null)}
             onSave={async (kind, amount, note) => {
               await addNegotiationEvent(current.id, kind, amount, note);
@@ -461,10 +463,12 @@ function NegotiationView({
 // =====================================================================
 function EventSheet({
   visible,
+  leadId,
   onClose,
   onSave,
 }: {
   visible: boolean;
+  leadId: string;
   onClose: () => void;
   onSave: (kind: NegotiationEvent['kind'], amount: number | null, note: string) => Promise<void>;
 }) {
@@ -531,6 +535,7 @@ function EventSheet({
         multiline
         style={[styles.input, styles.inputMulti]}
       />
+      <VoiceNoteButton leadId={leadId} context="fee" />
       {error && <Text style={styles.errorText}>{error}</Text>}
       <Button title="Save" onPress={save} loading={saving} fullWidth />
     </SmallSheet>
@@ -655,6 +660,7 @@ function DiscountSheet({
         multiline
         style={[styles.input, styles.inputMulti]}
       />
+      <VoiceNoteButton leadId={n.lead_id} context="discount" />
       {error && <Text style={styles.errorText}>{error}</Text>}
       <Button title={autoOk ? 'Give discount' : 'Ask for approval'} onPress={save} loading={saving} fullWidth />
     </SmallSheet>
