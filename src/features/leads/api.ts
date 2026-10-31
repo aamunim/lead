@@ -19,6 +19,16 @@ export function normalizePhone(input: string): string {
   return d;
 }
 
+/**
+ * The digits to look for in phone numbers: "+880 1711-23" → "0171123",
+ * "7234" → "7234" (any part of a number works)
+ */
+export function searchDigits(input: string): string {
+  let d = input.replace(/\D/g, '');
+  if (d.startsWith('880') && d.length > 3) d = '0' + d.slice(3);
+  return d;
+}
+
 /** Bangladeshi mobile number, e.g. 01711234567 */
 export function isValidBdMobile(input: string): boolean {
   return /^01[3-9]\d{8}$/.test(normalizePhone(input));
@@ -48,6 +58,12 @@ export type LeadListItem = Pick<
   | 'stage_id'
   | 'closed_at'
   | 'student_ref'
+  // 🔍 Also searched: shown on the card when the match is here
+  | 'alt_phone'
+  | 'guardian_name'
+  | 'guardian_phone'
+  | 'email'
+  | 'area'
   // Papers (counts kept up to date by the database)
   | 'papers_required'
   | 'papers_received'
@@ -235,6 +251,7 @@ function toError(error: { message: string }): Error {
 
 const LIST_SELECT = `
   id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
+  alt_phone, guardian_name, guardian_phone, email, area,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
   fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, admitted_at,
@@ -286,20 +303,25 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
     .select(LIST_SELECT + filterSelect(filters), withCount ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
 
-  // Search by name, phone, WhatsApp number or WhatsApp username
+  // Search by name, student ID, phone (any part, e.g. the last 4 digits), WhatsApp
+  // number or username, guardian's name or phone, email, area
   const text = search.replace(/[%,()*"]/g, ' ').trim();
   if (text) {
-    const digits = normalizePhone(text);
+    const digits = searchDigits(text);
     const username = text.replace(/^@+/, '').toLowerCase();
     const parts = [
       `name.ilike.%${text}%`,
       `whatsapp_username.ilike.%${username}%`,
       `student_ref.ilike.%${text}%`,
+      `guardian_name.ilike.%${text}%`,
+      `email.ilike.%${text}%`,
+      `area.ilike.%${text}%`,
     ];
     if (digits.length >= 3) {
       parts.push(
         `phone.ilike.%${digits}%`,
         `alt_phone.ilike.%${digits}%`,
+        `guardian_phone.ilike.%${digits}%`,
         `whatsapp_number.ilike.%${text.replace(/\D/g, '')}%`,
       );
     }

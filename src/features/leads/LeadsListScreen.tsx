@@ -5,6 +5,8 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  BackHandler,
+  Keyboard,
   FlatList,
   Linking,
   Pressable,
@@ -75,6 +77,14 @@ import { LostSheet } from '@/features/pipeline/LostSheet';
 import { getAdmissionSettings } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { isWeb } from '@/features/web/api';
+import { Highlighted } from '@/features/leads/Highlighted';
+import {
+  addRecentSearch,
+  clearRecentSearches,
+  loadRecentSearches,
+  otherMatch,
+  removeRecentSearch,
+} from '@/features/leads/search';
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -246,6 +256,15 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     setSort(next);
   };
   const [search, setSearch] = useState('');
+  // 🔍 Search box: focused (shows the recent searches), and the recent ones on this phone
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [recent, setRecent] = useState<string[]>([]);
+  useEffect(() => {
+    loadRecentSearches(students).then(setRecent);
+  }, [students]);
+  const rememberSearch = (text: string) => {
+    addRecentSearch(students, text).then(setRecent);
+  };
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   // Full filters
@@ -388,6 +407,20 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       loadFirstPage();
       loadSavedFilters();
     }, [loadFirstPage, loadSavedFilters]),
+  );
+
+  // 🔍 Phone's Back button: first clears the search, then leaves as usual
+  useFocusEffect(
+    useCallback(() => {
+      if (!search) return undefined;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        setLoading(true);
+        setSearch('');
+        setDebouncedSearch('');
+        return true;
+      });
+      return () => sub.remove();
+    }, [search]),
   );
 
   // Back on this screen (e.g. from a lead page): the board reloads too
@@ -645,6 +678,29 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
   const listIsFiltered = filterCount > 0 || quick !== 'all' || !!debouncedSearch || !!addedQ;
 
+  // --- 🔍 search ------------------------------------------------------------
+  const clearSearch = () => {
+    if (debouncedSearch) setLoading(true);
+    setSearch('');
+    setDebouncedSearch('');
+  };
+  const runSearch = (text: string) => {
+    setLoading(true);
+    setSearch(text);
+    setDebouncedSearch(text);
+    rememberSearch(text);
+    Keyboard.dismiss();
+  };
+  // Anything besides the search that makes the list smaller
+  const narrowed = filterCount > 0 || quick !== 'all' || !!addedQ || !!idsFilter;
+  const searchEverywhere = () => {
+    setLoading(true);
+    applyFilters({}, null);
+    setQuick('all');
+    setAdded(NO_ADDED);
+    setIdsFilter(null);
+  };
+
   return (
     <View style={styles.screen}>
       {/* 🎓 Students: totals, tap one to show those */}
@@ -664,12 +720,21 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder={students ? 'Search name, phone or student ID' : 'Search name or phone'}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            onSubmitEditing={() => search.trim() && rememberSearch(search)}
+            returnKeyType="search"
+            placeholder={students ? 'Search name, phone, student ID, guardian…' : 'Search name, phone, guardian, area…'}
             placeholderTextColor={colors.textMuted}
             style={styles.search}
             autoCorrect={false}
-            clearButtonMode="while-editing"
           />
+          {/* ✕ One tap clears it (Android has no clear button of its own) */}
+          {search.length > 0 && (
+            <Pressable onPress={clearSearch} hitSlop={10} accessibilityRole="button" accessibilityLabel="Clear search">
+              <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+            </Pressable>
+          )}
         </View>
         <Pressable
           onPress={() => setFilterSheetVisible(true)}
@@ -689,6 +754,34 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           )}
         </Pressable>
       </View>
+
+      {/* 🔍 Recent searches: shown while the empty search box is tapped */}
+      {!selecting && searchFocused && !search && recent.length > 0 && (
+        <ScrollView
+          horizontal
+          keyboardShouldPersistTaps="always"
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chips}
+          style={styles.chipsScroll}
+        >
+          <Ionicons name="time-outline" size={16} color={colors.textMuted} />
+          {recent.map((t) => (
+            <Pressable
+              key={t}
+              onPress={() => runSearch(t)}
+              onLongPress={() => removeRecentSearch(students, t).then(setRecent)}
+              style={styles.chip}
+              accessibilityRole="button"
+              accessibilityHint="Searches again. Press and hold to remove it"
+            >
+              <Text style={styles.chipText}>{t}</Text>
+            </Pressable>
+          ))}
+          <Pressable onPress={() => clearRecentSearches(students).then(setRecent)} hitSlop={8} accessibilityRole="button">
+            <Text style={styles.clearFilters}>Clear</Text>
+          </Pressable>
+        </ScrollView>
+      )}
 
       {/* Quick filters + saved filters (hidden while marking) */}
       {!selecting && (
@@ -918,6 +1011,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               <Text style={styles.emptyText}>
                 {listIsFiltered ? 'Try another search or change the filters.' : 'Tap + to add your first lead.'}
               </Text>
+              {/* 🔍 Searched inside a filter: try all leads */}
+              {!!debouncedSearch && narrowed && (
+                <Pressable onPress={searchEverywhere} style={styles.searchAllBtn} accessibilityRole="button">
+                  <Text style={styles.searchAllText}>
+                    🔍 Search all {students ? 'students' : 'leads'} for “{debouncedSearch}”
+                  </Text>
+                </Pressable>
+              )}
             </View>
           }
           ListFooterComponent={
@@ -926,13 +1027,17 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           renderItem={({ item }) => (
             <LeadCard
               lead={item}
+              search={debouncedSearch}
               student={students}
               showAssignee={showAssignee}
               selecting={selecting}
               selected={selected.has(item.id)}
-              onPress={() =>
-                selecting ? toggleSelect(item.id) : router.push(`/leads/${item.id}` as Href)
-              }
+              onPress={() => {
+                if (selecting) return toggleSelect(item.id);
+                // 🔍 A search that found what was needed: keep it in the recent ones
+                if (debouncedSearch.trim()) rememberSearch(debouncedSearch);
+                router.push(`/leads/${item.id}` as Href);
+              }}
               onLongPress={() => toggleSelect(item.id)}
               onCall={() => call(item)}
               onWhatsApp={() => whatsapp(item)}
@@ -1131,6 +1236,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 // =====================================================================
 function LeadCard({
   lead,
+  search = '',
   student = false,
   showAssignee,
   selecting,
@@ -1143,6 +1249,8 @@ function LeadCard({
   onTemplate,
 }: {
   lead: LeadListItem;
+  /** 🔍 The search: its match is highlighted, or shown under the name */
+  search?: string;
   /** On the Students list: student ID, course · batch, no "Admitted" badge */
   student?: boolean;
   showAssignee: boolean;
@@ -1174,6 +1282,8 @@ function LeadCard({
       ? [lead.student_ref ? `🪪 ${lead.student_ref}` : null, admittedTo ?? courses, lead.phone]
       : [whatsAppOnly(lead) ? `💬 ${contactLabel(lead)}` : lead.phone, kind === 'won' ? lead.student_ref : null, admittedTo ?? courses]
   ).filter(Boolean);
+
+  const matchLine = search ? otherMatch(lead, search) : null;
 
   // 📄 3/5: open leads and admitted students (not lost / cancelled)
   const papers =
@@ -1214,9 +1324,7 @@ function LeadCard({
 
       <View style={styles.cardBody}>
         <View style={styles.cardTop}>
-          <Text style={styles.name} numberOfLines={1}>
-            {lead.name}
-          </Text>
+          <Highlighted text={lead.name} search={search} style={styles.name} />
           {lead.rating && ratingColor && (
             <Text style={[styles.rating, { color: ratingColor, borderColor: ratingColor }]}>
               {lead.rating.toUpperCase()}
@@ -1224,9 +1332,13 @@ function LeadCard({
           )}
         </View>
 
-        <Text style={styles.meta} numberOfLines={1}>
-          {metaParts.join(' · ')}
-        </Text>
+        <Highlighted text={metaParts.join(' · ')} search={search} style={styles.meta} />
+        {/* 🔍 Found in a field the card doesn't show (guardian, email, area…) */}
+        {!!matchLine && (
+          <Text style={styles.matchLine} numberOfLines={1}>
+            🔍 {matchLine}
+          </Text>
+        )}
 
         <View style={styles.cardBottom}>
           {student ? null : closed ? (
@@ -1384,6 +1496,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   search: { flex: 1, fontSize: fontSize.body, color: colors.text, paddingVertical: 0 },
+  matchLine: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
+  searchAllBtn: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  searchAllText: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
   filterBtn: {
     width: 44,
     height: 44,
