@@ -500,6 +500,8 @@ export default function LeadDetailScreen() {
         return `📎 File added: ${d.name ?? ''}`;
       case 'file_deleted':
         return `📎 File removed: ${d.name ?? ''}`;
+      case 'files_downloaded':
+        return `📦 Downloaded all files (${d.count ?? 0})`;
       case 'payment_refunded':
         return `↩ Refund ${money(Number(d.amount ?? 0))} (${d.method ?? ''}) · ${d.receipt_no ?? ''}${d.reason ? ` · ${d.reason}` : ''}`;
       case 'payment_voided':

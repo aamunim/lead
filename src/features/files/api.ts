@@ -1,4 +1,4 @@
-import { File, Paths, UploadType } from 'expo-file-system';
+import { Directory, File, Paths, UploadType } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 
@@ -179,9 +179,72 @@ export async function uploadLeadFile(input: {
   return body as LeadFile;
 }
 
-export async function deleteLeadFile(id: string): Promise<void> {
-  const { error } = await supabase.rpc('delete_lead_file', { p_file_id: id });
-  if (error) throw toError(error);
+/**
+ * Remove a file from the lead; it goes to Google Drive's Trash too.
+ * Returns what happened in Drive: 'trashed', or 'kept' (an older script, or Drive
+ * could not be reached: the file stays in Drive).
+ */
+export async function deleteLeadFile(id: string): Promise<'trashed' | 'kept'> {
+  let res: Response;
+  try {
+    res = await fetch(`${FUNCTIONS}/drive-delete`, {
+      method: 'POST',
+      headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+  } catch {
+    throw new Error('No internet connection. Please try again.');
+  }
+  if (res.status === 404) {
+    // The server part is not updated yet: remove it from the app only
+    const { error } = await supabase.rpc('delete_lead_file', { p_file_id: id });
+    if (error) throw toError(error);
+    return 'kept';
+  }
+  const body = (await res.json().catch(() => ({}))) as { error?: string; drive?: string };
+  if (!res.ok) throw new Error(body.error ?? `Could not remove (${res.status}).`);
+  return body.drive === 'trashed' || body.drive === 'missing' ? 'trashed' : 'kept';
+}
+
+/** 📦 Every file of a lead (that I may see) in one ZIP, in the phone's cache */
+export type LeadZip = { file: File; name: string };
+
+export async function downloadAllFiles(leadId: string): Promise<LeadZip> {
+  const target = new File(Paths.cache, `lead-files-${leadId.slice(0, 8)}-${Date.now()}.zip`);
+  let res: Response;
+  try {
+    res = await fetch(`${FUNCTIONS}/drive-zip?lead_id=${encodeURIComponent(leadId)}`, { headers: await authHeaders() });
+  } catch {
+    throw new Error('No internet connection. Please try again.');
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(res.status === 404 && !body.error ? 'The Google Drive server part is not set up yet.' : body.error ?? `Could not download (${res.status}).`);
+  }
+  // The ZIP's name, from the server: "ADM-2026-0012 Rahim Uddin.zip"
+  const header = res.headers.get('Content-Disposition') ?? '';
+  const match = /filename\*=UTF-8''([^;]+)/.exec(header);
+  const name = match ? decodeURIComponent(match[1]) : 'Lead files.zip';
+  target.write(new Uint8Array(await res.arrayBuffer()));
+  return { file: target, name };
+}
+
+/** Save the ZIP in a folder the person picks (Android), else the share sheet */
+export async function saveZip(zip: LeadZip, how: 'save' | 'share'): Promise<boolean> {
+  const { file, name } = zip;
+  if (how === 'save' && Platform.OS === 'android') {
+    let dir: Directory;
+    try {
+      dir = await Directory.pickDirectoryAsync();
+    } catch {
+      return false; // closed without picking
+    }
+    const out = dir.createFile(name.replace(/\.zip$/i, ''), 'application/zip');
+    out.write(await file.bytes());
+    return true;
+  }
+  await Sharing.shareAsync(file.uri, { mimeType: 'application/zip', dialogTitle: name, UTI: 'public.zip-archive' });
+  return true;
 }
 
 /** Download through the server and open it in the phone's viewer */
