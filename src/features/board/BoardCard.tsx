@@ -8,15 +8,19 @@ import { papersBadge } from '@/features/papers/api';
 import { visitBadge } from '@/features/visits/api';
 import { feeBadge } from '@/features/fees/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { ago, callDot, callLineText } from '@/features/leads/lastActivity';
+import { clock } from '@/features/voice/format';
 
 // =====================================================================
 // One lead on the board: a flip card
-//   Front: name, rating, next call, papers / visit, assignee
-//   Back:  phone, courses, source, last contact + Call / WhatsApp / SMS
+//   Front: name, rating, next call, the newest of last call / last note,
+//          papers / visit, assignee
+//   Back:  phone, courses, source, last contact, last call, last note
+//          (2 lines) + Call / WhatsApp / SMS
 //   Tap = open the lead · long press = actions · ⟳ = flip
 // =====================================================================
 
-export const CARD_HEIGHT = 132;
+export const CARD_HEIGHT = 184;
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -77,6 +81,19 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
   const fee = kind === 'open' || kind === 'won' ? feeBadge(lead) : null;
   const courses = lead.lead_courses.map((c) => c.course?.name).filter(Boolean).join(', ');
 
+  // 📞📝 Last call / last note (the front shows whichever is newer)
+  const last = lead.last;
+  const callText = last ? callLineText(last, () => null) : null;
+  const noteText = !last?.note_at
+    ? null
+    : last.note_kind === 'voice'
+      ? `🎙 Voice note${last.note_voice_sec ? ` · ${clock(last.note_voice_sec)}` : ''} · ${ago(last.note_at)}`
+      : last.note_text
+        ? `📝 “${last.note_text}${last.note_more ? '…' : ''}”`
+        : null;
+  const noteNewer = !!last?.note_at && (!last.call_at || Date.parse(last.note_at) > Date.parse(last.call_at));
+  const frontLine = noteNewer && noteText ? noteText : callText;
+
   const flipButton = (
     <Pressable
       onPress={flip}
@@ -119,6 +136,15 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
           <Text style={[styles.line, overdue && styles.overdue]} numberOfLines={1}>
             {lead.next_follow_up_at ? `${overdue ? '⚠ ' : '⏰ '}${shortWhen(lead.next_follow_up_at)}` : '⏰ No call set'}
           </Text>
+
+          {!!frontLine && (
+            <View style={styles.lastRow}>
+              {frontLine === callText && <View style={[styles.lastDot, { backgroundColor: callDot(last?.call_outcome ?? null) }]} />}
+              <Text style={[styles.lastText, frontLine !== callText && styles.lastNote]} numberOfLines={1}>
+                {frontLine}
+              </Text>
+            </View>
+          )}
 
           {(papers || visit || fee) && (
             <View style={styles.badges}>
@@ -188,6 +214,19 @@ export function BoardCard({ lead, showAssignee, onPress, onLongPress, onCall, on
             {lead.source?.name ? `📣 ${lead.source.name} · ` : ''}
             {daysAgo(lead.last_contacted_at)}
           </Text>
+          {!!callText && (
+            <View style={styles.lastRow}>
+              <View style={[styles.lastDot, { backgroundColor: callDot(last?.call_outcome ?? null) }]} />
+              <Text style={styles.lastText} numberOfLines={1}>
+                {callText}
+              </Text>
+            </View>
+          )}
+          {!!noteText && (
+            <Text style={[styles.lastText, styles.lastNote]} numberOfLines={2}>
+              {noteText}
+            </Text>
+          )}
 
           <View style={styles.contact}>
             {!!lead.phone && (
@@ -280,6 +319,10 @@ const styles = StyleSheet.create({
   assignee: { fontSize: 11, color: colors.textMuted },
   phone: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text, letterSpacing: 0.5 },
   contact: { flexDirection: 'row', gap: spacing.sm, marginTop: 'auto' },
+  lastRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  lastDot: { width: 7, height: 7, borderRadius: 4 },
+  lastText: { flexShrink: 1, fontSize: fontSize.caption, color: colors.textMuted },
+  lastNote: { color: colors.text, fontStyle: 'italic' },
   contactBtn: { width: 36, height: 32, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   flipBtn: {
     position: 'absolute',
