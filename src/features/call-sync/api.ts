@@ -72,6 +72,10 @@ export type CallSyncSettings = {
   unreachable_retry_days: number;
   /** 💬 After WhatsApp is opened from the app, ask what happened */
   whatsapp_ask_after: boolean;
+  /** 📞 Calls with numbers that are not leads yet wait on the server; saved as a lead → they join it */
+  hold_calls: boolean;
+  /** …for this many days */
+  hold_days: number;
 };
 
 export const DEFAULT_CALL_SYNC: CallSyncSettings = {
@@ -85,6 +89,8 @@ export const DEFAULT_CALL_SYNC: CallSyncSettings = {
   unreachable_after: 5,
   unreachable_retry_days: 7,
   whatsapp_ask_after: true,
+  hold_calls: true,
+  hold_days: 15,
 };
 
 export async function getCallSyncSettings(): Promise<CallSyncSettings> {

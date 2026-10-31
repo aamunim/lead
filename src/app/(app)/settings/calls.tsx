@@ -35,6 +35,8 @@ const MODES: { value: CallSyncMode; title: string; text: string }[] = [
 ];
 
 const MIN_SECONDS = [3, 5, 10, 15, 30];
+// How long calls with numbers that are not leads yet wait on the server
+const HOLD_DAYS = [3, 7, 15, 30];
 
 export default function CallSyncSettingsScreen() {
   const { hasPermission } = useAuth();
@@ -193,6 +195,34 @@ export default function CallSyncSettingsScreen() {
             value={settings.missed_follow_up}
             onChange={(v) => set('missed_follow_up', v)}
           />
+          <View style={styles.divider} />
+          <SwitchRow
+            title="Calls before the lead was saved"
+            text="Calls with a number that is not a lead yet wait on the server (only a code of the number, the time and length; nobody can see them). When that number is saved as a lead, they are added to its Calls & notes."
+            value={settings.hold_calls}
+            onChange={(v) => set('hold_calls', v)}
+          />
+          {settings.hold_calls && (
+            <>
+              <View style={styles.chips}>
+                {HOLD_DAYS.map((d) => {
+                  const on = settings.hold_days === d;
+                  return (
+                    <Pressable
+                      key={d}
+                      onPress={() => set('hold_days', d)}
+                      style={[styles.chip, on && styles.chipOn]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: on }}
+                    >
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{d} days</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={styles.hint}>Waiting calls older than this are deleted every night.</Text>
+            </>
+          )}
         </View>
 
         {/* Connected threshold */}
