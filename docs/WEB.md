@@ -72,3 +72,18 @@ links).
 - `src/shared/web/WebAlert.tsx`: pop-up questions ("Delete?"); a browser
   doesn't show React Native's own.
 - `isWeb` hides phone-only buttons (Call, SMS).
+
+## Students on a computer screen
+
+- **Table**: click a column name to sort (College ID, Name, Fee, Next installment,
+  Papers, Admitted). **▦ Columns** picks the columns (remembered in this browser).
+  Tick rows → **⬇ Export** (Excel of the ticked ones; nothing ticked = everyone matching).
+- **Panel**: a click on a row opens the student on the right; the table keeps
+  the main columns. **↗ Full page** opens the whole page. Smaller screens: the
+  panel slides over the table.
+- **Search** (top bar): name, phone, College ID, NU Admission ID.
+- **Reload / links**: the address keeps the open page and student
+  (`/students?open=<id>`), so a reload or a shared link opens the same thing.
+- **Keyboard**: `Ctrl+K` or `/` search · `J`/`K` or `↓`/`↑` next/previous ·
+  `Enter` full page · `X` tick · `Esc` close · `?` all shortcuts.
+- Sheets from the phone open as a dialog in the middle of the screen.

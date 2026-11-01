@@ -32,6 +32,8 @@ export default function TabsLayout() {
         // 🌐 Website: the menu on the left replaces the tabs
         tabBarStyle: isWeb ? { display: 'none' } : { backgroundColor: colors.surface, borderTopColor: colors.border },
         tabBarLabelStyle: { fontWeight: fontWeight.semibold },
+        // 🌐 Website: its own top bar replaces the blue header
+        ...(isWeb ? { headerShown: false } : {}),
         headerStyle: { backgroundColor: colors.primary },
         headerTintColor: colors.textOnPrimary,
         headerTitleStyle: { fontWeight: fontWeight.bold },

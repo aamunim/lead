@@ -10,8 +10,9 @@ export default function AppLayout() {
   const stack = (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: colors.primary },
-        headerTintColor: colors.textOnPrimary,
+        // 🌐 Website: a light header under its own top bar
+        headerStyle: { backgroundColor: isWeb ? colors.surface : colors.primary },
+        headerTintColor: isWeb ? colors.primary : colors.textOnPrimary,
         headerTitleStyle: { fontWeight: fontWeight.bold },
         headerBackTitle: 'Back',
         contentStyle: { backgroundColor: colors.background },

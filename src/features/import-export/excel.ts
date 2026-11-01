@@ -2,6 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
+import { Platform } from 'react-native';
 
 // =====================================================================
 // The lead fields an import can fill, and the column names we recognise
@@ -213,6 +214,20 @@ export async function writeAndShareSpreadsheet(
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, sheetName.slice(0, 31));
   const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+
+  // 🌐 Website: the browser downloads it
+  if (Platform.OS === 'web') {
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    return;
+  }
 
   const file = new File(Paths.cache, fileName);
   file.create({ overwrite: true });

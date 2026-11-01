@@ -86,6 +86,7 @@ export type LeadListItem = Pick<
   | 'fee_due'
   | 'fee_next_due'
   | 'admitted_at'
+  | 'admitted_by'
 > & {
   stage: Stage | null;
   source: Named | null;
@@ -266,7 +267,7 @@ const LIST_SELECT = `
   approval_status, nu_admission_id,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
-  fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, admitted_at,
+  fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, admitted_at, admitted_by,
   admitted_course:courses!leads_admitted_course_id_fkey(id, name),
   admitted_batch:batches!leads_admitted_batch_id_fkey(id, name),
   stage:pipeline_stages(id, key, name, color, kind),
