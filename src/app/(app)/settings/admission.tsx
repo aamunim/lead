@@ -254,7 +254,7 @@ export default function AdmissionSettingsScreen() {
             <TextInput
               value={settings.student_id.pattern}
               onChangeText={(t) => set('student_id', { ...settings.student_id, pattern: t })}
-              placeholder="ADM-{YYYY}-{0000}"
+              placeholder="{YY}{000}"
               placeholderTextColor={colors.textMuted}
               autoCapitalize="characters"
               autoCorrect={false}
@@ -265,8 +265,8 @@ export default function AdmissionSettingsScreen() {
               <Text style={styles.previewText}>{preview}</Text>
             </View>
             <Text style={styles.hint}>
-              {'{YYYY}'} = year · {'{YY}'} = short year · {'{0000}'} = running number (as many digits as zeros). With
-              a year in it, numbers start again from 1 each year.
+              {'{YY}'} = short year · {'{YYYY}'} = year · {'{000}'} = running number (as many digits as zeros). With a
+              year in it, numbers start again from 1 each year: {'{YY}{000}'} gives 26001, 26002 … then 27001 in 2027.
             </Text>
           </View>
         )}
