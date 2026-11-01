@@ -1,4 +1,4 @@
-import { Redirect, router, useFocusEffect, type Href } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -16,6 +16,7 @@ import { addedRange, getLeadsAdded } from '@/features/leads/added';
 import { StudentsHomeCard } from '@/features/students/StudentsHomeCard';
 import { TodayVisits } from '@/features/visits/TodayVisits';
 import { isWeb } from '@/features/web/api';
+import { takeBootUrl } from '@/shared/web/bootUrl';
 import { countPendingUsers } from '@/features/users/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
@@ -28,9 +29,20 @@ function greeting(): string {
 }
 
 export default function HomeScreen() {
-  // 🌐 The website opens on Students (the menu on the left has the rest)
-  if (isWeb) return <Redirect href="/students" />;
+  // 🌐 The website opens on Students (the menu on the left has the rest),
+  //   or, after a reload / from a shared link, on the page that was open
+  if (isWeb) return <WebStart />;
   return <PhoneHome />;
+}
+
+function WebStart() {
+  // Only once this page is really shown (it is also drawn, unseen, under others)
+  useFocusEffect(
+    useCallback(() => {
+      router.replace((takeBootUrl() ?? '/students') as Href);
+    }, []),
+  );
+  return null;
 }
 
 function PhoneHome() {

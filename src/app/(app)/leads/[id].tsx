@@ -127,6 +127,26 @@ export default function LeadDetailScreen() {
   // callNote = a call-log id, when opened from the "add a note" notification
   // waCall = a WhatsApp call id, from the WhatsApp "add a note" notification
   const { id, callNote, waCall } = useLocalSearchParams<{ id: string; callNote?: string; waCall?: string }>();
+  return <LeadDetailView id={id} callNote={callNote} waCall={waCall} />;
+}
+
+/**
+ * The lead page. 🌐 On the website it is also shown in a panel next to the
+ * Students table (embedded: no screen header; onClosed after a delete).
+ */
+export function LeadDetailView({
+  id,
+  callNote,
+  waCall,
+  embedded = false,
+  onClosed,
+}: {
+  id: string;
+  callNote?: string;
+  waCall?: string;
+  embedded?: boolean;
+  onClosed?: () => void;
+}) {
   const { hasPermission, profile } = useAuth();
   const isAdmin = hasPermission('leads.edit_all');
   // 💬 Message templates (Settings → Message templates)
@@ -429,7 +449,8 @@ export default function LeadDetailScreen() {
         onPress: async () => {
           try {
             await softDeleteLead(lead.id);
-            router.back();
+            if (onClosed) onClosed();
+            else router.back();
           } catch (e) {
             Alert.alert('Could not delete', e instanceof Error ? e.message : '');
           }
@@ -736,7 +757,7 @@ export default function LeadDetailScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Lead' }} />
+        {!embedded && <Stack.Screen options={{ title: 'Lead' }} />}
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -745,7 +766,7 @@ export default function LeadDetailScreen() {
   if (!lead) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Lead' }} />
+        {!embedded && <Stack.Screen options={{ title: 'Lead' }} />}
         <Text style={styles.emptyTitle}>Lead not found</Text>
         <Text style={styles.muted}>{error ?? 'It may have been deleted or assigned to someone else.'}</Text>
       </View>
@@ -787,21 +808,23 @@ export default function LeadDetailScreen() {
           />
         }
       >
-        <Stack.Screen
-          options={{
-            title: lead.name,
-            headerRight: () => (
-              <Pressable
-                onPress={() => router.push(`/leads/edit/${lead.id}` as Href)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Edit lead"
-              >
-                <Text style={styles.headerAction}>Edit</Text>
-              </Pressable>
-            ),
-          }}
-        />
+        {!embedded && (
+          <Stack.Screen
+            options={{
+              title: lead.name,
+              headerRight: () => (
+                <Pressable
+                  onPress={() => router.push(`/leads/edit/${lead.id}` as Href)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit lead"
+                >
+                  <Text style={styles.headerAction}>Edit</Text>
+                </Pressable>
+              ),
+            }}
+          />
+        )}
 
         {/* Header card */}
         <View style={styles.card}>

@@ -10,6 +10,8 @@ import { colors } from '@/shared/theme';
 import { UpdateBanner } from '@/features/updates/UpdateBanner';
 import { OfflineBanner } from '@/shared/ui/OfflineBanner';
 import { WebAlertHost, installWebAlert } from '@/shared/web/WebAlert';
+// 🌐 Read the address before the router changes it (reload keeps the page)
+import '@/shared/web/bootUrl';
 
 SplashScreen.preventAutoHideAsync();
 
