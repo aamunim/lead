@@ -13,6 +13,7 @@ import { visitBadge } from '@/features/visits/api';
 import { clock } from '@/features/voice/format';
 import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { approvalBadge } from '@/features/approval/api';
 
 // =====================================================================
 // 🗂 One lead's card: the Leads / Students list and the pipeline board
@@ -107,7 +108,12 @@ export function LeadCard({
       : null;
   const metaParts = (
     student
-      ? [lead.student_ref ? `🪪 ${lead.student_ref}` : null, admittedTo ?? courses, lead.phone]
+      ? [
+          lead.student_ref ? `🪪 ${lead.student_ref}` : null,
+          lead.nu_admission_id ? `NU ${lead.nu_admission_id}` : null,
+          admittedTo ?? courses,
+          lead.phone,
+        ]
       : [whatsAppOnly(lead) ? `💬 ${contactLabel(lead)}` : lead.phone, kind === 'won' ? lead.student_ref : null, admittedTo ?? courses]
   ).filter(Boolean);
 
@@ -136,6 +142,9 @@ export function LeadCard({
 
   // 💰 Negotiating / ⏳ Discount / 💰 −৳3,500
   const fee = kind === 'open' || kind === 'won' ? feeBadge(lead) : null;
+  const approval = student && kind === 'won' ? approvalBadge(lead.approval_status) : null;
+  const approvalColor =
+    approval?.color === 'good' ? colors.success : approval?.color === 'bad' ? colors.danger : colors.warning;
 
   return (
     <Pressable
@@ -213,7 +222,14 @@ export function LeadCard({
         )}
 
         <View style={styles.cardBottom}>
-          {student ? null : closed ? (
+          {student ? (
+            // 🎓 Admission approval: ⏳ waiting / ✅ approved / ↩ sent back
+            approval && (
+              <View style={[styles.stage, { backgroundColor: approvalColor + '1F' }]}>
+                <Text style={[styles.stageText, { color: approvalColor }]}>{approval.text}</Text>
+              </View>
+            )
+          ) : closed ? (
             <View style={[styles.stage, { backgroundColor: closed.color + '1F' }]}>
               <Text style={[styles.stageText, { color: closed.color }]}>{closed.label}</Text>
             </View>

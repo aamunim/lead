@@ -1514,6 +1514,11 @@ export type Database = {
       }
       leads: {
         Row: {
+          approval_at: string | null
+          approval_by: string | null
+          approval_note: string | null
+          approval_status: string | null
+          nu_admission_id: string | null
           admission_note: string | null
           admitted_at: string | null
           admitted_batch_id: string | null
@@ -1576,6 +1581,11 @@ export type Database = {
           whatsapp_username: string | null
         }
         Insert: {
+          approval_at?: string | null
+          approval_by?: string | null
+          approval_note?: string | null
+          approval_status?: string | null
+          nu_admission_id?: string | null
           admission_note?: string | null
           admitted_at?: string | null
           admitted_batch_id?: string | null
@@ -1638,6 +1648,11 @@ export type Database = {
           whatsapp_username?: string | null
         }
         Update: {
+          approval_at?: string | null
+          approval_by?: string | null
+          approval_note?: string | null
+          approval_status?: string | null
+          nu_admission_id?: string | null
           admission_note?: string | null
           admitted_at?: string | null
           admitted_batch_id?: string | null
@@ -2492,6 +2507,11 @@ export type Database = {
       }
       link_voice_notes: { Args: { p_call_id: string; p_file_ids: string[] }; Returns: number }
       password_changed: { Args: never; Returns: undefined }
+      approve_admission: { Args: { p_lead: string; p_note?: string; p_nu_admission_id?: string }; Returns: undefined }
+      return_admission: { Args: { p_lead: string; p_reason: string }; Returns: undefined }
+      resubmit_admission: { Args: { p_lead: string; p_note?: string }; Returns: undefined }
+      set_nu_admission_id: { Args: { p_lead: string; p_value: string }; Returns: undefined }
+      can_approve_admission: { Args: { p_user?: string }; Returns: boolean }
       leads_added: {
         Args: { p_from: string; p_to: string }
         Returns: { imported: number; name: string | null; total: number; user_id: string }[]

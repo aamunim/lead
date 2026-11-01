@@ -130,7 +130,8 @@ export function canUndo(batch: ImportBatch): boolean {
 const EXPORT_SELECT = `
   name, phone, whatsapp_number, whatsapp_username, alt_phone, email, area,
   guardian_name, guardian_phone, guardian_relation,
-  rating, notes, referred_by, created_at, created_by, import_batch_id, next_follow_up_at, last_contacted_at, visit_status, visit_at,
+  rating, notes, referred_by, created_at, created_by, import_batch_id, next_follow_up_at,
+  student_ref, approval_status, approval_by, approval_at, nu_admission_id, last_contacted_at, visit_status, visit_at,
   fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due,
   stage:pipeline_stages(name),
   source:lead_sources(name),
@@ -158,6 +159,11 @@ type ExportLead = {
   created_at: string;
   created_by: string | null;
   import_batch_id: string | null;
+  student_ref: string | null;
+  approval_status: string | null;
+  approval_by: string | null;
+  approval_at: string | null;
+  nu_admission_id: string | null;
   next_follow_up_at: string | null;
   last_contacted_at: string | null;
   visit_status: string | null;
@@ -183,7 +189,10 @@ const EXPORT_HEADERS = [
   'Courses', 'Stage', 'Rating', 'Source', 'Campaign', 'Referred by', 'Lead type', 'Tags',
   'Assigned to', 'Created', 'Created by', 'Next follow-up', 'Last contacted', 'Campus visit',
   'Fee status', 'Full fee', 'Discount', 'To pay', 'Paid', 'Due', 'Notes',
+  'College ID', 'NU Admission ID', 'Admission approval', 'Approved by', 'Approved on',
 ];
+
+const APPROVAL: Record<string, string> = { waiting: 'Waiting', approved: 'Approved', returned: 'Sent back' };
 
 const FEE_STATUS: Record<string, string> = {
   negotiating: 'Negotiating',
@@ -291,6 +300,11 @@ export async function exportLeads(filters: ExportFilters, userId: string): Promi
     num(l.fee_paid),
     num(l.fee_due),
     l.notes,
+    l.student_ref,
+    l.nu_admission_id,
+    l.approval_status ? (APPROVAL[l.approval_status] ?? l.approval_status) : '',
+    l.approval_status === 'approved' && l.approval_by ? (nameOf.get(l.approval_by) ?? '') : '',
+    l.approval_status === 'approved' ? dateText(l.approval_at) : '',
   ]);
 
   // Record the export first (so it is logged even if sharing is cancelled)

@@ -42,6 +42,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/students' as Href,
       },
       {
+        title: 'Admission approval',
+        description: 'Admission Officer approves admitted students; NU Admission ID',
+        icon: '✅',
+        href: '/settings/approval' as Href,
+      },
+      {
         title: 'Fee & discount',
         description: 'Negotiation, discount limits, payments, methods, receipts',
         icon: '💰',

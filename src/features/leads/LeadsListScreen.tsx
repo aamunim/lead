@@ -82,6 +82,7 @@ import {
 } from '@/features/leads/search';
 import { getCardSettings, loadDetailed, saveDetailed } from '@/features/leads/lastActivity';
 import { LeadCard } from '@/features/leads/LeadCard';
+import { getApprovalSettings } from '@/features/approval/api';
 import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
 import { listAssignableUsers } from '@/features/leads/api';
 import { VoicePlayer } from '@/features/voice/VoiceNote';
@@ -120,6 +121,12 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   const seesOthers = sharedMode || hasPermission('leads.view_all') || hasPermission('leads.view_team');
   const isAdmin = hasPermission('settings.manage');
 
+  // 🎓 Admission approval chips (Students only, when it is on)
+  const [approvalOn, setApprovalOn] = useState(false);
+  useEffect(() => {
+    if (students) getApprovalSettings().then((s) => setApprovalOn(s.enabled));
+  }, [students]);
+
   // "Mine" and "Unassigned" only make sense while assignment is on
   const quickFilters: { key: QuickFilter; label: string }[] = students
     ? [
@@ -130,6 +137,15 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         { key: 'paid', label: '✓ Paid' },
         { key: 'papers', label: '📄 Papers missing' },
         { key: 'new_students', label: 'New this month' },
+        // 🎓 Admission approval (Settings → Admission approval)
+        ...(approvalOn
+          ? [
+              { key: 'approval_waiting' as QuickFilter, label: '⏳ Approval waiting' },
+              { key: 'approved' as QuickFilter, label: '✅ Approved' },
+              { key: 'approval_returned' as QuickFilter, label: '↩ Sent back' },
+              { key: 'no_nu_id' as QuickFilter, label: '🆔 No NU ID' },
+            ]
+          : []),
       ]
     : // Leads: "All", then who added them and when (➕ chips below)
       [{ key: 'all', label: 'All' }];
@@ -491,7 +507,23 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     addedDay,
     addedFrom,
     addedTo,
-  } = useLocalSearchParams<{ stage?: string; ids?: string; addedBy?: string; addedDay?: string; addedFrom?: string; addedTo?: string }>();
+    quick: quickParam,
+  } = useLocalSearchParams<{
+    stage?: string;
+    ids?: string;
+    addedBy?: string;
+    addedDay?: string;
+    addedFrom?: string;
+    addedTo?: string;
+    quick?: string;
+  }>();
+  // Opened with a chip chosen (e.g. Home → 🎓 Approval waiting)
+  useEffect(() => {
+    if (!quickParam) return;
+    setLoading(true);
+    setQuick(String(quickParam) as QuickFilter);
+    router.setParams({ quick: undefined });
+  }, [quickParam]);
   // Opened from Team activity / Home: leads added by someone, in a period
   useEffect(() => {
     if (!addedBy && !addedDay) return;

@@ -419,6 +419,16 @@ export function describeChange(
       return { text: `📎 File removed: ${q(d.name)}`, warn: true };
     case 'files_downloaded':
       return { text: `📦 Downloaded all files (${d.count ?? 0})`, warn: false };
+    case 'admission_approved':
+      return { text: `✅ Admission approved${d.nu_admission_id ? ` · NU ${q(d.nu_admission_id)}` : ''}`, warn: false };
+    case 'admission_returned':
+      return { text: `↩ Admission sent back: ${q(d.reason)}`, warn: true };
+    case 'admission_resubmitted':
+      return { text: '🎓 Sent for approval again', warn: false };
+    case 'nu_id_set':
+      return { text: `🆔 NU Admission ID: ${d.to ? q(d.to) : 'removed'}`, warn: false };
+    case 'admission_approval_cleared':
+      return { text: '🎓 Admission approval cleared (cancelled)', warn: true };
     case 'payment_refunded':
       return {
         text: `↩ Refund ৳${Math.round(Number(d.amount ?? 0)).toLocaleString('en-IN')} (${q(d.method)}) · ${q(d.receipt_no)}${d.reason ? ` · ${q(d.reason)}` : ''}`,
