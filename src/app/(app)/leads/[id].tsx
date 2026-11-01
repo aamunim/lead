@@ -538,6 +538,8 @@ export default function LeadDetailScreen() {
         return `🎓 Sent for approval again${d.note ? `: ${d.note}` : ''}`;
       case 'nu_id_set':
         return d.to ? `🆔 NU Admission ID: ${d.to}${d.from ? ` (was ${d.from})` : ''}` : `🆔 NU Admission ID removed (was ${d.from ?? ''})`;
+      case 'student_ref_changed':
+        return `🎓 Student ID changed: ${d.from ?? '—'} → ${d.to ?? '—'}`;
       case 'admission_approval_cleared':
         return `🎓 Admission approval cleared (cancelled)${d.nu_admission_id ? ` · NU ${d.nu_admission_id}` : ''}${d.student_ref ? ` · ${d.student_ref}` : ''}`;
       case 'payment_refunded':

@@ -386,7 +386,7 @@ function TemplateEditor({
     visit_time: '2 Nov 2026, 11:00 am',
     next_call: '1 Nov 2026, 4:00 pm',
     papers_missing: '• SSC certificate\n• Birth certificate',
-    student_id: 'ADM-2026-0012',
+    student_id: '26012',
     my_name: myName,
     my_phone: '01711-000000',
     institute: settings.institute.name || 'Your institute',

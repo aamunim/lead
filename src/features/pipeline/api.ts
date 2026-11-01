@@ -87,7 +87,7 @@ export const DEFAULT_ADMISSION: AdmissionSettings = {
   cancel: { mode: 'roles', roles: ['super_admin', 'admin'], user_ids: [] },
   batch_required: false,
   allow_overbooking: false,
-  student_id: { mode: 'auto', pattern: 'ADM-{YYYY}-{0000}' },
+  student_id: { mode: 'auto', pattern: '{YY}{000}' },
   closed_in_list: 'hide',
   papers_on_admit: 'warn',
 };
@@ -118,7 +118,7 @@ export async function saveAdmissionSettings(settings: AdmissionSettings): Promis
 
 /**
  * What a student ID pattern looks like, for the settings screen.
- *   ADM-{YYYY}-{0000}, number 42 → ADM-2026-0042
+ *   {YY}{000}, number 42 → 26042 · ADM-{YYYY}-{0000} → ADM-2026-0042
  */
 export function formatStudentRef(pattern: string, n: number, now = new Date()): string {
   const year = String(now.getFullYear());

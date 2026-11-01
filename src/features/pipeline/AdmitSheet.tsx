@@ -545,7 +545,7 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
                             label=""
                             value={studentRef}
                             onChangeText={setStudentRef}
-                            placeholder="e.g. ADM-2026-0042"
+                            placeholder="e.g. 26042"
                             autoCapitalize="characters"
                           />
                         )}
