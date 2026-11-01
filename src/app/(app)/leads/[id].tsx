@@ -77,6 +77,7 @@ import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 import { deleteLeadFile, isRecordedVoice, listLeadFiles, type LeadFile } from '@/features/files/api';
 import { onVoiceSaved } from '@/features/voice/useVoiceNotes';
 import { isWeb } from '@/features/web/api';
+import { ApprovalCard } from '@/features/approval/ApprovalCard';
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -529,6 +530,16 @@ export default function LeadDetailScreen() {
         return `📎 File removed: ${d.name ?? ''}`;
       case 'files_downloaded':
         return `📦 Downloaded all files (${d.count ?? 0})`;
+      case 'admission_approved':
+        return `✅ Admission approved${d.nu_admission_id ? ` · NU ${d.nu_admission_id}` : ''}${d.note ? ` · “${d.note}”` : ''}`;
+      case 'admission_returned':
+        return `↩ Admission sent back: ${d.reason ?? ''}`;
+      case 'admission_resubmitted':
+        return `🎓 Sent for approval again${d.note ? `: ${d.note}` : ''}`;
+      case 'nu_id_set':
+        return d.to ? `🆔 NU Admission ID: ${d.to}${d.from ? ` (was ${d.from})` : ''}` : `🆔 NU Admission ID removed (was ${d.from ?? ''})`;
+      case 'admission_approval_cleared':
+        return `🎓 Admission approval cleared (cancelled)${d.nu_admission_id ? ` · NU ${d.nu_admission_id}` : ''}${d.student_ref ? ` · ${d.student_ref}` : ''}`;
       case 'payment_refunded':
         return `↩ Refund ${money(Number(d.amount ?? 0))} (${d.method ?? ''}) · ${d.receipt_no ?? ''}${d.reason ? ` · ${d.reason}` : ''}`;
       case 'payment_voided':
@@ -929,6 +940,18 @@ export default function LeadDetailScreen() {
             load();
           }}
         />
+
+        {/* 🎓 Admission approval: admitted students only (hidden once cancelled) */}
+        {stageKind === 'won' && !!lead.admitted_at && (
+          <ApprovalCard
+            lead={lead}
+            nameOf={nameOf}
+            onChanged={(message) => {
+              showToast(message);
+              load();
+            }}
+          />
+        )}
 
         {/* Campus visit: separate from the pipeline */}
         <VisitCard

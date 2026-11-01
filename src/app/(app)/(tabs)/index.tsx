@@ -18,6 +18,7 @@ import { TodayVisits } from '@/features/visits/TodayVisits';
 import { isWeb } from '@/features/web/api';
 import { countPendingUsers } from '@/features/users/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -209,6 +210,9 @@ function PhoneHome() {
 
         {/* 🎓 Students at a glance (Settings → Students) */}
         <StudentsHomeCard />
+
+        {/* 🎓 Admission Officer: admissions waiting for approval */}
+        <ApprovalHomeCard />
 
         {/* This month at a glance (Settings → Reports) */}
         <ReportHomeCard />

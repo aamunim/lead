@@ -65,6 +65,9 @@ export type LeadListItem = Pick<
   | 'guardian_phone'
   | 'email'
   | 'area'
+  // 🎓 Admission approval (admitted students)
+  | 'approval_status'
+  | 'nu_admission_id'
   // Papers (counts kept up to date by the database)
   | 'papers_required'
   | 'papers_received'
@@ -151,7 +154,12 @@ export type QuickFilter =
   | 'overdue'
   | 'paid'
   | 'papers'
-  | 'new_students';
+  | 'new_students'
+  // 🎓 Admission approval
+  | 'approval_waiting'
+  | 'approved'
+  | 'approval_returned'
+  | 'no_nu_id';
 
 /**
  * Closed leads (Admitted / Lost / Cancelled) in the list:
@@ -255,6 +263,7 @@ function toError(error: { message: string }): Error {
 const LIST_SELECT = `
   id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
   alt_phone, guardian_name, guardian_phone, email, area,
+  approval_status, nu_admission_id,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
   fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, admitted_at,
@@ -320,6 +329,7 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
       `guardian_name.ilike.%${text}%`,
       `email.ilike.%${text}%`,
       `area.ilike.%${text}%`,
+      `nu_admission_id.ilike.%${text}%`,
     ];
     if (digits.length >= 3) {
       parts.push(
@@ -356,6 +366,10 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
     if (quick === 'overdue') query = query.gt('fee_due', 0).lt('fee_next_due', todayIso);
     if (quick === 'paid') query = query.eq('fee_due', 0);
     if (quick === 'papers') query = query.gt('papers_missing', 0);
+    if (quick === 'approval_waiting') query = query.eq('approval_status', 'waiting');
+    if (quick === 'approved') query = query.eq('approval_status', 'approved');
+    if (quick === 'approval_returned') query = query.eq('approval_status', 'returned');
+    if (quick === 'no_nu_id') query = query.not('approval_status', 'is', null).is('nu_admission_id', null);
     if (quick === 'new_students') {
       query = query.gte('admitted_at', new Date(today.getFullYear(), today.getMonth(), 1).toISOString());
     }
