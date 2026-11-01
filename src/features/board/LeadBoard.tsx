@@ -2,7 +2,6 @@ import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -11,26 +10,16 @@ import {
   type FlatListProps,
 } from 'react-native';
 
-import { useAuth } from '@/features/auth/AuthProvider';
-import { BoardActionSheet, type BoardAction } from '@/features/board/BoardActionSheet';
-import { BoardCard, CARD_HEIGHT } from '@/features/board/BoardCard';
-import { LeadQuickSheet } from '@/features/leads/LeadQuickSheet';
-import { canHandOver } from '@/features/settings/assignment';
 import { listLeads, type LeadListItem, type LeadQuery } from '@/features/leads/api';
-import { AdmitSheet } from '@/features/pipeline/AdmitSheet';
-import { LostSheet } from '@/features/pipeline/LostSheet';
-import { MoveStageSheet } from '@/features/pipeline/MoveStageSheet';
-import {
-  bulkMoveLeadStage,
-  canMarkAdmitted,
-  listPipelineStages,
-  type PipelineStage,
-} from '@/features/pipeline/api';
+import { LeadCard } from '@/features/leads/LeadCard';
+import { listPipelineStages, type PipelineStage } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
-// 📋 Pipeline board: one column per stage, one flip card per lead
-//   Uses the same search / quick chip / filters / sort as the list.
+// 📋 Pipeline board: one column per stage, the same lead cards as the list
+//   Uses the same search / quick chip / filters / sort as the list, and the
+//   same card: tap opens, long press marks (the list's bar then moves,
+//   tags, assigns… the marked leads), last call / note, 👁 peek.
 //   Columns load when they come into view (and the next one), a page at a time.
 // =====================================================================
 
@@ -61,16 +50,19 @@ type Props = {
   onSms: (lead: LeadListItem) => void;
   /** Long press on WhatsApp / SMS: pick a message template */
   onTemplate?: (lead: LeadListItem, channel: 'whatsapp' | 'sms') => void;
-  /** Long press → Fee & discount (when the feature is on for this person) */
-  onFee?: (lead: LeadListItem) => void;
-  /** Something changed: show a short message */
+  /** Something went wrong: show a short message */
   onChanged: (message: string) => void;
+  // --- the list's card, the same here ---
+  search: string;
+  detailed: boolean;
+  staleDays: number;
+  nameOf: (id: string | null) => string | null;
+  onPeek: (lead: LeadListItem) => void;
+  onPlayVoice: (lead: LeadListItem, fileId: string, seconds: number | null) => void;
+  /** Marked leads (long press), shared with the list's bar */
+  selected: Set<string>;
+  onToggle: (lead: LeadListItem) => void;
 };
-
-type Sheet =
-  | { type: 'actions'; lead: LeadListItem }
-  | { type: 'move'; lead: LeadListItem; stage: PipelineStage }
-  | { type: 'admit' | 'lost' | 'followup' | 'note' | 'handover'; lead: LeadListItem };
 
 export function LeadBoard({
   query,
@@ -81,25 +73,29 @@ export function LeadBoard({
   onWhatsApp,
   onSms,
   onTemplate,
-  onFee,
   onChanged,
+  search,
+  detailed,
+  staleDays,
+  nameOf,
+  onPeek,
+  onPlayVoice,
+  selected,
+  onToggle,
 }: Props) {
-  const { profile, hasPermission, sharedMode, assignment } = useAuth();
   const { width } = useWindowDimensions();
   const colWidth = Math.min(320, Math.round(width - spacing.lg * 2 - 36)); // the next column peeks in
 
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [stagesError, setStagesError] = useState<string | null>(null);
-  const [mayAdmit, setMayAdmit] = useState(false);
   const [cols, setCols] = useState<Record<string, Column>>({});
   const [height, setHeight] = useState(0);
-  const [sheet, setSheet] = useState<Sheet | null>(null);
+  const selecting = selected.size > 0;
 
   useEffect(() => {
     listPipelineStages()
       .then(setStages)
       .catch((e) => setStagesError(e instanceof Error ? e.message : 'Could not load the stages.'));
-    canMarkAdmitted().then(setMayAdmit);
   }, []);
 
   // Columns: open stages, then Admitted / Lost (setting). "Closed" chip → only closed columns.
@@ -109,7 +105,6 @@ export function LeadBoard({
     if (query.quick === 'closed') return closed;
     return closedColumns ? [...open, ...closed.filter((s) => s.kind !== 'cancelled')] : open;
   }, [stages, closedColumns, query.quick]);
-  const openStages = useMemo(() => stages.filter((s) => s.kind === 'open'), [stages]);
 
   // --- loading ----------------------------------------------------------
   const queryKey = `${JSON.stringify(query)}|${reloadKey}`;
@@ -192,67 +187,6 @@ export function LeadBoard({
     if (colsRef.current[stageId]?.loaded) loadColumn(stageId, 0);
   };
 
-  // --- who may change a lead (the database checks again) ----------------
-  const canEdit = (lead: LeadListItem) =>
-    sharedMode ||
-    hasPermission('leads.edit_all') ||
-    hasPermission('leads.edit_team') ||
-    (hasPermission('leads.edit_own') && lead.assigned_to === profile?.id);
-
-  // --- moving -------------------------------------------------------------
-  /** The card leaves its column now; the new column reloads to show it in its place */
-  const moved = (lead: LeadListItem, toStageId: string | null) => {
-    const from = lead.stage_id;
-    setCols((c) => {
-      const next = { ...c };
-      const src = next[from];
-      if (src) {
-        next[from] = {
-          ...src,
-          items: src.items.filter((l) => l.id !== lead.id),
-          total: src.total != null ? Math.max(0, src.total - 1) : src.total,
-        };
-      }
-      return next;
-    });
-    if (toStageId) refreshColumn(toStageId);
-  };
-
-  const moveTo = async (lead: LeadListItem, stage: PipelineStage, note?: string, dueAt?: Date | null) => {
-    await bulkMoveLeadStage([lead.id], stage.id, note, dueAt);
-    moved(lead, stage.id);
-    onChanged(`Moved to ${stage.name}.`);
-  };
-
-  const pick = (lead: LeadListItem, action: BoardAction) => {
-    switch (action.type) {
-      case 'move':
-        if (action.stage.noteRequired || action.stage.askDate) {
-          setSheet({ type: 'move', lead, stage: action.stage });
-          return;
-        }
-        setSheet(null);
-        moveTo(lead, action.stage).catch((e) => Alert.alert('Could not move', e instanceof Error ? e.message : ''));
-        return;
-      case 'call':
-        setSheet(null);
-        onCall(lead);
-        return;
-      case 'open':
-        setSheet(null);
-        router.push(`/leads/${lead.id}` as Href);
-        return;
-      case 'fee':
-        setSheet(null);
-        onFee?.(lead);
-        return;
-      default:
-        setSheet({ type: action.type, lead });
-    }
-  };
-
-  const stageOfKind = (kind: string) => stages.find((s) => s.kind === kind)?.id ?? null;
-
   // --- render -------------------------------------------------------------
   if (stagesError) {
     return (
@@ -268,8 +202,6 @@ export function LeadBoard({
       </View>
     );
   }
-
-  const active = sheet?.lead ?? null;
 
   return (
     <View style={styles.board} onLayout={(e) => setHeight(e.nativeEvent.layout.height)}>
@@ -302,23 +234,27 @@ export function LeadBoard({
                 <FlatList
                   data={col.items}
                   keyExtractor={(l) => l.id}
+                  extraData={selected}
                   contentContainerStyle={styles.cards}
                   ItemSeparatorComponent={CardGap}
-                  getItemLayout={(_, index) => ({
-                    length: CARD_HEIGHT + CARD_GAP,
-                    offset: (CARD_HEIGHT + CARD_GAP) * index,
-                    index,
-                  })}
                   onEndReached={() => {
                     if (col.loaded && col.hasMore && !col.loading) loadColumn(stage.id, col.page + 1);
                   }}
                   onEndReachedThreshold={0.5}
                   renderItem={({ item: lead }) => (
-                    <BoardCard
+                    <LeadCard
                       lead={lead}
+                      search={search}
+                      detailed={detailed}
+                      staleDays={staleDays}
+                      nameOf={nameOf}
+                      onPeek={() => onPeek(lead)}
+                      onPlayVoice={(fileId, seconds) => onPlayVoice(lead, fileId, seconds)}
                       showAssignee={showAssignee}
-                      onPress={() => router.push(`/leads/${lead.id}` as Href)}
-                      onLongPress={() => setSheet({ type: 'actions', lead })}
+                      selecting={selecting}
+                      selected={selected.has(lead.id)}
+                      onPress={() => (selecting ? onToggle(lead) : router.push(`/leads/${lead.id}` as Href))}
+                      onLongPress={() => onToggle(lead)}
                       onCall={() => onCall(lead)}
                       onWhatsApp={() => onWhatsApp(lead)}
                       onSms={() => onSms(lead)}
@@ -344,77 +280,6 @@ export function LeadBoard({
         />
       )}
 
-      {/* Long press */}
-      <BoardActionSheet
-        lead={sheet?.type === 'actions' ? sheet.lead : null}
-        stages={openStages}
-        canEdit={!!active && canEdit(active)}
-        canAdmit={mayAdmit}
-        canHandOver={canHandOver(assignment, hasPermission)}
-        canFee={!!onFee}
-        onClose={() => setSheet(null)}
-        onPick={(a) => active && pick(active, a)}
-      />
-
-      {/* A stage that asks for a note and/or a date */}
-      <MoveStageSheet
-        visible={sheet?.type === 'move'}
-        stage={sheet?.type === 'move' ? sheet.stage : null}
-        isCurrent={false}
-        subtitle={active?.name}
-        leadId={active?.id}
-        onClose={() => setSheet(null)}
-        onSave={async (note, dueAt) => {
-          if (sheet?.type !== 'move') return;
-          await moveTo(sheet.lead, sheet.stage, note, dueAt);
-          setSheet(null);
-        }}
-      />
-
-      {active && (
-        <AdmitSheet
-          visible={sheet?.type === 'admit'}
-          lead={{
-            id: active.id,
-            name: active.name,
-            courseIds: active.lead_courses.map((c) => c.course?.id).filter(Boolean) as string[],
-            studentRef: active.student_ref,
-          }}
-          onClose={() => setSheet(null)}
-          onSaved={() => {
-            setSheet(null);
-            moved(active, stageOfKind('won'));
-            onChanged('🎉 Admitted!');
-          }}
-        />
-      )}
-
-      {active && (
-        <LostSheet
-          visible={sheet?.type === 'lost'}
-          leads={[{ id: active.id, name: active.name }]}
-          onClose={() => setSheet(null)}
-          onSaved={(message) => {
-            setSheet(null);
-            moved(active, stageOfKind('lost'));
-            onChanged(message);
-          }}
-        />
-      )}
-
-      {active && (sheet?.type === 'followup' || sheet?.type === 'note' || sheet?.type === 'handover') && (
-        <LeadQuickSheet
-          visible
-          field={sheet.type === 'handover' ? 'assign' : sheet.type}
-          leads={[active]}
-          onClose={() => setSheet(null)}
-          onSaved={(message) => {
-            setSheet(null);
-            refreshColumn(active.stage_id);
-            onChanged(message);
-          }}
-        />
-      )}
     </View>
   );
 }
