@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, AppState, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
+import { Animated, AppState, Dimensions, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { MIcon, md, type MIconName } from '@/features/home/md';
@@ -27,10 +27,9 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        // ✨ Our own tab change: the new screen glides in from the side it
-        //   is on, growing a little out of depth; the old one fades past
-        sceneStyleInterpolator: depthGlide,
-        transitionSpec: { animation: 'spring', config: { stiffness: 320, damping: 30, mass: 0.9 } },
+        // ✨ Tab change: the whole page slides (springy, like turning pages)
+        sceneStyleInterpolator: pageSlide,
+        transitionSpec: { animation: 'spring', config: { stiffness: 260, damping: 30, mass: 1 } },
         tabBarActiveTintColor: md.onPrimaryC,
         tabBarInactiveTintColor: colors.textMuted,
         // 🌐 Website: the menu on the left replaces the tabs
@@ -87,18 +86,17 @@ export default function TabsLayout() {
 }
 
 /**
- * The new screen comes in from the side of its tab (progress -1 → 0 or
- * 1 → 0), a little smaller and faded; the old one grows slightly and fades.
+ * The whole page slides: the new tab's page comes in from its side while
+ * the old one slides out the other way (like turning pages), with a
+ * light fade at the far ends so the edges never look hard.
  */
-function depthGlide({ current }: { current: { progress: Animated.AnimatedInterpolation<number> } }) {
+function pageSlide({ current }: { current: { progress: Animated.AnimatedInterpolation<number> } }) {
+  const w = Dimensions.get('window').width;
   const p = current.progress;
   return {
     sceneStyle: {
-      opacity: p.interpolate({ inputRange: [-1, -0.4, 0, 0.4, 1], outputRange: [0, 0.2, 1, 0.2, 0] }),
-      transform: [
-        { translateX: p.interpolate({ inputRange: [-1, 0, 1], outputRange: [-36, 0, 36] }) },
-        { scale: p.interpolate({ inputRange: [-1, 0, 1], outputRange: [0.94, 1, 0.94] }) },
-      ],
+      opacity: p.interpolate({ inputRange: [-1, -0.85, 0, 0.85, 1], outputRange: [0, 0.6, 1, 0.6, 0] }),
+      transform: [{ translateX: p.interpolate({ inputRange: [-1, 0, 1], outputRange: [-w, 0, w] }) }],
     },
   };
 }
