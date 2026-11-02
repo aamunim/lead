@@ -427,6 +427,11 @@ export function describeChange(
       return { text: '🎓 Sent for approval again', warn: false };
     case 'nu_id_set':
       return { text: `🆔 NU Admission ID: ${d.to ? q(d.to) : 'removed'}`, warn: false };
+    case 'final_fee_changed':
+      return {
+        text: `💰 Final fee ৳${Math.round(Number(d.from ?? 0)).toLocaleString('en-IN')} → ৳${Math.round(Number(d.to ?? 0)).toLocaleString('en-IN')}${d.reason ? ` · ${q(d.reason)}` : ''}`,
+        warn: true,
+      };
     case 'student_ref_changed':
       return { text: `🎓 Student ID changed: ${q(d.from)} → ${q(d.to)}`, warn: false };
     case 'admission_approval_cleared':

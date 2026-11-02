@@ -23,6 +23,8 @@ import {
   type NegotiationEvent,
 } from '@/features/fees/api';
 import { PaymentsSection } from '@/features/fees/PaymentsSection';
+import { FeeChangeSheet } from '@/features/fees/FeeChangeSheet';
+import { canApprove, getApprovalSettings } from '@/features/approval/api';
 import { listCourses } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -67,6 +69,15 @@ export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, on
   const [starting, setStarting] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [sheet, setSheet] = useState<'event' | 'discount' | null>(null);
+  // 💰 The Admission Officer (or an admin) may change an admitted student's fee
+  const [officer, setOfficer] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const settingsAdmin = hasPermission('settings.manage');
+  useEffect(() => {
+    getApprovalSettings()
+      .then((s) => setOfficer(canApprove(s, profile, settingsAdmin)))
+      .catch(() => setOfficer(false));
+  }, [profile, settingsAdmin]);
 
   const load = useCallback(async () => {
     try {
@@ -217,6 +228,23 @@ export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, on
         <Text style={styles.hint}>
           Talking about the fee or a discount? Start here. The lead moves to Interested (if it is New or Contacted).
         </Text>
+      )}
+
+      {current?.status === 'locked' && stageKind === 'won' && officer && (
+        <Pressable onPress={() => setChanging(true)} hitSlop={8} accessibilityRole="button">
+          <Text style={styles.link}>✏️ Change fee (discount / final fee)</Text>
+        </Pressable>
+      )}
+      {changing && (
+        <FeeChangeSheet
+          leadId={leadId}
+          onClose={() => setChanging(false)}
+          onDone={async (message) => {
+            setChanging(false);
+            await load();
+            onChanged(message);
+          }}
+        />
       )}
 
       {/* 💵 Payments: admitted students (or money paid before a cancelled admission) */}

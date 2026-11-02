@@ -559,6 +559,8 @@ export function LeadDetailView({
         return `🎓 Sent for approval again${d.note ? `: ${d.note}` : ''}`;
       case 'nu_id_set':
         return d.to ? `🆔 NU Admission ID: ${d.to}${d.from ? ` (was ${d.from})` : ''}` : `🆔 NU Admission ID removed (was ${d.from ?? ''})`;
+      case 'final_fee_changed':
+        return `💰 Final fee changed: ${money(Number(d.from ?? 0))} → ${money(Number(d.to ?? 0))} (discount ${money(Number(d.discount_from ?? 0))} → ${money(Number(d.discount_to ?? 0))})${d.reason ? ` · ${d.reason}` : ''}`;
       case 'student_ref_changed':
         return `🎓 Student ID changed: ${d.from ?? '—'} → ${d.to ?? '—'}`;
       case 'admission_approval_cleared':

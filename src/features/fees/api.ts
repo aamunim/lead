@@ -284,8 +284,32 @@ export function totals(n: Negotiation) {
   const list = (n.course?.course_fees ?? []).reduce((t, f) => t + Number(f.amount), 0);
   const discount = n.fee_discounts.filter((d) => isActive(d, n)).reduce((t, d) => t + Number(d.amount), 0);
   const pending = n.fee_discounts.filter((d) => d.status === 'pending').reduce((t, d) => t + Number(d.amount), 0);
-  const final = n.status === 'locked' && n.final_total != null ? Number(n.final_total) : Math.max(list - discount, 0);
-  return { list, discount, pending, final };
+  const locked = n.status === 'locked' && n.final_total != null;
+  const final = locked ? Number(n.final_total) : Math.max(list - discount, 0);
+  // Admitted: the discount is what the final fee leaves off (it can be changed by hand)
+  return { list, discount: locked ? Math.max(list - final, 0) : discount, pending, final };
+}
+
+/** 💰 The admitted student's fee as the list shows it (for the Change fee sheet) */
+export async function getStudentFee(leadId: string): Promise<{ full: number; final: number; paid: number }> {
+  const { data, error } = await supabase.from('leads').select('fee_full, fee_final, fee_paid').eq('id', leadId).maybeSingle();
+  if (error) throw toError(error);
+  return { full: Number(data?.fee_full ?? 0), final: Number(data?.fee_final ?? 0), paid: Number(data?.fee_paid ?? 0) };
+}
+
+/**
+ * 💰 Admission Officer / admin: a new final fee (full − total discount) for an
+ * admitted student. installmentsOff = the installment plan no longer adds up.
+ */
+export async function setFinalFee(
+  leadId: string,
+  finalFee: number,
+  reason: string,
+): Promise<{ changed: boolean; installmentsOff: boolean }> {
+  const { data, error } = await supabase.rpc('set_final_fee', { p_lead: leadId, p_final: finalFee, p_reason: reason.trim() });
+  if (error) throw toError(error);
+  const r = (data ?? {}) as { changed?: boolean; installments_off?: boolean };
+  return { changed: !!r.changed, installmentsOff: !!r.installments_off };
 }
 
 export async function startNegotiation(leadId: string, courseId: string): Promise<string> {

@@ -29,6 +29,8 @@ type Item = {
 };
 
 const SHOW = 5;
+/** "All": as many as there are (up to this many of each) */
+const ALL = 500;
 
 export function LeadPeekSheet({
   lead,
@@ -36,8 +38,11 @@ export function LeadPeekSheet({
   onClose,
   onOpen,
   onAddNote,
+  all = false,
 }: {
-  lead: LeadListItem;
+  /** 🌐 every call and note, not just the last few */
+  all?: boolean;
+  lead: Pick<LeadListItem, 'id' | 'name'>;
   nameOf: (id: string | null) => string | null;
   onClose: () => void;
   onOpen: () => void;
@@ -56,7 +61,7 @@ export function LeadPeekSheet({
         .eq('lead_id', lead.id)
         .eq('action', 'note_added')
         .order('created_at', { ascending: false })
-        .limit(SHOW)
+        .limit(all ? ALL : SHOW)
         .then(({ data }) => data ?? []),
       listLeadFiles(lead.id).catch(() => []),
     ]).then(([calls, notes, files]) => {
@@ -104,13 +109,13 @@ export function LeadPeekSheet({
         ),
       ]
         .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
-        .slice(0, SHOW);
+        .slice(0, all ? ALL * 3 : SHOW);
       setItems(list);
     });
     return () => {
       live = false;
     };
-  }, [lead.id]);
+  }, [lead.id, all]);
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -121,7 +126,7 @@ export function LeadPeekSheet({
           <Text style={styles.title} numberOfLines={1}>
             {lead.name}
           </Text>
-          <Text style={styles.sub}>Last calls and notes</Text>
+          <Text style={styles.sub}>{all ? 'All calls and notes (newest first)' : 'Last calls and notes'}</Text>
 
           <ScrollView contentContainerStyle={styles.list}>
             {items === null ? (

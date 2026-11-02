@@ -13,7 +13,17 @@ import {
 } from 'react-native';
 
 import { LeadDetailView } from '@/app/(app)/leads/[id]';
-import { approvalBadge, getApprovalSettings } from '@/features/approval/api';
+import {
+  DEFAULT_APPROVAL_SETTINGS,
+  approvalBadge,
+  canApprove,
+  getApprovalSettings,
+  type ApprovalSettings,
+} from '@/features/approval/api';
+import { ApprovalActionSheet } from '@/features/approval/ApprovalCard';
+import { FeeChangeSheet } from '@/features/fees/FeeChangeSheet';
+import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
+import { PapersPopup } from '@/features/web/students/PapersPopup';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { money } from '@/features/fees/api';
 import { writeAndShareSpreadsheet } from '@/features/import-export/excel';
@@ -53,6 +63,11 @@ type ColKey =
   | 'admitted'
   | 'admitted_by';
 
+type PopupKind = 'papers' | 'notes' | 'fee' | 'approve' | 'return';
+
+/** What a row's cells can open */
+type Act = { officer: boolean; open: (kind: PopupKind, r: LeadListItem) => void };
+
 type Col = {
   key: ColKey;
   label: string;
@@ -70,8 +85,8 @@ const COLS: Col[] = [
   { key: 'course', label: 'Course · Batch', flex: 1 },
   { key: 'fee', label: 'Fee', width: 150, sorts: ['due_most'] },
   { key: 'next_due', label: 'Next installment', width: 130, sorts: ['next_due'] },
-  { key: 'papers', label: 'Papers', width: 96, sorts: ['papers_missing'] },
-  { key: 'approval', label: 'Approval', width: 150 },
+  { key: 'papers', label: 'Papers', width: 120, sorts: ['papers_missing'] },
+  { key: 'approval', label: 'Approval', width: 200 },
   { key: 'nu', label: 'NU Admission ID', width: 136 },
   { key: 'last', label: 'Last call / note', flex: 1.4 },
   { key: 'admitted', label: 'Admitted', width: 112, sorts: ['admitted_newest', 'admitted_oldest'] },
@@ -79,12 +94,13 @@ const COLS: Col[] = [
 ];
 
 /** With the panel open next to the table: only the main ones */
-const PANEL_COLS: ColKey[] = ['ref', 'name', 'fee', 'approval'];
+const PANEL_COLS: ColKey[] = ['ref', 'name', 'fee', 'papers', 'approval'];
 /** Narrowest a growing column gets (then the table scrolls sideways) */
 const FLEX_MIN = 150;
 
-const DEFAULT_COLS: ColKey[] = ['ref', 'name', 'phone', 'course', 'fee', 'approval', 'nu', 'last', 'admitted'];
-const COLS_KEY = 'web_students_cols';
+const DEFAULT_COLS: ColKey[] = ['ref', 'name', 'phone', 'course', 'fee', 'papers', 'approval', 'nu', 'last', 'admitted'];
+// (v2: Papers shown by default)
+const COLS_KEY = 'web_students_cols_v2';
 const SORT_KEY = 'web_students_sort';
 const CHECK_W = 40;
 
@@ -100,10 +116,18 @@ export function WebStudentsScreen() {
   const sideBySide = width >= 1360;
   const seesOthers = sharedMode || hasPermission('leads.view_all') || hasPermission('leads.view_team');
 
+  const [approval, setApproval] = useState<ApprovalSettings>(DEFAULT_APPROVAL_SETTINGS);
   const [approvalOn, setApprovalOn] = useState(false);
   useEffect(() => {
-    getApprovalSettings().then((s) => setApprovalOn(s.enabled));
+    getApprovalSettings().then((s) => {
+      setApproval(s);
+      setApprovalOn(s.enabled);
+    });
   }, []);
+  // 🎓 The Admission Officer (or an admin): approve from the row, change the fee
+  const officer = canApprove(approval, profile, hasPermission('settings.manage'));
+  // A popup opened from a row
+  const [popup, setPopup] = useState<{ kind: PopupKind; row: LeadListItem } | null>(null);
 
   const quickFilters: { key: QuickFilter; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -322,6 +346,12 @@ export function WebStudentsScreen() {
   };
 
   const nFilters = countActiveFilters(filters);
+  const act: Act = { officer, open: (kind, r) => setPopup({ kind, row: r }) };
+  const popupDone = (message: string) => {
+    setPopup(null);
+    showToast(message);
+    load(true);
+  };
 
   const table = (
     <View style={styles.tableWrap} onLayout={(e) => setTableW(e.nativeEvent.layout.width - 2)}>
@@ -402,6 +432,7 @@ export function WebStudentsScreen() {
                 open={r.id === openId}
                 ticked={ticked.has(r.id)}
                 nameOf={nameOf}
+                act={act}
                 onOpen={() => openStudent(r.id)}
                 onTick={() => toggleTick(r.id)}
               />
@@ -510,6 +541,52 @@ export function WebStudentsScreen() {
         </Modal>
       )}
 
+      {popup?.kind === 'papers' && (
+        <PapersPopup
+          leadId={popup.row.id}
+          name={popup.row.name}
+          onClose={() => setPopup(null)}
+          onOpen={() => {
+            setPopup(null);
+            openStudent(popup.row.id);
+          }}
+        />
+      )}
+      {popup?.kind === 'notes' && (
+        <LeadPeekSheet
+          all
+          lead={popup.row}
+          nameOf={nameOf}
+          onClose={() => setPopup(null)}
+          onOpen={() => {
+            setPopup(null);
+            openStudent(popup.row.id);
+          }}
+          onAddNote={() => {
+            setPopup(null);
+            openStudent(popup.row.id);
+          }}
+        />
+      )}
+      {popup?.kind === 'fee' && (
+        <FeeChangeSheet
+          leadId={popup.row.id}
+          name={popup.row.name}
+          onClose={() => setPopup(null)}
+          onDone={popupDone}
+        />
+      )}
+      {(popup?.kind === 'approve' || popup?.kind === 'return') && (
+        <ApprovalActionSheet
+          kind={popup.kind}
+          lead={approvalLead(popup.row)}
+          checks={approvalChecks(popup.row)}
+          warnings={approvalChecks(popup.row).filter((c) => !c.ok).length}
+          onClose={() => setPopup(null)}
+          onDone={popupDone}
+        />
+      )}
+
       <LeadFilterSheet
         visible={filterOpen}
         value={filters}
@@ -552,6 +629,7 @@ function Row({
   open,
   ticked,
   nameOf,
+  act,
   onOpen,
   onTick,
 }: {
@@ -561,6 +639,7 @@ function Row({
   open: boolean;
   ticked: boolean;
   nameOf: (id: string | null) => string | null;
+  act: Act;
   onOpen: () => void;
   onTick: () => void;
 }) {
@@ -588,14 +667,39 @@ function Row({
       </Pressable>
       {shown.map((c) => (
         <View key={c.key} style={[styles.cell, colStyle(c)]}>
-          <Cell col={c.key} r={r} nameOf={nameOf} />
+          <Cell col={c.key} r={r} nameOf={nameOf} act={act} />
         </View>
       ))}
     </Pressable>
   );
 }
 
-function Cell({ col, r, nameOf }: { col: ColKey; r: LeadListItem; nameOf: (id: string | null) => string | null }) {
+/** A part of a cell that opens something (not the whole row) */
+function Hit({ onPress, label, children }: { onPress: () => void; label: string; children: React.ReactNode }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={(state) => [styles.hit, (state as { hovered?: boolean }).hovered && styles.hitHover]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+function Cell({
+  col,
+  r,
+  nameOf,
+  act,
+}: {
+  col: ColKey;
+  r: LeadListItem;
+  nameOf: (id: string | null) => string | null;
+  act: Act;
+}) {
+  const admitted = r.stage?.kind === 'won';
   switch (col) {
     case 'ref':
       return (
@@ -631,15 +735,24 @@ function Cell({ col, r, nameOf }: { col: ColKey; r: LeadListItem; nameOf: (id: s
       const final = Number(r.fee_final ?? 0);
       if (!final && !due) return <Text style={styles.dim}>—</Text>;
       const paidPart = final > 0 ? Math.min(1, Number(r.fee_paid ?? 0) / final) : 0;
-      return (
+      const body = (
         <View style={styles.feeCell}>
           <Text style={[styles.text, due > 0 ? styles.bad : styles.good]} numberOfLines={1}>
             {due > 0 ? `${money(due)} due` : '✓ Paid'}
+            {act.officer && admitted ? <Text style={styles.editMark}>  ✏️</Text> : null}
           </Text>
           <View style={styles.bar}>
             <View style={[styles.barFill, { width: `${Math.round(paidPart * 100)}%` }, due <= 0 && styles.barDone]} />
           </View>
         </View>
+      );
+      // 💰 The Admission Officer: change the discount / final fee
+      return act.officer && admitted ? (
+        <Hit onPress={() => act.open('fee', r)} label={`Change ${r.name}'s fee`}>
+          {body}
+        </Hit>
+      ) : (
+        body
       );
     }
     case 'next_due':
@@ -651,14 +764,39 @@ function Cell({ col, r, nameOf }: { col: ColKey; r: LeadListItem; nameOf: (id: s
       if (!req) return <Text style={styles.dim}>—</Text>;
       const miss = r.papers_missing ?? 0;
       return (
-        <Text style={[styles.text, miss ? styles.warn : styles.good]}>
-          {miss ? `${miss} missing` : `✓ ${req}/${req}`}
-        </Text>
+        <Hit onPress={() => act.open('papers', r)} label={`${r.name}'s papers`}>
+          <Text style={[styles.text, miss ? styles.warn : styles.good]} numberOfLines={1}>
+            {miss ? `${req - miss}/${req} · ${miss} missing` : `✓ ${req}/${req}`}
+          </Text>
+        </Hit>
       );
     }
     case 'approval': {
-      const b = r.stage?.kind === 'won' ? approvalBadge(r.approval_status) : null;
+      const b = admitted ? approvalBadge(r.approval_status) : null;
       if (!b) return <Text style={styles.dim}>—</Text>;
+      // ✅ The Admission Officer approves (or sends back) right here
+      if (act.officer && r.approval_status === 'waiting') {
+        return (
+          <View style={styles.approveRow}>
+            <Pressable
+              onPress={() => act.open('approve', r)}
+              style={(state) => [styles.approveBtn, (state as { hovered?: boolean }).hovered && styles.approveHover]}
+              accessibilityRole="button"
+              accessibilityLabel={`Approve ${r.name}`}
+            >
+              <Text style={styles.approveText}>✅ Approve</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => act.open('return', r)}
+              style={(state) => [styles.returnBtn, (state as { hovered?: boolean }).hovered && styles.returnHover]}
+              accessibilityRole="button"
+              accessibilityLabel={`Send ${r.name} back`}
+            >
+              <Text style={styles.returnText}>↩</Text>
+            </Pressable>
+          </View>
+        );
+      }
       const tone = b.color === 'good' ? styles.pillGood : b.color === 'bad' ? styles.pillBad : styles.pillWait;
       return (
         <View style={[styles.pill, tone]}>
@@ -679,8 +817,9 @@ function Cell({ col, r, nameOf }: { col: ColKey; r: LeadListItem; nameOf: (id: s
       const call = last ? callLineText(last, nameOf) : null;
       const note = last?.note_at ? (last.note_kind === 'voice' ? '🎙 Voice note' : last.note_text) : null;
       if (!call && !note) return <Text style={styles.dim}>—</Text>;
+      // 📝 A click: every call and note of this student
       return (
-        <View>
+        <Hit onPress={() => act.open('notes', r)} label={`All notes of ${r.name}`}>
           {!!call && (
             <Text style={styles.small} numberOfLines={1}>
               {call}
@@ -692,7 +831,7 @@ function Cell({ col, r, nameOf }: { col: ColKey; r: LeadListItem; nameOf: (id: s
               {last?.note_at ? ` · ${ago(last.note_at)}` : ''}
             </Text>
           )}
-        </View>
+        </Hit>
       );
     }
     case 'admitted':
@@ -704,6 +843,36 @@ function Cell({ col, r, nameOf }: { col: ColKey; r: LeadListItem; nameOf: (id: s
         </Text>
       );
   }
+}
+
+/** The approval dialog's view of a row */
+function approvalLead(r: LeadListItem) {
+  return {
+    id: r.id,
+    student_ref: r.student_ref,
+    approval_status: r.approval_status,
+    approval_by: null,
+    approval_at: null,
+    approval_note: null,
+    nu_admission_id: r.nu_admission_id,
+    papers_required: r.papers_required,
+    papers_missing: r.papers_missing,
+    fee_due: r.fee_due,
+    admitted_batch_id: r.admitted_batch?.id ?? null,
+  };
+}
+
+/** What to look at before approving (same as the student's approval card) */
+function approvalChecks(r: LeadListItem): { ok: boolean; text: string }[] {
+  const req = r.papers_required ?? 0;
+  const miss = r.papers_missing ?? 0;
+  const due = Number(r.fee_due ?? 0);
+  return [
+    { ok: !!r.student_ref, text: r.student_ref ? `College ID: ${r.student_ref}` : 'No College ID yet' },
+    ...(req > 0 ? [{ ok: miss === 0, text: miss === 0 ? `Papers: all ${req} in` : `Papers: ${miss} of ${req} missing` }] : []),
+    { ok: due <= 0, text: due > 0 ? `Fee: ${money(due)} due` : 'Fee: fully paid' },
+    { ok: !!r.admitted_batch, text: r.admitted_batch ? `Batch: ${r.admitted_batch.name}` : 'No batch yet' },
+  ];
 }
 
 /** The same values as text, for the Excel file */
@@ -956,6 +1125,16 @@ const styles = StyleSheet.create({
   warn: { color: colors.warning },
   bad: { color: colors.danger },
   feeCell: { gap: 4 },
+  hit: { marginHorizontal: -6, paddingHorizontal: 6, paddingVertical: 4, borderRadius: radius.sm },
+  hitHover: { backgroundColor: 'rgba(53,87,212,0.08)' },
+  editMark: { fontSize: 11 },
+  approveRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  approveBtn: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: radius.sm, backgroundColor: colors.success },
+  approveHover: { opacity: 0.85 },
+  approveText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: '#fff' },
+  returnBtn: { paddingVertical: 4, paddingHorizontal: 9, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  returnHover: { borderColor: colors.danger },
+  returnText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.danger },
   bar: { height: 4, borderRadius: 2, backgroundColor: '#E8ECF4', overflow: 'hidden' },
   barFill: { height: 4, backgroundColor: colors.accent },
   barDone: { backgroundColor: colors.success },
