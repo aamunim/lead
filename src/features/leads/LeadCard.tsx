@@ -68,6 +68,7 @@ export function LeadCard({
   onWhatsApp,
   onSms,
   onTemplate,
+  onPay,
 }: {
   lead: LeadListItem;
   /** 🔍 The search: its match is highlighted, or shown under the name */
@@ -92,6 +93,8 @@ export function LeadCard({
   onSms: () => void;
   /** Long press on WhatsApp / SMS: pick a message template */
   onTemplate?: (channel: TemplateChannel) => void;
+  /** 💵 Students list: take a payment (only when something is due and allowed) */
+  onPay?: () => void;
 }) {
   const ratingColor = lead.rating ? RATING_COLOR[lead.rating] : null;
   const courses = lead.lead_courses.map((c) => c.course?.name).filter(Boolean).join(', ');
@@ -305,6 +308,14 @@ export function LeadCard({
 
       {!selecting && (
         <View style={styles.contact}>
+          {onPay && (
+            <ContactButton
+              icon="cash-outline"
+              color={colors.success}
+              label={`Take payment from ${lead.name}`}
+              onPress={onPay}
+            />
+          )}
           {/* 🌐 No phone calls from a computer */}
           {!!lead.phone && !isWeb && (
             <ContactButton icon="call" color={colors.success} label={`Call ${lead.name}`} onPress={onCall} />

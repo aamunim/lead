@@ -8,6 +8,15 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-02-b',
+    date: '2 Nov 2026',
+    title: 'Quick payment from the Students list',
+    items: [
+      '💵 A green cash button on each student card (when something is due): take a payment without opening the student',
+      '⚡ Quick amounts ৳1,000 and ৳5,000 in the payment form (everywhere)',
+    ],
+  },
+  {
     key: '2026-11-02-a',
     date: '2 Nov 2026',
     title: 'New look and app versions',
