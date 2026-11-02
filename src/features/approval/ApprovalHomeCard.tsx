@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { canApprove, countWaitingApproval, getApprovalSettings } from '@/features/approval/api';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { card } from '@/features/home/md';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // 🎓 Home: the Admission Officer's "waiting for approval" (only when some wait)
@@ -51,14 +52,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.warning,
+    ...card,
+    marginTop: 16,
   },
   pressed: { opacity: 0.8 },
   icon: { fontSize: 26 },
-  title: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  title: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
   text: { fontSize: fontSize.caption, color: colors.textMuted },
   chevron: { fontSize: 22, color: colors.textMuted },
 });

@@ -1,7 +1,7 @@
 import { router, useFocusEffect, type Href } from 'expo-router';
 import * as Notifications from 'expo-notifications';
-import { useCallback, useEffect, useState } from 'react';
-import { AppState, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -11,6 +11,7 @@ import { getMyOpenNudge, markNudgeSeen, nudgeTitle, type Nudge } from '@/feature
 import { SyncSetupSheet } from '@/features/nudges/SyncSetupSheet';
 import { countUnread } from '@/features/notifications/api';
 import { countDiscountsToAnswer } from '@/features/fees/api';
+import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { ReportHomeCard } from '@/features/reports/ReportHomeCard';
 import { addedRange, getLeadsAdded } from '@/features/leads/added';
 import { StudentsHomeCard } from '@/features/students/StudentsHomeCard';
@@ -19,7 +20,9 @@ import { isWeb } from '@/features/web/api';
 import { APP_COLLEGE, APP_PRODUCT } from '@/features/web/brand';
 import { takeBootUrl } from '@/shared/web/bootUrl';
 import { countPendingUsers } from '@/features/users/api';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { MIcon, SectionHeader, Tap, md, type MIconName } from '@/features/home/md';
+import { TodayStats } from '@/features/home/TodayStats';
+import { colors, fontSize, fontWeight } from '@/shared/theme';
 import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -137,147 +140,160 @@ function PhoneHome() {
     };
   }, [checkNudge]);
 
+  // Reports in Quick actions only for people allowed (Settings → Reports)
+  const [reportsAllowed, setReportsAllowed] = useState(false);
+  useEffect(() => {
+    getReportSettings()
+      .then((r) => setReportsAllowed(canSeeReports(r, profile, hasPermission('settings.manage'))))
+      .catch(() => setReportsAllowed(false));
+  }, [profile, hasPermission]);
+
+  const initials = (profile?.full_name ?? '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join('');
+
+  // The bar gets a tint once the page scrolls (Material top app bar)
+  const [scrolled, setScrolled] = useState(false);
+  const scrollRef = useRef<{ scrollTo: (o: { y: number; animated?: boolean }) => void } | null>(null);
+  const callsY = useRef(0);
+
+  const quick: { icon: MIconName; label: string; href: Href; show: boolean }[] = [
+    { icon: 'groups', label: 'All leads', href: '/leads', show: true },
+    { icon: 'contacts', label: 'Phone contacts', href: '/contacts', show: contactsAllowed },
+    { icon: 'emoji-events', label: 'Scorecard', href: '/scorecard' as Href, show: true },
+    { icon: 'insights', label: 'Reports', href: '/reports', show: reportsAllowed },
+    {
+      icon: 'today',
+      label: myAdded ? `Added today: ${myAdded.today}` : 'Added today',
+      href: { pathname: '/leads', params: { addedBy: profile?.id ?? '', addedDay: 'today' } } as unknown as Href,
+      show: !!profile?.id,
+    },
+  ];
+
   return (
     <View style={styles.screen}>
-      {/* Blue top area */}
-      <SafeAreaView edges={['top']} style={styles.top}>
-        {/* 🎓 The app's name */}
-        <View style={styles.brandRow}>
-          <View style={styles.brandLogo}>
-            <Image source={LOGO} style={styles.brandImg} accessibilityLabel="ITTC logo" />
+      {/* ── Top app bar ─────────────────────────────── */}
+      <SafeAreaView edges={['top']} style={[styles.bar, scrolled && styles.barScrolled]}>
+        <View style={styles.barRow}>
+          <View style={styles.barLogo}>
+            <Image source={LOGO} style={styles.barLogoImg} accessibilityLabel="ITTC logo" />
           </View>
           <View style={styles.flex}>
-            <Text style={styles.brandCollege} numberOfLines={1}>
+            <Text style={styles.barTitle} numberOfLines={1}>
+              {APP_PRODUCT}
+            </Text>
+            <Text style={styles.barSub} numberOfLines={1}>
               {APP_COLLEGE}
             </Text>
-            <Text style={styles.brandProduct}>{APP_PRODUCT}</Text>
           </View>
-        </View>
-        <View style={styles.topRow}>
-          <Text style={[styles.greeting, styles.flex]}>
-            {greeting()}, {firstName}
-          </Text>
-          {/* 🔔 Notifications */}
-          <Pressable
+          <Tap
             onPress={() => router.push('/notifications' as Href)}
-            hitSlop={10}
-            style={({ pressed }) => [styles.bell, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={unread > 0 ? `Notifications, ${unread} new` : 'Notifications'}
+            style={styles.iconBtn}
+            borderless
+            label={unread > 0 ? `Notifications, ${unread} new` : 'Notifications'}
           >
-            <Text style={styles.bellIcon}>🔔</Text>
+            <MIcon name={unread > 0 ? 'notifications' : 'notifications-none'} size={26} />
             {unread > 0 && (
               <View style={styles.bellBadge}>
                 <Text style={styles.bellBadgeText}>{unread > 99 ? '99+' : unread}</Text>
               </View>
             )}
-          </Pressable>
-        </View>
-        <Text style={styles.date}>{today}</Text>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{profile?.role?.name ?? 'No role'}</Text>
+          </Tap>
+          <Tap onPress={() => router.push('/more' as Href)} style={styles.avatar} borderless label="More">
+            <Text style={styles.avatarText}>{initials || '?'}</Text>
+          </Tap>
         </View>
       </SafeAreaView>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Reminder from the Super Admin: stays until it's done */}
+      <ScrollView
+        ref={scrollRef as never}
+        contentContainerStyle={styles.content}
+        onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 4)}
+        scrollEventThrottle={32}
+      >
+        {/* ── Greeting ─────────────────────────────── */}
+        <Text style={styles.hello}>
+          {greeting()}, {firstName}
+        </Text>
+        <View style={styles.helloSub}>
+          <Text style={styles.date}>{today}</Text>
+          <View style={styles.roleChip}>
+            <Text style={styles.roleChipText}>{profile?.role?.name ?? 'No role'}</Text>
+          </View>
+        </View>
+
+        {/* ── Today at a glance ────────────────────── */}
+        <TodayStats onOpenCalls={() => scrollRef.current?.scrollTo({ y: callsY.current, animated: true })} />
+
+        {/* ── Banners ──────────────────────────────── */}
         {nudge && !setupVisible && (
-          <Pressable
+          <Banner
+            icon="sync-problem"
+            tone="warn"
+            title={nudgeTitle(nudge.reason)}
+            sub={nudge.message ?? `${nudge.sentByName ?? 'Your admin'} asked you to do this`}
+            action="Set up"
             onPress={() => openSetup(nudge)}
-            style={({ pressed }) => [styles.banner, styles.nudgeBanner, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={`${nudgeTitle(nudge.reason)}. Tap to set up`}
-          >
-            <Text style={styles.bannerIcon}>📞</Text>
-            <View style={styles.flex}>
-              <Text style={[styles.bannerText, styles.nudgeText]}>{nudgeTitle(nudge.reason)}</Text>
-              <Text style={styles.nudgeSub} numberOfLines={1}>
-                {nudge.message ?? `${nudge.sentByName ?? 'Your admin'} asked you to do this`}
-              </Text>
-            </View>
-            <Text style={[styles.bannerAction, styles.nudgeText]}>Set up ›</Text>
-          </Pressable>
+          />
         )}
-
-        {/* Approvals waiting (admins only) */}
         {canManageUsers && pendingCount > 0 && (
-          <Pressable
+          <Banner
+            icon="how-to-reg"
+            tone="primary"
+            title={`${pendingCount} ${pendingCount === 1 ? 'person is' : 'people are'} waiting for approval`}
+            sub="New sign-ups"
+            action="Review"
             onPress={() => router.push('/users' as Href)}
-            style={({ pressed }) => [styles.banner, pressed && styles.pressed]}
-            accessibilityRole="button"
-          >
-            <Text style={styles.bannerIcon}>⏳</Text>
-            <Text style={styles.bannerText}>
-              {pendingCount} {pendingCount === 1 ? 'person is' : 'people are'} waiting for approval
-            </Text>
-            <Text style={styles.bannerAction}>Review ›</Text>
-          </Pressable>
+          />
         )}
-
-        {/* 💰 Discount requests I may answer */}
         {discounts > 0 && (
-          <Pressable
+          <Banner
+            icon="discount"
+            tone="ok"
+            title={`${discounts} discount ${discounts === 1 ? 'request' : 'requests'} waiting`}
+            sub="Approve or answer"
+            action="Review"
             onPress={() => router.push('/discounts' as Href)}
-            style={({ pressed }) => [styles.banner, pressed && styles.pressed]}
-            accessibilityRole="button"
-          >
-            <Text style={styles.bannerIcon}>💰</Text>
-            <Text style={styles.bannerText}>
-              {discounts} discount {discounts === 1 ? 'request is' : 'requests are'} waiting for you
-            </Text>
-            <Text style={styles.bannerAction}>Review ›</Text>
-          </Pressable>
+          />
         )}
 
-        {/* Today: follow-ups due today and overdue */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>TODAY</Text>
+        {/* ── Today: visits and calls ──────────────── */}
+        <View onLayout={(e) => (callsY.current = e.nativeEvent.layout.y - 8)}>
           <TodayVisits />
           <TodayList />
         </View>
 
-        {/* 🎓 Students at a glance (Settings → Students) */}
+        {/* ── Students, approvals, this month ──────── */}
         <StudentsHomeCard />
-
-        {/* 🎓 Admission Officer: admissions waiting for approval */}
         <ApprovalHomeCard />
-
-        {/* This month at a glance (Settings → Reports) */}
         <ReportHomeCard />
 
-        {/* Leads */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>LEADS</Text>
-          <View style={styles.group}>
-            <Tile icon="📋" title="All leads" text="Search, filter and open leads" href="/leads" />
-            <Tile
-              icon="➕"
-              title="Add a lead"
-              text="Quick add with name, phone and source"
-              href="/leads/edit/new"
-              divider
-            />
-            {myAdded && profile?.id && (
-              <Tile
-                icon="🗓"
-                title={`Today you added ${myAdded.today} ${myAdded.today === 1 ? 'lead' : 'leads'}`}
-                text={`This week: ${myAdded.week} · tap to see them`}
-                href={{ pathname: '/leads', params: { addedBy: profile.id, addedDay: 'today' } } as unknown as Href}
-                divider
-              />
-            )}
-            {contactsAllowed && (
-              <Tile
-                icon="📇"
-                title="Phone contacts"
-                text="Pick people from your phone and save them as leads"
-                href="/contacts"
-                divider
-              />
-            )}
-          </View>
-        </View>
+        {/* ── Quick actions ────────────────────────── */}
+        <SectionHeader title="Quick actions" />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quick}>
+          {quick
+            .filter((q) => q.show)
+            .map((q) => (
+              <Tap key={q.label} onPress={() => router.push(q.href)} style={styles.quickItem} label={q.label}>
+                <View style={styles.quickIcon}>
+                  <MIcon name={q.icon} size={26} color={colors.primary} />
+                </View>
+                <Text style={styles.quickText} numberOfLines={2}>
+                  {q.label}
+                </Text>
+              </Tap>
+            ))}
+        </ScrollView>
       </ScrollView>
+
+      {/* ── Add lead (FAB) ─────────────────────────── */}
+      <Tap onPress={() => router.push('/leads/edit/new' as Href)} style={styles.fab} label="Add a lead">
+        <MIcon name="person-add" size={24} color={md.onPrimaryC} />
+        <Text style={styles.fabText}>Add lead</Text>
+      </Tap>
 
       {nudge && (
         <SyncSetupSheet
@@ -294,140 +310,153 @@ function PhoneHome() {
   );
 }
 
-function Tile({
+const TONES = {
+  warn: { bg: md.warnC, fg: md.onWarnC, text: '#2C1600', sub: '#5C3A00' },
+  primary: { bg: md.primaryC, fg: md.onPrimaryC, text: md.onPrimaryC, sub: '#3A4A8A' },
+  ok: { bg: md.okC, fg: md.onOkC, text: '#0B3A22', sub: '#2D5A40' },
+};
+
+/** A Material banner card: icon, two lines, a text button */
+function Banner({
   icon,
+  tone,
   title,
-  text,
-  href,
-  divider,
+  sub,
+  action,
+  onPress,
 }: {
-  icon: string;
+  icon: MIconName;
+  tone: keyof typeof TONES;
   title: string;
-  text: string;
-  href: Href;
-  divider?: boolean;
+  sub?: string;
+  action: string;
+  onPress: () => void;
 }) {
+  const t = TONES[tone];
   return (
-    <Pressable
-      onPress={() => router.push(href)}
-      style={({ pressed }) => [styles.tile, divider && styles.tileDivider, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={title}
-    >
-      <View style={styles.tileIcon}>
-        <Text style={styles.tileIconText}>{icon}</Text>
+    <Tap onPress={onPress} style={[styles.banner, { backgroundColor: t.bg }]} label={`${title}. ${action}`}>
+      <MIcon name={icon} size={26} color={t.fg} />
+      <View style={styles.flex}>
+        <Text style={[styles.bannerTitle, { color: t.text }]} numberOfLines={2}>
+          {title}
+        </Text>
+        {!!sub && (
+          <Text style={[styles.bannerSub, { color: t.sub }]} numberOfLines={1}>
+            {sub}
+          </Text>
+        )}
       </View>
-      <View style={styles.tileBody}>
-        <Text style={styles.tileTitle}>{title}</Text>
-        <Text style={styles.tileText}>{text}</Text>
-      </View>
-      <Text style={styles.chevron}>›</Text>
-    </Pressable>
+      <Text style={[styles.bannerAction, { color: t.fg }]}>{action}</Text>
+    </Tap>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  top: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
-    paddingTop: spacing.lg,
-    gap: spacing.xs,
-  },
-  greeting: { fontSize: fontSize.heading, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingBottom: spacing.md,
-    marginBottom: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.25)',
-  },
-  brandLogo: {
+  // top app bar
+  bar: { backgroundColor: colors.background },
+  barScrolled: { backgroundColor: md.surface1 },
+  barRow: { height: 60, flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 16, paddingRight: 8 },
+  barLogo: {
     width: 34,
     height: 34,
     borderRadius: 17,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
   },
-  brandImg: { width: 26, height: 26, resizeMode: 'contain' },
-  brandCollege: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
-  brandProduct: { fontSize: fontSize.caption, color: 'rgba(255,255,255,0.8)', letterSpacing: 0.3 },
-  topRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  bell: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  bellIcon: { fontSize: 18 },
+  barLogoImg: { width: 26, height: 26, resizeMode: 'contain' },
+  barTitle: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
+  barSub: { fontSize: 11, color: colors.textMuted, letterSpacing: 0.2 },
+  iconBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   bellBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    minWidth: 18,
-    height: 18,
+    top: 6,
+    right: 6,
+    minWidth: 17,
+    height: 17,
     paddingHorizontal: 4,
-    borderRadius: radius.pill,
-    backgroundColor: colors.danger,
+    borderRadius: 9,
+    backgroundColor: md.onErrorC,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bellBadgeText: { fontSize: 10, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
-  date: { fontSize: fontSize.small, color: colors.primarySoft },
-  badge: {
-    alignSelf: 'flex-start',
-    marginTop: spacing.md,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+  bellBadgeText: { fontSize: 10, fontWeight: fontWeight.bold, color: '#FFFFFF' },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginHorizontal: 4,
+    backgroundColor: md.primaryC,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  badgeText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.textOnPrimary },
-  content: { padding: spacing.xl, gap: spacing.lg },
-  pressed: { opacity: 0.7 },
+  avatarText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: md.onPrimaryC },
+  // body
+  content: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 110, gap: 0 },
+  hello: { fontSize: 24, lineHeight: 32, fontWeight: fontWeight.regular, color: colors.text },
+  helloSub: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  date: { fontSize: fontSize.small, color: colors.textMuted },
+  roleChip: {
+    height: 24,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: md.outline,
+    justifyContent: 'center',
+  },
+  roleChipText: { fontSize: fontSize.caption, fontWeight: fontWeight.medium, color: colors.textMuted },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    backgroundColor: colors.warningSoft,
-  },
-  bannerIcon: { fontSize: 20 },
-  bannerText: { flex: 1, fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.warning },
-  bannerAction: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.warning },
-  nudgeBanner: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary },
-  nudgeText: { color: colors.primary },
-  nudgeSub: { fontSize: fontSize.caption, color: colors.text, marginTop: 2 },
-  section: { gap: spacing.sm },
-  sectionLabel: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, letterSpacing: 1.2, color: colors.textMuted },
-  group: {
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    gap: 12,
+    marginTop: 14,
+    paddingVertical: 12,
+    paddingLeft: 14,
+    paddingRight: 16,
+    borderRadius: 16,
     overflow: 'hidden',
   },
-  tile: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },
-  tileDivider: { borderTopWidth: 1, borderTopColor: colors.border },
-  tileIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.primarySoft,
+  bannerTitle: { fontSize: fontSize.small, fontWeight: fontWeight.medium },
+  bannerSub: { fontSize: fontSize.caption, marginTop: 1 },
+  bannerAction: { fontSize: fontSize.small, fontWeight: fontWeight.semibold },
+  quick: { gap: 8, paddingRight: 8 },
+  quickItem: { width: 82, alignItems: 'center', gap: 6, paddingVertical: 4, borderRadius: 16, overflow: 'hidden' },
+  quickIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: md.surface1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tileIconText: { fontSize: 22 },
-  tileBody: { flex: 1, gap: 2 },
-  tileTitle: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
-  tileText: { fontSize: fontSize.caption, color: colors.textMuted },
-  chevron: { fontSize: fontSize.heading, color: colors.textMuted },
+  quickText: { fontSize: fontSize.caption, color: colors.text, textAlign: 'center' },
+  // FAB
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    height: 56,
+    paddingLeft: 16,
+    paddingRight: 20,
+    borderRadius: 16,
+    backgroundColor: md.primaryC,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  fabText: { fontSize: 15, fontWeight: fontWeight.semibold, color: md.onPrimaryC },
 });

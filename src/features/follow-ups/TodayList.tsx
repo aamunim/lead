@@ -11,7 +11,8 @@ import {
   startOfDay,
   type DueFollowUp,
 } from '@/features/follow-ups/api';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { Avatar, MIcon, Tap, card, md } from '@/features/home/md';
+import { colors, fontSize, fontWeight, spacing } from '@/shared/theme';
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -82,11 +83,11 @@ export function TodayList() {
   const mineHint = scope === 'mine' && canSeeOthers && !assignmentOn ? ' · set by you' : '';
 
   return (
-    <View style={styles.card}>
-      {/* Title + counts */}
+    <View>
+      {/* Title, counts, Mine / All */}
       <View style={styles.headerRow}>
         <View style={styles.flex}>
-          <Text style={styles.title}>Today’s calls</Text>
+          <Text style={styles.title}>Next calls</Text>
           {!loading && !error && (
             <Text style={styles.subtitle}>
               {missed.length > 0 && <Text style={styles.missedCount}>{missed.length} missed · </Text>}
@@ -98,23 +99,23 @@ export function TodayList() {
             </Text>
           )}
         </View>
-
         {canSeeOthers && (
           <View style={styles.toggle}>
-            {(['mine', 'all'] as Scope[]).map((s) => (
+            {(['mine', 'all'] as Scope[]).map((sc) => (
               <Pressable
-                key={s}
+                key={sc}
                 onPress={() => {
-                  setScope(s);
+                  setScope(sc);
                   setShowAll(false);
                   setLoading(true);
                 }}
-                style={[styles.toggleBtn, scope === s && styles.toggleBtnOn]}
+                style={[styles.toggleBtn, scope === sc && styles.toggleBtnOn]}
                 accessibilityRole="tab"
-                accessibilityState={{ selected: scope === s }}
+                accessibilityState={{ selected: scope === sc }}
               >
-                <Text style={[styles.toggleText, scope === s && styles.toggleTextOn]}>
-                  {s === 'mine' ? 'Mine' : 'All'}
+                {scope === sc && <MIcon name="check" size={14} color={md.onPrimaryC} />}
+                <Text style={[styles.toggleText, scope === sc && styles.toggleTextOn]}>
+                  {sc === 'mine' ? 'Mine' : 'All'}
                 </Text>
               </Pressable>
             ))}
@@ -122,182 +123,134 @@ export function TodayList() {
         )}
       </View>
 
-      {/* Body */}
-      {loading ? (
-        <ActivityIndicator color={colors.primary} style={styles.loader} />
-      ) : error ? (
-        <Pressable onPress={load} accessibilityRole="button">
-          <Text style={styles.error}>{error} Tap to try again.</Text>
-        </Pressable>
-      ) : items.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>🎉</Text>
-          <Text style={styles.emptyText}>No calls due today.</Text>
-        </View>
-      ) : (
-        <>
-          {visible.map((f) => {
-            if (!f.lead) return null;
-            const missedCall = isMissedCall(f);
-            const reviveCall = !missedCall && isReviveFollowUp(f);
-            const late = !missedCall && !reviveCall && isOverdue(f.due_at);
-            const ratingColor = f.lead.rating ? RATING_COLOR[f.lead.rating] : null;
-            return (
-              <Pressable
-                key={f.id}
-                onPress={() => router.push(`/leads/${f.lead!.id}` as Href)}
-                style={({ pressed }) => [
-                  styles.row,
-                  missedCall && styles.rowMissed,
-                  reviveCall && styles.rowRevive,
-                  pressed && styles.pressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`${f.lead.name}, ${
-                  missedCall
-                    ? 'missed call, call back'
-                    : reviveCall
-                      ? 'lost lead, try again'
-                      : formatDue(f.due_at)
-                }${late ? ', overdue' : ''}`}
-              >
-                {missedCall ? (
-                  <Text style={styles.rowIcon}>📵</Text>
-                ) : reviveCall ? (
-                  <Text style={styles.rowIcon}>♻️</Text>
-                ) : (
-                  <View style={[styles.dot, { backgroundColor: late ? colors.danger : colors.primary }]} />
-                )}
-                <View style={styles.flex}>
-                  <View style={styles.nameRow}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {f.lead.name}
+      <View style={styles.card}>
+        {loading ? (
+          <ActivityIndicator color={colors.primary} style={styles.loader} />
+        ) : error ? (
+          <Pressable onPress={load} accessibilityRole="button" style={styles.emptyBox}>
+            <Text style={styles.error}>{error} Tap to try again.</Text>
+          </Pressable>
+        ) : items.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <MIcon name="celebration" size={32} color={colors.primary} />
+            <Text style={styles.emptyText}>No calls due today.</Text>
+          </View>
+        ) : (
+          <>
+            {visible.map((f, i) => {
+              if (!f.lead) return null;
+              const missedCall = isMissedCall(f);
+              const reviveCall = !missedCall && isReviveFollowUp(f);
+              const late = !missedCall && !reviveCall && isOverdue(f.due_at);
+              const ratingColor = f.lead.rating ? RATING_COLOR[f.lead.rating] : null;
+              const chip = missedCall
+                ? { text: 'Missed', bg: md.errorC, fg: md.onErrorC }
+                : reviveCall
+                  ? { text: 'Revive', bg: md.okC, fg: md.onOkC }
+                  : late
+                    ? { text: 'Late', bg: md.errorC, fg: md.onErrorC }
+                    : { text: timeOf(f.due_at), bg: md.surface1, fg: colors.textMuted };
+              const line = missedCall
+                ? `Missed call · ${formatDue(f.due_at)}`
+                : reviveCall
+                  ? `${f.lead.stage?.kind === 'lost' ? 'Lost lead' : 'Try again'}${f.note ? ` · ${f.note.replace(/^♻️\s*/, '')}` : ''}`
+                  : [f.lead.stage?.name, f.note].filter(Boolean).join(' · ') || formatDue(f.due_at);
+              return (
+                <Tap
+                  key={f.id}
+                  onPress={() => router.push(`/leads/${f.lead!.id}` as Href)}
+                  style={[styles.row, i > 0 && styles.rowLine]}
+                  label={`${f.lead.name}, ${chip.text}`}
+                >
+                  <Avatar name={f.lead.name} />
+                  <View style={styles.flex}>
+                    <View style={styles.nameRow}>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {f.lead.name}
+                      </Text>
+                      {ratingColor && <View style={[styles.ratingDot, { backgroundColor: ratingColor }]} />}
+                    </View>
+                    <Text style={styles.line} numberOfLines={2}>
+                      {line}
                     </Text>
-                    {ratingColor && (
-                      <View style={[styles.rating, { backgroundColor: ratingColor + '22' }]}>
-                        <Text style={[styles.ratingText, { color: ratingColor }]}>
-                          {f.lead.rating!.toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
                   </View>
-                  {missedCall ? (
-                    <Text style={styles.missedText}>
-                      Missed call · {formatDue(f.due_at)} · Call back
-                    </Text>
-                  ) : reviveCall ? (
-                    <>
-                      <Text style={styles.reviveText}>
-                        Revive · {f.lead.stage?.kind === 'lost' ? 'Lost lead' : 'Try again'} · {formatDue(f.due_at)}
-                      </Text>
-                      {f.note && (
-                        <Text style={styles.note} numberOfLines={1}>
-                          {f.note.replace(/^♻️\s*/, '')}
-                        </Text>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <Text style={[styles.due, late && styles.dueLate]}>
-                        {formatDue(f.due_at)}
-                        {late ? ' · Overdue' : ''}
-                        {f.lead.stage ? ` · ${f.lead.stage.name}` : ''}
-                      </Text>
-                      {f.note && (
-                        <Text style={styles.note} numberOfLines={1}>
-                          {f.note}
-                        </Text>
-                      )}
-                    </>
+                  <View style={[styles.chip, { backgroundColor: chip.bg }]}>
+                    <Text style={[styles.chipText, { color: chip.fg }]}>{chip.text}</Text>
+                  </View>
+                  {!!f.lead.phone && (
+                    <Tap
+                      onPress={() =>
+                        router.push({ pathname: '/leads/[id]', params: { id: f.lead!.id, dial: '1' } } as unknown as Href)
+                      }
+                      style={styles.callBtn}
+                      label={`Call ${f.lead.name}`}
+                      rippleColor="rgba(31,107,66,0.2)"
+                    >
+                      <MIcon name="call" size={20} color={md.onOkC} />
+                    </Tap>
                   )}
-                </View>
-                <Text style={styles.chevron}>›</Text>
-              </Pressable>
-            );
-          })}
+                </Tap>
+              );
+            })}
 
-          {items.length > SHOW_FIRST && (
-            <Pressable onPress={() => setShowAll((v) => !v)} style={styles.more} accessibilityRole="button">
-              <Text style={styles.moreText}>
-                {showAll ? 'Show less' : `Show all ${items.length}`}
-              </Text>
-            </Pressable>
-          )}
-        </>
-      )}
+            {items.length > SHOW_FIRST && (
+              <Tap onPress={() => setShowAll((v) => !v)} style={styles.more} label="Show more">
+                <Text style={styles.moreText}>{showAll ? 'Show less' : `Show all ${items.length}`}</Text>
+              </Tap>
+            )}
+          </>
+        )}
+      </View>
     </View>
   );
 }
 
+/** 11:30 am */
+function timeOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  card: {
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  title: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: 22, marginBottom: 8, paddingHorizontal: 2 },
+  title: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
   subtitle: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
   overdueCount: { color: colors.danger, fontWeight: fontWeight.bold },
   missedCount: { color: colors.danger, fontWeight: fontWeight.bold },
   reviveCount: { color: colors.success, fontWeight: fontWeight.bold },
   toggle: {
     flexDirection: 'row',
-    borderRadius: radius.pill,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: md.outline,
     overflow: 'hidden',
   },
-  toggleBtn: { paddingVertical: 6, paddingHorizontal: spacing.md },
-  toggleBtnOn: { backgroundColor: colors.primary },
+  toggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: spacing.md },
+  toggleBtnOn: { backgroundColor: md.primaryC },
   toggleText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.text },
-  toggleTextOn: { color: colors.textOnPrimary },
-  loader: { paddingVertical: spacing.lg },
+  toggleTextOn: { color: md.onPrimaryC },
+  card: { ...card },
+  loader: { paddingVertical: spacing.xl },
   error: { fontSize: fontSize.small, color: colors.danger },
-  empty: { alignItems: 'center', paddingVertical: spacing.md, gap: spacing.xs },
-  emptyIcon: { fontSize: 28 },
+  emptyBox: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
   emptyText: { fontSize: fontSize.small, color: colors.textMuted },
-  row: {
-    flexDirection: 'row',
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingHorizontal: 14 },
+  rowLine: { borderTopWidth: 1, borderTopColor: md.surface2 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  name: { flexShrink: 1, fontSize: 15, fontWeight: fontWeight.semibold, color: colors.text },
+  ratingDot: { width: 8, height: 8, borderRadius: 4 },
+  line: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  chip: { paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8 },
+  chipText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold },
+  callBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: md.okC,
     alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  rowMissed: {
-    backgroundColor: colors.dangerSoft,
-    marginHorizontal: -spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-    borderTopWidth: 0,
-    marginTop: 2,
-  },
-  rowRevive: {
-    backgroundColor: colors.successSoft,
-    marginHorizontal: -spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-    borderTopWidth: 0,
-    marginTop: 2,
-  },
-  pressed: { opacity: 0.6 },
-  dot: { width: 10, height: 10, borderRadius: radius.pill },
-  rowIcon: { fontSize: 16 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  name: { flexShrink: 1, fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text },
-  rating: { paddingVertical: 1, paddingHorizontal: spacing.sm, borderRadius: radius.pill },
-  ratingText: { fontSize: 10, fontWeight: fontWeight.bold },
-  due: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
-  dueLate: { color: colors.danger, fontWeight: fontWeight.semibold },
-  missedText: { fontSize: fontSize.caption, color: colors.danger, fontWeight: fontWeight.semibold, marginTop: 2 },
-  reviveText: { fontSize: fontSize.caption, color: colors.success, fontWeight: fontWeight.semibold, marginTop: 2 },
-  note: { fontSize: fontSize.caption, color: colors.text, marginTop: 2 },
-  chevron: { fontSize: 22, color: colors.textMuted },
-  more: { alignItems: 'center', paddingTop: spacing.sm },
+  more: { alignItems: 'center', paddingVertical: 12, borderTopWidth: 1, borderTopColor: md.surface2 },
   moreText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.primary },
 });

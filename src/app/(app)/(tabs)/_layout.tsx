@@ -1,9 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { AppState } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, AppState, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
+import { MIcon, md, type MIconName } from '@/features/home/md';
 import { canSeeStudents, getStudentsSettings } from '@/features/students/api';
 import { colors, fontWeight } from '@/shared/theme';
 import { isWeb } from '@/features/web/api';
@@ -27,11 +27,22 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
+        // Material: the new tab's screen slides in a little
+        animation: 'shift',
+        tabBarActiveTintColor: md.onPrimaryC,
         tabBarInactiveTintColor: colors.textMuted,
         // 🌐 Website: the menu on the left replaces the tabs
-        tabBarStyle: isWeb ? { display: 'none' } : { backgroundColor: colors.surface, borderTopColor: colors.border },
-        tabBarLabelStyle: { fontWeight: fontWeight.semibold },
+        tabBarStyle: isWeb
+          ? { display: 'none' }
+          : { backgroundColor: md.surface1, borderTopWidth: 0, elevation: 0, height: 72, paddingTop: 10 },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: fontWeight.semibold, marginTop: 2 },
+        tabBarActiveBackgroundColor: 'transparent',
+        tabBarButton: (props) => (
+          <Pressable
+            {...(props as PressableProps)}
+            android_ripple={{ color: 'rgba(53,87,212,0.10)', borderless: true, radius: 44 }}
+          />
+        ),
         // 🌐 Website: its own top bar replaces the blue header
         ...(isWeb ? { headerShown: false } : {}),
         headerStyle: { backgroundColor: colors.primary },
@@ -44,18 +55,14 @@ export default function TabsLayout() {
         options={{
           title: 'Home',
           headerShown: false,
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={size} />
-          ),
+          tabBarIcon: ({ focused }) => <PillIcon focused={focused} on="home-filled" off="home" />,
         }}
       />
       <Tabs.Screen
         name="leads"
         options={{
           title: 'Leads',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'people' : 'people-outline'} color={color} size={size} />
-          ),
+          tabBarIcon: ({ focused }) => <PillIcon focused={focused} on="people" off="people-outline" />,
         }}
       />
       <Tabs.Screen
@@ -63,20 +70,40 @@ export default function TabsLayout() {
         options={{
           title: 'Students',
           href: studentsTab ? undefined : null,
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'school' : 'school-outline'} color={color} size={size} />
-          ),
+          tabBarIcon: ({ focused }) => <PillIcon focused={focused} on="school" off="school" />,
         }}
       />
       <Tabs.Screen
         name="more"
         options={{
           title: 'More',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'menu' : 'menu-outline'} color={color} size={size} />
-          ),
+          tabBarIcon: ({ focused }) => <PillIcon focused={focused} on="menu" off="menu" />,
         }}
       />
     </Tabs>
   );
 }
+
+/** Material 3 navigation bar icon: a tinted pill grows behind the chosen one */
+function PillIcon({ focused, on, off }: { focused: boolean; on: MIconName; off: MIconName }) {
+  const grow = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.spring(grow, { toValue: focused ? 1 : 0, useNativeDriver: true, speed: 18, bounciness: 6 }).start();
+  }, [focused, grow]);
+  return (
+    <View style={styles.pillBox}>
+      <Animated.View
+        style={[
+          styles.pill,
+          { opacity: grow, transform: [{ scaleX: grow.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }] },
+        ]}
+      />
+      <MIcon name={focused ? on : off} size={24} color={focused ? md.onPrimaryC : colors.textMuted} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  pillBox: { width: 64, height: 32, alignItems: 'center', justifyContent: 'center' },
+  pill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16, backgroundColor: md.primaryC },
+});

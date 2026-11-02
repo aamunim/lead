@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { contactLabel } from '@/features/leads/contact';
 import { formatVisitTime, listTodayVisits, type TodayVisit } from '@/features/visits/api';
+import { card } from '@/features/home/md';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
 
@@ -33,7 +34,7 @@ export function TodayVisits() {
   return (
     <View style={styles.card}>
       <View>
-        <Text style={styles.title}>🏫 Campus visits</Text>
+        <Text style={styles.title}>Campus visits</Text>
         <Text style={styles.subtitle}>
           {items.length - late} today
           {late > 0 && <Text style={styles.lateCount}> · {late} not marked yet</Text>}
@@ -73,12 +74,10 @@ const styles = StyleSheet.create({
   card: {
     gap: spacing.md,
     padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    ...card,
+    marginTop: 16,
   },
-  title: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  title: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
   subtitle: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
   lateCount: { color: colors.danger, fontWeight: fontWeight.bold },
   row: {
