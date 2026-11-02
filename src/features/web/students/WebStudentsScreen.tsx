@@ -241,7 +241,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   const { profile, hasPermission, assignmentOn, sharedMode, assignment } = useAuth();
   const params = useLocalSearchParams<{ q?: string; quick?: string; open?: string }>();
   const search = typeof params.q === 'string' ? params.q : '';
-  const { width } = useWindowDimensions();
+  const { width, height: winH } = useWindowDimensions();
   // Wide: the panel sits next to the table · else it covers part of it
   const sideBySide = width >= 1360;
   const seesOthers = sharedMode || hasPermission('leads.view_all') || hasPermission('leads.view_team');
@@ -749,7 +749,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
           )}
 
           {view === 'board' && leadsMode ? (
-            <View style={styles.boardWrap}>
+            <View style={[styles.boardWrap, { height: Math.max(420, winH - 230) }]}>
               <LeadBoard
                 query={query}
                 closedColumns={false}
@@ -1606,7 +1606,7 @@ const styles = StyleSheet.create({
   segOn: { backgroundColor: colors.primarySoft },
   segText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
   segTextOn: { color: colors.primary },
-  boardWrap: { flex: 1, minHeight: 0, marginBottom: spacing.md },
+  boardWrap: { marginBottom: spacing.md },
   chip: {
     paddingVertical: 6,
     paddingHorizontal: spacing.md,

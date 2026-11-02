@@ -8,6 +8,8 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { canSeeStudents, getStudentsSettings } from '@/features/students/api';
 import { canApprove, countWaitingApproval, getApprovalSettings } from '@/features/approval/api';
 import { canUseWeb, getWebSettings } from '@/features/web/api';
+import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
+import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { COLLEGE, SYSTEM } from '@/features/web/brand';
 import { loadPref, onKey, savePref, typingInField } from '@/features/web/prefs';
 import { installWebCss } from '@/shared/web/webCss';
@@ -130,6 +132,18 @@ export function WebShell({ children }: { children: React.ReactNode }) {
   // (the TextInput type here has no focus/blur, the web element has)
   const searchRef = useRef<{ focus: () => void; blur: () => void } | null>(null);
 
+  // ⏱ Team activity / Change log and 📊 Reports: the phone's rules
+  const [activityOk, setActivityOk] = useState(false);
+  const [reportsOk, setReportsOk] = useState(false);
+  useEffect(() => {
+    getActivitySettings()
+      .then((a) => setActivityOk(canOpenActivity(a, hasPermission)))
+      .catch(() => setActivityOk(false));
+    getReportSettings()
+      .then((r) => setReportsOk(canSeeReports(r, profile, isAdmin)))
+      .catch(() => setReportsOk(false));
+  }, [profile, isAdmin, hasPermission]);
+
   useEffect(() => {
     Promise.all([getWebSettings(), getStudentsSettings()])
       .then(([w, s]) => {
@@ -193,6 +207,15 @@ export function WebShell({ children }: { children: React.ReactNode }) {
             match: (p: string) => p.startsWith('/students'),
             badge: officer && waiting ? waiting : undefined,
           },
+        ]
+      : []),
+    ...(reportsOk
+      ? [{ label: 'Reports', icon: '📊', href: '/reports', match: (p: string) => p.startsWith('/reports') }]
+      : []),
+    ...(activityOk
+      ? [
+          { label: 'Team activity', icon: '⏱', href: '/activity', match: (p: string) => p.startsWith('/activity') },
+          { label: 'Change log', icon: '📜', href: '/changes', match: (p: string) => p.startsWith('/changes') },
         ]
       : []),
     {

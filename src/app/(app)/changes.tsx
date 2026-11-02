@@ -10,9 +10,12 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
+import { WebChangeLog } from '@/features/web/activity/WebChangeLog';
+import { isWeb } from '@/features/web/api';
 import { ActivityFeedList } from '@/features/activity/ActivityFeedList';
 import {
   ACTIVITY_PERIODS,
@@ -33,7 +36,14 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 // =====================================================================
 // 📜 Change log: who changed what on which lead
 // =====================================================================
-export default function ChangeLogScreen() {
+// 🌐 On a computer screen: the wide table
+export default function ChangeLogRoute() {
+  const { width } = useWindowDimensions();
+  if (isWeb && width >= 900) return <WebChangeLog />;
+  return <ChangeLogScreen />;
+}
+
+function ChangeLogScreen() {
   const { hasPermission } = useAuth();
   const { userId: userParam } = useLocalSearchParams<{ userId?: string }>();
   const { stages, people, userNames } = useActivityLookups();

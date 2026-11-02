@@ -1,8 +1,19 @@
 import { Stack, router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
+import { WebTeamActivity } from '@/features/web/activity/WebTeamActivity';
+import { isWeb } from '@/features/web/api';
 import {
   ACTIVITY_PERIODS,
   DEFAULT_ACTIVITY,
@@ -62,7 +73,14 @@ function inOfficeHours(hours: { start: string; end: string } | null, days: numbe
   return hm >= toMin(hours.start) && hm <= toMin(hours.end);
 }
 
-export default function TeamActivityScreen() {
+// 🌐 On a computer screen: the wide table
+export default function TeamActivityRoute() {
+  const { width } = useWindowDimensions();
+  if (isWeb && width >= 900) return <WebTeamActivity />;
+  return <TeamActivityScreen />;
+}
+
+function TeamActivityScreen() {
   const { hasPermission } = useAuth();
   const [settings, setSettings] = useState<ActivitySettings>(DEFAULT_ACTIVITY);
   const [allowed, setAllowed] = useState<boolean | null>(null);
