@@ -124,8 +124,14 @@ function dayKey(d: Date): string {
 export default function LeadDetailScreen() {
   // callNote = a call-log id, when opened from the "add a note" notification
   // waCall = a WhatsApp call id, from the WhatsApp "add a note" notification
-  const { id, callNote, waCall } = useLocalSearchParams<{ id: string; callNote?: string; waCall?: string }>();
-  return <LeadDetailView id={id} callNote={callNote} waCall={waCall} />;
+  // dial = call the lead as soon as the page is open (Home → Next calls → 📞)
+  const { id, callNote, waCall, dial } = useLocalSearchParams<{
+    id: string;
+    callNote?: string;
+    waCall?: string;
+    dial?: string;
+  }>();
+  return <LeadDetailView id={id} callNote={callNote} waCall={waCall} dial={dial === '1'} />;
 }
 
 /**
@@ -136,12 +142,14 @@ export function LeadDetailView({
   id,
   callNote,
   waCall,
+  dial = false,
   embedded = false,
   onClosed,
 }: {
   id: string;
   callNote?: string;
   waCall?: string;
+  dial?: boolean;
   embedded?: boolean;
   onClosed?: () => void;
 }) {
@@ -410,6 +418,16 @@ export function LeadDetailView({
     if (!ok) callStartedAt.current = null;
   };
   const sms = (phone: string) => open(`sms:${phone}`);
+
+  // 📞 Opened with dial: call once the lead is here (the usual popup follows)
+  const dialed = useRef(false);
+  useEffect(() => {
+    if (!dial || dialed.current || !lead || lead.id !== id || !lead.phone) return;
+    dialed.current = true;
+    router.setParams({ dial: undefined });
+    call(lead.phone);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dial, lead, id]);
 
   // 💬 WhatsApp: when the user comes back, ask what happened (Settings → Calls)
   const whatsapp = async () => {

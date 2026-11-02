@@ -12,6 +12,7 @@ import {
   type LeadReport,
 } from '@/features/reports/api';
 import { PipelineBars } from '@/features/reports/charts';
+import { card } from '@/features/home/md';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -56,7 +57,7 @@ export function ReportHomeCard() {
       accessibilityLabel={`This month: ${s.new_leads} new leads, ${s.admitted} admitted. Open reports`}
     >
       <View style={styles.header}>
-        <Text style={styles.title}>📊 This month</Text>
+        <Text style={styles.title}>This month</Text>
         <Text style={styles.link}>Reports ›</Text>
       </View>
 
@@ -86,14 +87,12 @@ const styles = StyleSheet.create({
   card: {
     gap: spacing.md,
     padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    ...card,
+    marginTop: 16,
   },
   pressed: { opacity: 0.8 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  title: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
   link: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
   stats: { flexDirection: 'row', gap: spacing.sm },
   stat: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.md, backgroundColor: colors.background, alignItems: 'center' },

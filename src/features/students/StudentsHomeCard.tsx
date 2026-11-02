@@ -10,6 +10,7 @@ import {
   shortMoney,
   type StudentsSummaryData,
 } from '@/features/students/api';
+import { card } from '@/features/home/md';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -42,7 +43,7 @@ export function StudentsHomeCard() {
       accessibilityLabel={`${s.students} students. Open Students`}
     >
       <View style={styles.top}>
-        <Text style={styles.title}>🎓 Students</Text>
+        <Text style={styles.title}>Students</Text>
         <Text style={styles.link}>Open ›</Text>
       </View>
       <View style={styles.row}>
@@ -72,14 +73,12 @@ const styles = StyleSheet.create({
   card: {
     gap: spacing.sm,
     padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    ...card,
+    marginTop: 16,
   },
   pressed: { opacity: 0.7 },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  title: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
   link: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
   row: { flexDirection: 'row', gap: spacing.sm },
   stat: { flex: 1 },
