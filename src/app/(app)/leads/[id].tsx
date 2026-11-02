@@ -11,15 +11,11 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
-import {
-  getCallSyncSettings,
-  getDeviceId,
-  markCallFromApp,
-  type WhatsAppDeviceEvent,
-} from '@/features/call-sync/api';
+import { getCallSyncSettings, getDeviceId, markCallFromApp, type WhatsAppDeviceEvent } from '@/features/call-sync/api';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
 import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
 import type { TemplateChannel } from '@/features/templates/api';
@@ -77,6 +73,7 @@ import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 import { deleteLeadFile, isRecordedVoice, listLeadFiles, type LeadFile } from '@/features/files/api';
 import { onVoiceSaved } from '@/features/voice/useVoiceNotes';
 import { isWeb } from '@/features/web/api';
+import { WebStudentLayout } from '@/features/web/student/WebStudentLayout';
 import { ApprovalCard } from '@/features/approval/ApprovalCard';
 
 const RATING_COLOR: Record<string, string> = {
@@ -95,7 +92,8 @@ type FeedItem =
 /** When a note was written: exact time, only the day, or none (typed on the edit screen) */
 function noteWhen(n: LeadNote): string {
   if (n.when === 'exact') return formatDateTime(n.at);
-  if (n.when === 'day') return new Date(n.at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  if (n.when === 'day')
+    return new Date(n.at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
   return 'Lead notes';
 }
 
@@ -149,6 +147,9 @@ export function LeadDetailView({
 }) {
   const { hasPermission, profile } = useAuth();
   const isAdmin = hasPermission('leads.edit_all');
+  // 🌐 Website on a computer screen: its own layout (panel next to the table, or the full page)
+  const { width: winWidth } = useWindowDimensions();
+  const webLayout: 'panel' | 'full' | null = isWeb && winWidth >= 900 ? (embedded ? 'panel' : 'full') : null;
   // 💬 Message templates (Settings → Message templates)
   const templates = useTemplateAccess();
   const tapOpensTemplates = templates.allowed && templates.settings.tap === 'sheet';
@@ -244,14 +245,7 @@ export function LeadDetailView({
       setFollowUp(f);
       setHolidays([...h1, ...h2]);
       setStageNames(new Map(stages.map((s) => [s.id, s.name])));
-      setUserNames(
-        new Map(
-          users.map((u) => [
-            u.id,
-            `${u.full_name ?? 'No name'}${u.is_active ? '' : ' (inactive)'}`,
-          ]),
-        ),
-      );
+      setUserNames(new Map(users.map((u) => [u.id, `${u.full_name ?? 'No name'}${u.is_active ? '' : ' (inactive)'}`])));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load this lead.');
     } finally {
@@ -462,7 +456,7 @@ export function LeadDetailView({
   // --- activity text ---------------------------------------------------
   // Name of the person who did the action (adds "(inactive)" if deactivated)
   const actorName = (item: ActivityItem): string | null =>
-    item.user_id ? userNames.get(item.user_id) ?? item.user_name : item.user_name;
+    item.user_id ? (userNames.get(item.user_id) ?? item.user_name) : item.user_name;
 
   const personName = (person: { id: string; full_name: string | null; is_active: boolean } | null) =>
     person ? `${person.full_name ?? 'No name'}${person.is_active ? '' : ' (inactive)'}` : null;
@@ -558,7 +552,9 @@ export function LeadDetailView({
       case 'admission_resubmitted':
         return `🎓 Sent for approval again${d.note ? `: ${d.note}` : ''}`;
       case 'nu_id_set':
-        return d.to ? `🆔 NU Admission ID: ${d.to}${d.from ? ` (was ${d.from})` : ''}` : `🆔 NU Admission ID removed (was ${d.from ?? ''})`;
+        return d.to
+          ? `🆔 NU Admission ID: ${d.to}${d.from ? ` (was ${d.from})` : ''}`
+          : `🆔 NU Admission ID removed (was ${d.from ?? ''})`;
       case 'placement_changed':
         return `🏫 ${d.from ? `${d.from} → ` : ''}${d.to ?? ''}`;
       case 'registration_approved':
@@ -578,7 +574,9 @@ export function LeadDetailView({
       case 'payment_voided':
         return `✕ Payment void: ${d.receipt_no ?? ''} · ${money(Number(d.amount ?? 0))}${d.reason ? ` · ${d.reason}` : ''}`;
       case 'installments_set':
-        return Number(d.count ?? 0) > 0 ? `📅 Installment plan: ${d.count} installments` : '📅 Installment plan removed';
+        return Number(d.count ?? 0) > 0
+          ? `📅 Installment plan: ${d.count} installments`
+          : '📅 Installment plan removed';
       case 'tag_added':
         return `🏷 Tag added: ${d.tag ?? ''}`;
       case 'tag_removed':
@@ -590,8 +588,9 @@ export function LeadDetailView({
       case 'note_edited':
         return '📝 Notes edited';
       case 'fields_changed': {
-        const changes = ((item.details as { changes?: { field: string; from: string | null; to: string | null }[] } | null)
-          ?.changes ?? []);
+        const changes =
+          (item.details as { changes?: { field: string; from: string | null; to: string | null }[] } | null)?.changes ??
+          [];
         return `✏️ ${changes.map((c) => `${c.field}: ${c.from ?? '—'} → ${c.to ?? '—'}`).join(' · ')}`;
       }
       case 'deleted':
@@ -688,7 +687,10 @@ export function LeadDetailView({
     const map = new Map<string, LeadFile[]>();
     for (const v of voices) {
       if (!v.call_id || !ids.has(v.call_id)) continue;
-      map.set(v.call_id, [...(map.get(v.call_id) ?? []), v].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)));
+      map.set(
+        v.call_id,
+        [...(map.get(v.call_id) ?? []), v].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)),
+      );
     }
     return map;
   }, [calls, voices]);
@@ -711,22 +713,26 @@ export function LeadDetailView({
       Alert.alert('Can’t delete', 'Only the person who recorded it, or an admin, can delete a voice note.');
       return;
     }
-    Alert.alert('Delete this voice note?', 'It is removed here and moved to Google Drive’s Trash (30 days to bring it back).', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteLeadFile(v.id);
-            showToast('Voice note deleted.');
-            load();
-          } catch (e) {
-            Alert.alert('Could not delete', e instanceof Error ? e.message : '');
-          }
+    Alert.alert(
+      'Delete this voice note?',
+      'It is removed here and moved to Google Drive’s Trash (30 days to bring it back).',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteLeadFile(v.id);
+              showToast('Voice note deleted.');
+              load();
+            } catch (e) {
+              Alert.alert('Could not delete', e instanceof Error ? e.message : '');
+            }
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   // The note from whoever gave this lead to its person (hand over)
@@ -787,7 +793,7 @@ export function LeadDetailView({
   const courses = lead.lead_courses.map((c) => c.course?.name).filter(Boolean) as string[];
   const tags = lead.lead_tags.map((t) => t.tag).filter(Boolean) as { id: string; name: string; color: string }[];
   const assigneeName = lead.assigned_to
-    ? userNames.get(lead.assigned_to) ?? lead.assignee?.full_name ?? 'Unassigned'
+    ? (userNames.get(lead.assigned_to) ?? lead.assignee?.full_name ?? 'Unassigned')
     : 'Unassigned';
   const overdue = followUp ? isOverdue(followUp.due_at) : false;
 
@@ -796,562 +802,657 @@ export function LeadDetailView({
   // Admitted / cancelled leads have no more calls to plan; lost leads may have a "♻️ Revive"
   const showFollowUpCard = stageKind === 'open' || stageKind === 'lost';
   const reviveAt = followUp && followUp.purpose === 'revive' ? followUp.due_at : null;
-  const nameOf = (userId: string | null | undefined) => (userId ? userNames.get(userId) ?? null : null);
+  const nameOf = (userId: string | null | undefined) => (userId ? (userNames.get(userId) ?? null) : null);
   // The papers card reloads itself when the lead's courses change
   const courseKey = lead.lead_courses.map((c) => c.course?.id ?? '').join(',');
 
   // Call totals for the section header
-  const talkSec = calls.reduce((sum, c) => sum + (c.outcome === 'connected' ? c.duration_sec ?? 0 : 0), 0);
+  const talkSec = calls.reduce((sum, c) => sum + (c.outcome === 'connected' ? (c.duration_sec ?? 0) : 0), 0);
 
-  return (
+  // ---- The page's parts (the phone stacks them; the website arranges them) ----
+  const recentEl = (
     <>
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              load();
-            }}
-          />
-        }
-      >
-        {!embedded && (
-          <Stack.Screen
-            options={{
-              title: lead.name,
-              headerRight: () => (
-                <Pressable
-                  onPress={() => router.push(`/leads/edit/${lead.id}` as Href)}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel="Edit lead"
-                >
-                  <Text style={styles.headerAction}>Edit</Text>
-                </Pressable>
-              ),
-            }}
-          />
-        )}
-
-        {/* Header card */}
-        <View style={styles.card}>
-          <View style={styles.headerRow}>
-            <View style={[styles.avatar, { backgroundColor: ratingColor }]}>
-              <Text style={styles.avatarText}>{initials(lead.name) || '?'}</Text>
-            </View>
-            <View style={styles.flex}>
-              <Text style={styles.name}>{lead.name}</Text>
-              <Text style={styles.phone}>
-                {whatsAppOnly(lead) ? '💬 ' : ''}
-                {contactLabel(lead)}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.badges}>
-            {lead.stage && (
-              <View style={[styles.pill, { backgroundColor: lead.stage.color + '22' }]}>
-                <Text style={[styles.pillText, { color: lead.stage.color }]}>{lead.stage.name}</Text>
+      {/* Last call and last note at a glance */}
+      {(lastCall || lastNote || lastVoice) && (
+        <View style={styles.recent}>
+          {lastCall && (
+            <View style={styles.recentRow}>
+              <Text style={styles.recentIcon}>{lastCall.channel === 'whatsapp' ? '💬' : '📞'}</Text>
+              <View style={styles.flex}>
+                <Text style={styles.recentTitle} numberOfLines={1}>
+                  {lastCall.channel === 'whatsapp'
+                    ? `Last ${channelLabel(lastCall.channel, lastCall.media)}`
+                    : 'Last call'}
+                  :{' '}
+                  <Text style={{ color: outcomeInfo(lastCall.outcome).color }}>
+                    {lastCall.direction === 'incoming' && lastCall.outcome === 'connected' ? 'Incoming · ' : ''}
+                    {outcomeInfo(lastCall.outcome).label}
+                  </Text>
+                  {lastCall.duration_sec && lastCall.duration_sec > 0
+                    ? ` · ${formatDuration(lastCall.duration_sec)}`
+                    : ''}
+                </Text>
+                <Text style={styles.timelineMeta}>
+                  {formatDateTime(lastCall.called_at)}
+                  {lastCall.caller ? ` · ${personName(lastCall.caller)}` : ''}
+                </Text>
+                {lastCall.notes && (
+                  <Text style={styles.callNotes} numberOfLines={2}>
+                    “{lastCall.notes}”
+                  </Text>
+                )}
+                <VoiceChips list={voicesByCall.get(lastCall.id)} onPlay={setPlaying} onLongPress={onLongPressVoice} />
               </View>
-            )}
-            {lead.rating && (
-              <View style={[styles.pill, { backgroundColor: ratingColor + '22' }]}>
-                <Text style={[styles.pillText, { color: ratingColor }]}>{lead.rating.toUpperCase()}</Text>
-              </View>
-            )}
-            <View style={[styles.pill, { backgroundColor: colors.background }]}>
-              <Text style={[styles.pillText, { color: colors.textMuted }]}>{assigneeName}</Text>
-            </View>
-          </View>
-
-          {/* Hand over note */}
-          {handover && (
-            <View style={styles.handover}>
-              <Text style={styles.handoverTitle}>
-                👥 From {actorName(handover.item) ?? 'someone'} · {formatDateTime(handover.item.created_at)}
-              </Text>
-              <Text style={styles.handoverNote}>“{handover.note}”</Text>
             </View>
           )}
+          {lastVoice && (
+            <View style={styles.recentRow}>
+              <Text style={styles.recentIcon}>📝</Text>
+              <View style={styles.flex}>
+                <Text style={styles.recentTitle} numberOfLines={1}>
+                  Last note: <Text style={styles.recentNote}>🎙 Voice note</Text>
+                </Text>
+                <VoiceChips list={[lastVoice]} onPlay={setPlaying} onLongPress={onLongPressVoice} />
+                <Text style={styles.timelineMeta}>
+                  {formatDateTime(lastVoice.created_at)}
+                  {nameOf(lastVoice.uploaded_by) ? ` · ${nameOf(lastVoice.uploaded_by)}` : ''}
+                </Text>
+              </View>
+            </View>
+          )}
+          {lastNote && (
+            <View style={styles.recentRow}>
+              <Text style={styles.recentIcon}>📝</Text>
+              <View style={styles.flex}>
+                <Text style={styles.recentTitle} numberOfLines={2}>
+                  Last note: <Text style={styles.recentNote}>{lastNote.text}</Text>
+                </Text>
+                <Text style={styles.timelineMeta}>
+                  {noteWhen(lastNote)}
+                  {lastNote.author ? ` · ${lastNote.author}` : ''}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+    </>
+  );
+  const headerEl = (
+    <>
+      {/* Header card */}
+      <View style={styles.card}>
+        <View style={styles.headerRow}>
+          <View style={[styles.avatar, { backgroundColor: ratingColor }]}>
+            <Text style={styles.avatarText}>{initials(lead.name) || '?'}</Text>
+          </View>
+          <View style={styles.flex}>
+            <Text style={styles.name}>{lead.name}</Text>
+            <Text style={styles.phone}>
+              {whatsAppOnly(lead) ? '💬 ' : ''}
+              {contactLabel(lead)}
+            </Text>
+          </View>
+        </View>
 
-          {/* Contact buttons */}
-          <View style={styles.actions}>
-            {/* 🌐 No phone calls (or SMS) from a computer */}
-            {!!lead.phone && !isWeb && (
-              <ActionButton label="Call" icon="📞" color={colors.success} onPress={() => call(lead.phone!)} />
-            )}
+        <View style={styles.badges}>
+          {lead.stage && (
+            <View style={[styles.pill, { backgroundColor: lead.stage.color + '22' }]}>
+              <Text style={[styles.pillText, { color: lead.stage.color }]}>{lead.stage.name}</Text>
+            </View>
+          )}
+          {lead.rating && (
+            <View style={[styles.pill, { backgroundColor: ratingColor + '22' }]}>
+              <Text style={[styles.pillText, { color: ratingColor }]}>{lead.rating.toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={[styles.pill, { backgroundColor: colors.background }]}>
+            <Text style={[styles.pillText, { color: colors.textMuted }]}>{assigneeName}</Text>
+          </View>
+        </View>
+
+        {/* Hand over note */}
+        {handover && (
+          <View style={styles.handover}>
+            <Text style={styles.handoverTitle}>
+              👥 From {actorName(handover.item) ?? 'someone'} · {formatDateTime(handover.item.created_at)}
+            </Text>
+            <Text style={styles.handoverNote}>“{handover.note}”</Text>
+          </View>
+        )}
+
+        {/* Contact buttons */}
+        <View style={styles.actions}>
+          {/* 🌐 No phone calls (or SMS) from a computer */}
+          {!!lead.phone && !isWeb && (
+            <ActionButton label="Call" icon="📞" color={colors.success} onPress={() => call(lead.phone!)} />
+          )}
+          <ActionButton
+            label="WhatsApp"
+            icon="💬"
+            color="#1F7A57"
+            onPress={() => (tapOpensTemplates ? setTemplateChannel('whatsapp') : whatsapp())}
+            onLongPress={templates.allowed ? () => setTemplateChannel('whatsapp') : undefined}
+          />
+          {!!lead.phone && !isWeb && (
             <ActionButton
-              label="WhatsApp"
-              icon="💬"
-              color="#1F7A57"
-              onPress={() => (tapOpensTemplates ? setTemplateChannel('whatsapp') : whatsapp())}
-              onLongPress={templates.allowed ? () => setTemplateChannel('whatsapp') : undefined}
+              label="SMS"
+              icon="✉️"
+              color={colors.info}
+              onPress={() => (tapOpensTemplates ? setTemplateChannel('sms') : sms(lead.phone!))}
+              onLongPress={templates.allowed ? () => setTemplateChannel('sms') : undefined}
             />
-            {!!lead.phone && !isWeb && (
-              <ActionButton
-                label="SMS"
-                icon="✉️"
-                color={colors.info}
-                onPress={() => (tapOpensTemplates ? setTemplateChannel('sms') : sms(lead.phone!))}
-                onLongPress={templates.allowed ? () => setTemplateChannel('sms') : undefined}
-              />
-            )}
+          )}
+        </View>
+
+        {recentEl}
+      </View>
+    </>
+  );
+  const pipelineEl = (
+    <>
+      {/* Pipeline: step bar, Admitted / Lost, or the closed status */}
+      <PipelineCard
+        lead={lead}
+        reviveAt={reviveAt}
+        nameOf={nameOf}
+        onChanged={(message) => {
+          if (message) showToast(message);
+          load();
+        }}
+      />
+    </>
+  );
+  const approvalEl = (
+    <>
+      {/* 🎓 Admission approval: admitted students only (hidden once cancelled) */}
+      {stageKind === 'won' && !!lead.admitted_at && (
+        <ApprovalCard
+          lead={lead}
+          nameOf={nameOf}
+          onChanged={(message) => {
+            showToast(message);
+            load();
+          }}
+        />
+      )}
+    </>
+  );
+  const visitEl = (
+    <>
+      {/* Campus visit: separate from the pipeline */}
+      <VisitCard
+        leadId={lead.id}
+        stageKind={stageKind}
+        stateKey={`${lead.visit_status ?? ''}|${lead.visit_at ?? ''}`}
+        onChanged={(message) => {
+          if (message) showToast(message);
+          load();
+        }}
+      />
+    </>
+  );
+  const feeEl = (
+    <>
+      {/* Fee & discount: negotiation before admission, the final fee after */}
+      <FeeCard
+        leadId={lead.id}
+        stageKind={stageKind}
+        leadCourseIds={lead.lead_courses.map((c) => c.course?.id ?? '').filter(Boolean)}
+        stateKey={`${lead.stage_id}|${lead.admitted_at ?? ''}|${courseKey}`}
+        nameOf={nameOf}
+        onChanged={(message) => {
+          if (message) showToast(message);
+          load();
+        }}
+      />
+    </>
+  );
+  const papersEl = (
+    <>
+      {/* Papers: checklist and where they are kept */}
+      <PapersCard
+        key={`${lead.admitted_course_id ?? ''}|${courseKey}`}
+        leadId={lead.id}
+        stageKind={stageKind}
+        stageKey={lead.stage?.key ?? null}
+        refreshKey={filesTick}
+        onChanged={(message) => {
+          if (message) showToast(message);
+          load();
+        }}
+      />
+    </>
+  );
+  const filesEl = (
+    <>
+      {/* 📎 Files in Google Drive (papers, voice notes) */}
+      <FilesCard
+        leadId={lead.id}
+        stateKey={lead.updated_at ?? ''}
+        nameOf={nameOf}
+        onChanged={(message) => {
+          if (message) showToast(message);
+          setFilesTick((n) => n + 1);
+          load();
+        }}
+      />
+    </>
+  );
+  const followEl = (
+    <>
+      {/* Next call (follow-up) */}
+      {showFollowUpCard && (
+        <View style={[styles.card, overdue && styles.cardOverdue]}>
+          <View style={styles.followHeader}>
+            <Text style={styles.followIcon}>⏰</Text>
+            <View style={styles.flex}>
+              <Text style={styles.sectionTitle}>Next call</Text>
+              {followUp ? (
+                <>
+                  <Text style={[styles.followDue, overdue && styles.followDueOverdue]}>
+                    {formatDue(followUp.due_at)}
+                    {overdue ? ' · Overdue' : ''}
+                  </Text>
+                  {followUp.note && <Text style={styles.callNotes}>{followUp.note}</Text>}
+                </>
+              ) : (
+                <Text style={styles.followNone}>Not set</Text>
+              )}
+            </View>
           </View>
 
-          {/* Last call and last note at a glance */}
-          {(lastCall || lastNote || lastVoice) && (
-            <View style={styles.recent}>
-              {lastCall && (
-                <View style={styles.recentRow}>
-                  <Text style={styles.recentIcon}>{lastCall.channel === 'whatsapp' ? '💬' : '📞'}</Text>
-                  <View style={styles.flex}>
-                    <Text style={styles.recentTitle} numberOfLines={1}>
-                      {lastCall.channel === 'whatsapp' ? `Last ${channelLabel(lastCall.channel, lastCall.media)}` : 'Last call'}
-                      :{' '}
-                      <Text style={{ color: outcomeInfo(lastCall.outcome).color }}>
-                        {lastCall.direction === 'incoming' && lastCall.outcome === 'connected' ? 'Incoming · ' : ''}
-                        {outcomeInfo(lastCall.outcome).label}
-                      </Text>
-                      {lastCall.duration_sec && lastCall.duration_sec > 0
-                        ? ` · ${formatDuration(lastCall.duration_sec)}`
-                        : ''}
-                    </Text>
-                    <Text style={styles.timelineMeta}>
-                      {formatDateTime(lastCall.called_at)}
-                      {lastCall.caller ? ` · ${personName(lastCall.caller)}` : ''}
-                    </Text>
-                    {lastCall.notes && (
-                      <Text style={styles.callNotes} numberOfLines={2}>
-                        “{lastCall.notes}”
-                      </Text>
-                    )}
-                    <VoiceChips list={voicesByCall.get(lastCall.id)} onPlay={setPlaying} onLongPress={onLongPressVoice} />
-                  </View>
-                </View>
-              )}
-              {lastVoice && (
-                <View style={styles.recentRow}>
-                  <Text style={styles.recentIcon}>📝</Text>
-                  <View style={styles.flex}>
-                    <Text style={styles.recentTitle} numberOfLines={1}>
-                      Last note: <Text style={styles.recentNote}>🎙 Voice note</Text>
-                    </Text>
-                    <VoiceChips list={[lastVoice]} onPlay={setPlaying} onLongPress={onLongPressVoice} />
-                    <Text style={styles.timelineMeta}>
-                      {formatDateTime(lastVoice.created_at)}
-                      {nameOf(lastVoice.uploaded_by) ? ` · ${nameOf(lastVoice.uploaded_by)}` : ''}
-                    </Text>
-                  </View>
-                </View>
-              )}
-              {lastNote && (
-                <View style={styles.recentRow}>
-                  <Text style={styles.recentIcon}>📝</Text>
-                  <View style={styles.flex}>
-                    <Text style={styles.recentTitle} numberOfLines={2}>
-                      Last note: <Text style={styles.recentNote}>{lastNote.text}</Text>
-                    </Text>
-                    <Text style={styles.timelineMeta}>
-                      {noteWhen(lastNote)}
-                      {lastNote.author ? ` · ${lastNote.author}` : ''}
-                    </Text>
-                  </View>
+          {choosingFollowUp ? (
+            <>
+              <View style={styles.chips}>
+                {presets.map((p) => (
+                  <Pressable
+                    key={p.key}
+                    onPress={() => setNextFollowUp(p.date)}
+                    disabled={savingFollowUp}
+                    style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${p.label}, ${formatDue(p.date)}`}
+                  >
+                    <Text style={styles.chipText}>{p.label}</Text>
+                    <Text style={styles.chipSub}>{formatDue(p.date)}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <DateTimePickerButton
+                initial={followUp ? new Date(followUp.due_at) : undefined}
+                disabled={savingFollowUp}
+                onPick={pickCustomDate}
+              />
+
+              {holidays.length > 0 && <Text style={styles.hint}>Quick choices skip holidays automatically.</Text>}
+              <Button
+                title="Cancel"
+                variant="ghost"
+                onPress={() => setChoosingFollowUp(false)}
+                disabled={savingFollowUp}
+              />
+            </>
+          ) : (
+            <View style={styles.followActions}>
+              <View style={styles.flex}>
+                <Button
+                  title={followUp ? 'Change' : 'Set next call'}
+                  variant="secondary"
+                  onPress={() => setChoosingFollowUp(true)}
+                  fullWidth
+                />
+              </View>
+              {followUp && (
+                <View style={styles.flex}>
+                  <Button title="Remove" variant="ghost" onPress={confirmRemoveFollowUp} fullWidth />
                 </View>
               )}
             </View>
           )}
         </View>
-
-        {/* Pipeline: step bar, Admitted / Lost, or the closed status */}
-        <PipelineCard
-          lead={lead}
-          reviveAt={reviveAt}
-          nameOf={nameOf}
-          onChanged={(message) => {
-            if (message) showToast(message);
-            load();
-          }}
-        />
-
-        {/* 🎓 Admission approval: admitted students only (hidden once cancelled) */}
-        {stageKind === 'won' && !!lead.admitted_at && (
-          <ApprovalCard
-            lead={lead}
-            nameOf={nameOf}
-            onChanged={(message) => {
-              showToast(message);
-              load();
-            }}
-          />
-        )}
-
-        {/* Campus visit: separate from the pipeline */}
-        <VisitCard
-          leadId={lead.id}
-          stageKind={stageKind}
-          stateKey={`${lead.visit_status ?? ''}|${lead.visit_at ?? ''}`}
-          onChanged={(message) => {
-            if (message) showToast(message);
-            load();
-          }}
-        />
-
-        {/* Fee & discount: negotiation before admission, the final fee after */}
-        <FeeCard
-          leadId={lead.id}
-          stageKind={stageKind}
-          leadCourseIds={lead.lead_courses.map((c) => c.course?.id ?? '').filter(Boolean)}
-          stateKey={`${lead.stage_id}|${lead.admitted_at ?? ''}|${courseKey}`}
-          nameOf={nameOf}
-          onChanged={(message) => {
-            if (message) showToast(message);
-            load();
-          }}
-        />
-
-        {/* Papers: checklist and where they are kept */}
-        <PapersCard
-          key={`${lead.admitted_course_id ?? ''}|${courseKey}`}
-          leadId={lead.id}
-          stageKind={stageKind}
-          stageKey={lead.stage?.key ?? null}
-          refreshKey={filesTick}
-          onChanged={(message) => {
-            if (message) showToast(message);
-            load();
-          }}
-        />
-
-        {/* 📎 Files in Google Drive (papers, voice notes) */}
-        <FilesCard
-          leadId={lead.id}
-          stateKey={lead.updated_at ?? ''}
-          nameOf={nameOf}
-          onChanged={(message) => {
-            if (message) showToast(message);
-            setFilesTick((n) => n + 1);
-            load();
-          }}
-        />
-
-        {/* Next call (follow-up) */}
-        {showFollowUpCard && (
-          <View style={[styles.card, overdue && styles.cardOverdue]}>
-            <View style={styles.followHeader}>
-              <Text style={styles.followIcon}>⏰</Text>
-              <View style={styles.flex}>
-                <Text style={styles.sectionTitle}>Next call</Text>
-                {followUp ? (
-                  <>
-                    <Text style={[styles.followDue, overdue && styles.followDueOverdue]}>
-                      {formatDue(followUp.due_at)}
-                      {overdue ? ' · Overdue' : ''}
-                    </Text>
-                    {followUp.note && <Text style={styles.callNotes}>{followUp.note}</Text>}
-                  </>
-                ) : (
-                  <Text style={styles.followNone}>Not set</Text>
-                )}
-              </View>
-            </View>
-
-            {choosingFollowUp ? (
-              <>
-                <View style={styles.chips}>
-                  {presets.map((p) => (
-                    <Pressable
-                      key={p.key}
-                      onPress={() => setNextFollowUp(p.date)}
-                      disabled={savingFollowUp}
-                      style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${p.label}, ${formatDue(p.date)}`}
-                    >
-                      <Text style={styles.chipText}>{p.label}</Text>
-                      <Text style={styles.chipSub}>{formatDue(p.date)}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-
-                <DateTimePickerButton
-                  initial={followUp ? new Date(followUp.due_at) : undefined}
-                  disabled={savingFollowUp}
-                  onPick={pickCustomDate}
-                />
-
-                {holidays.length > 0 && (
-                  <Text style={styles.hint}>Quick choices skip holidays automatically.</Text>
-                )}
-                <Button
-                  title="Cancel"
-                  variant="ghost"
-                  onPress={() => setChoosingFollowUp(false)}
-                  disabled={savingFollowUp}
-                />
-              </>
-            ) : (
-              <View style={styles.followActions}>
-                <View style={styles.flex}>
-                  <Button
-                    title={followUp ? 'Change' : 'Set next call'}
-                    variant="secondary"
-                    onPress={() => setChoosingFollowUp(true)}
-                    fullWidth
-                  />
-                </View>
-                {followUp && (
-                  <View style={styles.flex}>
-                    <Button title="Remove" variant="ghost" onPress={confirmRemoveFollowUp} fullWidth />
-                  </View>
-                )}
-              </View>
-            )}
+      )}
+    </>
+  );
+  const callsEl = (
+    <>
+      {/* Calls and notes, in one list */}
+      <Section
+        title={`Calls & notes${feed.length > 0 ? ` (${feed.length})` : ''}`}
+        right={talkSec > 0 ? `Talk time ${formatDuration(talkSec)}` : undefined}
+      >
+        {hasWhatsApp && (
+          <View style={styles.feedFilters}>
+            {(
+              [
+                ['all', 'All'],
+                ['phone', '📞 Phone'],
+                ['whatsapp', '💬 WhatsApp'],
+              ] as const
+            ).map(([value, label]) => {
+              const on = feedFilter === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => setFeedFilter(value)}
+                  style={[styles.feedChip, on && styles.feedChipOn]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: on }}
+                >
+                  <Text style={[styles.feedChipText, on && styles.feedChipTextOn]}>{label}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         )}
-
-        {/* Calls and notes, in one list */}
-        <Section
-          title={`Calls & notes${feed.length > 0 ? ` (${feed.length})` : ''}`}
-          right={talkSec > 0 ? `Talk time ${formatDuration(talkSec)}` : undefined}
-        >
-          {hasWhatsApp && (
-            <View style={styles.feedFilters}>
-              {(
-                [
-                  ['all', 'All'],
-                  ['phone', '📞 Phone'],
-                  ['whatsapp', '💬 WhatsApp'],
-                ] as const
-              ).map(([value, label]) => {
-                const on = feedFilter === value;
-                return (
-                  <Pressable
-                    key={value}
-                    onPress={() => setFeedFilter(value)}
-                    style={[styles.feedChip, on && styles.feedChipOn]}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: on }}
-                  >
-                    <Text style={[styles.feedChipText, on && styles.feedChipTextOn]}>{label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-          {shownFeed.length === 0 ? (
-            <Text style={styles.muted}>
-              {feed.length === 0 ? 'No calls or notes yet. Tap Call above to start.' : 'Nothing here yet.'}
-            </Text>
-          ) : (
-            feedMore.visible.map((item) => {
-              if (item.kind === 'voice') {
-                const v = item.voice;
-                const where = VOICE_CONTEXT[v.context ?? ''];
-                return (
-                  <Pressable
-                    key={item.key}
-                    style={({ pressed }) => [styles.callRow, pressed && styles.pressed]}
-                    onPress={() => setPlaying(v)}
-                    onLongPress={() => onLongPressVoice(v)}
-                    delayLongPress={400}
-                    accessibilityRole="button"
-                    accessibilityHint="Plays the voice note. Long press to delete"
-                  >
-                    <View style={[styles.dirBadge, { backgroundColor: colors.primarySoft }]}>
-                      <Text style={styles.noteIcon}>🎙</Text>
-                    </View>
-                    <View style={styles.flex}>
-                      <Text style={[styles.callOutcome, { color: colors.primary }]}>
-                        Voice note{where && where !== 'Note' ? ` · ${where}` : ''}
-                      </Text>
-                      <Text style={styles.voicePlay}>▶ {v.duration_sec ? clock(v.duration_sec) : 'Play'}</Text>
-                      <Text style={styles.timelineMeta}>
-                        {formatDateTime(v.created_at)}
-                        {nameOf(v.uploaded_by) ? ` · ${nameOf(v.uploaded_by)}` : ''}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              }
-              if (item.kind === 'note') {
-                const n = item.note;
-                return (
-                  <Pressable
-                    key={item.key}
-                    style={({ pressed }) => [styles.callRow, pressed && styles.pressed]}
-                    onLongPress={() => onLongPressNote(n)}
-                    delayLongPress={400}
-                    accessibilityHint="Long press to delete"
-                  >
-                    <View style={[styles.dirBadge, { backgroundColor: colors.primarySoft }]}>
-                      <Text style={styles.noteIcon}>📝</Text>
-                    </View>
-                    <View style={styles.flex}>
-                      <Text style={[styles.callOutcome, { color: colors.primary }]}>Note</Text>
-                      <NoteText text={n.text} />
-                      <Text style={styles.timelineMeta}>
-                        {noteWhen(n)}
-                        {n.author ? ` · ${n.author}` : ''}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              }
-
-              const c = item.call;
-              const info = outcomeInfo(c.outcome);
-              const dir = directionInfo(c.direction);
-              const duration = c.duration_sec && c.duration_sec > 0 ? formatDuration(c.duration_sec) : null;
-              const fromPhone = c.source === 'phone' || c.phone_verified === true;
-              const wa = channelLabel(c.channel, c.media);
-              const title =
-                c.outcome === 'message'
-                  ? `💬 ${wa} · ${c.direction === 'incoming' ? 'received' : 'sent'}`
-                  : `${wa ? `💬 ${wa} · ` : ''}${c.direction === 'incoming' && c.outcome === 'connected' ? 'Incoming · ' : ''}${info.label}`;
+        {shownFeed.length === 0 ? (
+          <Text style={styles.muted}>
+            {feed.length === 0 ? 'No calls or notes yet. Tap Call above to start.' : 'Nothing here yet.'}
+          </Text>
+        ) : (
+          feedMore.visible.map((item) => {
+            if (item.kind === 'voice') {
+              const v = item.voice;
+              const where = VOICE_CONTEXT[v.context ?? ''];
               return (
                 <Pressable
                   key={item.key}
                   style={({ pressed }) => [styles.callRow, pressed && styles.pressed]}
-                  onLongPress={() => onLongPressCall(c)}
+                  onPress={() => setPlaying(v)}
+                  onLongPress={() => onLongPressVoice(v)}
+                  delayLongPress={400}
+                  accessibilityRole="button"
+                  accessibilityHint="Plays the voice note. Long press to delete"
+                >
+                  <View style={[styles.dirBadge, { backgroundColor: colors.primarySoft }]}>
+                    <Text style={styles.noteIcon}>🎙</Text>
+                  </View>
+                  <View style={styles.flex}>
+                    <Text style={[styles.callOutcome, { color: colors.primary }]}>
+                      Voice note{where && where !== 'Note' ? ` · ${where}` : ''}
+                    </Text>
+                    <Text style={styles.voicePlay}>▶ {v.duration_sec ? clock(v.duration_sec) : 'Play'}</Text>
+                    <Text style={styles.timelineMeta}>
+                      {formatDateTime(v.created_at)}
+                      {nameOf(v.uploaded_by) ? ` · ${nameOf(v.uploaded_by)}` : ''}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            }
+            if (item.kind === 'note') {
+              const n = item.note;
+              return (
+                <Pressable
+                  key={item.key}
+                  style={({ pressed }) => [styles.callRow, pressed && styles.pressed]}
+                  onLongPress={() => onLongPressNote(n)}
                   delayLongPress={400}
                   accessibilityHint="Long press to delete"
                 >
-                  <View style={[styles.dirBadge, { backgroundColor: dir.color + '1A' }]}>
-                    <Text style={[styles.dirArrow, { color: dir.color }]}>{dir.arrow}</Text>
+                  <View style={[styles.dirBadge, { backgroundColor: colors.primarySoft }]}>
+                    <Text style={styles.noteIcon}>📝</Text>
                   </View>
                   <View style={styles.flex}>
-                    <View style={styles.callTop}>
-                      <Text style={[styles.callOutcome, { color: info.color }]}>
-                        {title}
-                      </Text>
-                      {duration && <Text style={styles.callDuration}>{duration}</Text>}
-                      {fromPhone && (
-                        <Text style={styles.phoneTag} accessibilityLabel="From the phone's call log">
-                          📱
-                        </Text>
-                      )}
-                    </View>
-                    {c.notes && <NoteText text={c.notes} />}
-                    <VoiceChips list={voicesByCall.get(c.id)} onPlay={setPlaying} onLongPress={onLongPressVoice} />
+                    <Text style={[styles.callOutcome, { color: colors.primary }]}>Note</Text>
+                    <NoteText text={n.text} />
                     <Text style={styles.timelineMeta}>
-                      {formatDateTime(c.called_at)}
-                      {c.caller ? ` · ${personName(c.caller)}` : ''}
-                      {c.sim_label ? ` · ${c.sim_label}` : ''}
+                      {noteWhen(n)}
+                      {n.author ? ` · ${n.author}` : ''}
                     </Text>
                   </View>
                 </Pressable>
               );
-            })
-          )}
-          <ShowMoreButton {...feedMore} />
-          {!!lead.phone && (
-            <Button title="+ Log a call made from another phone" variant="ghost" onPress={() => logManually('phone')} />
-          )}
-          <Button title="+ WhatsApp log (call or message)" variant="ghost" onPress={() => logManually('whatsapp')} />
-          {calls.some((c) => c.source === 'phone' || c.phone_verified) && (
-            <Text style={styles.hint}>📱 = taken from the phone’s call log (real time and length)</Text>
-          )}
-          {feed.length > 0 && <Text style={styles.hint}>Long-press a call, note or voice note to delete it.</Text>}
-        </Section>
+            }
 
-        {/* Interest */}
-        <Section title="Interest">
-          <InfoRow label="Courses" value={courses.length > 0 ? courses.join(', ') : null} />
-          {tags.length > 0 && (
-            <View style={styles.tags}>
-              {tags.map((t) => (
-                <View key={t.id} style={[styles.tag, { backgroundColor: t.color + '22' }]}>
-                  <Text style={[styles.tagText, { color: t.color }]}>{t.name}</Text>
+            const c = item.call;
+            const info = outcomeInfo(c.outcome);
+            const dir = directionInfo(c.direction);
+            const duration = c.duration_sec && c.duration_sec > 0 ? formatDuration(c.duration_sec) : null;
+            const fromPhone = c.source === 'phone' || c.phone_verified === true;
+            const wa = channelLabel(c.channel, c.media);
+            const title =
+              c.outcome === 'message'
+                ? `💬 ${wa} · ${c.direction === 'incoming' ? 'received' : 'sent'}`
+                : `${wa ? `💬 ${wa} · ` : ''}${c.direction === 'incoming' && c.outcome === 'connected' ? 'Incoming · ' : ''}${info.label}`;
+            return (
+              <Pressable
+                key={item.key}
+                style={({ pressed }) => [styles.callRow, pressed && styles.pressed]}
+                onLongPress={() => onLongPressCall(c)}
+                delayLongPress={400}
+                accessibilityHint="Long press to delete"
+              >
+                <View style={[styles.dirBadge, { backgroundColor: dir.color + '1A' }]}>
+                  <Text style={[styles.dirArrow, { color: dir.color }]}>{dir.arrow}</Text>
                 </View>
-              ))}
-            </View>
-          )}
-        </Section>
-
-        {/* Contact, guardian and source: the main lines, the rest under "More details" */}
-        <Section title="Details">
-          {lead.phone && <PhoneRow label="Phone" phone={lead.phone} onCall={call} />}
-          <InfoRow label="WhatsApp" value={lead.whatsapp_number} />
-          <InfoRow label="WhatsApp username" value={lead.whatsapp_username ? '@' + lead.whatsapp_username : null} />
-          <InfoRow label="Area" value={lead.area} />
-          <InfoRow label="Source" value={lead.source?.name ?? null} />
-          {detailsOpen && (
-            <>
-              {lead.alt_phone && <PhoneRow label="Alternative" phone={lead.alt_phone} onCall={call} />}
-              <InfoRow label="Email" value={lead.email} />
-              <InfoRow
-                label="Last contacted"
-                value={lead.last_contacted_at ? formatDateTime(lead.last_contacted_at) : 'Never'}
-              />
-              <InfoRow
-                label="Guardian"
-                value={[lead.guardian_name, lead.guardian_relation && `(${lead.guardian_relation})`].filter(Boolean).join(' ')}
-              />
-              {lead.guardian_phone && <PhoneRow label="Guardian phone" phone={lead.guardian_phone} onCall={call} />}
-              <InfoRow label="Campaign" value={lead.campaign?.name ?? null} />
-              <InfoRow label="Referred by" value={lead.referred_by} />
-              <InfoRow label="Lead type" value={lead.lead_type?.name ?? null} />
-              <InfoRow label="Added" value={formatDateTime(lead.created_at)} />
-            </>
-          )}
-          <ShowMoreButton
-            expanded={detailsOpen}
-            hidden={1}
-            toggle={() => setDetailsOpen((o) => !o)}
-            label="More details"
-          />
-        </Section>
-
-        {/* Activity */}
-        <Section title="Activity">
-          {activity.length === 0 ? (
-            <Text style={styles.muted}>No activity yet.</Text>
-          ) : (
-            activityMore.visible.map((item, index) => {
-              const who = actorName(item);
-              const det = (item.details ?? {}) as Record<string, unknown>;
-              const voice = item.action === 'file_added' && det.kind === 'voice' && typeof det.file_id === 'string';
-              return (
-                <Pressable
-                  key={item.id}
-                  style={styles.timelineRow}
-                  disabled={!voice}
-                  onPress={() =>
-                    setPlaying({
-                      id: String(det.file_id),
-                      name: String(det.name ?? 'Voice note'),
-                      duration_sec: Number(det.duration_sec ?? 0) || null,
-                    })
-                  }
-                  accessibilityRole={voice ? 'button' : undefined}
-                  accessibilityHint={voice ? 'Plays the voice note' : undefined}
-                >
-                  <View style={styles.timelineMarker}>
-                    <View style={styles.timelineDot} />
-                    {index < activityMore.visible.length - 1 && <View style={styles.timelineLine} />}
+                <View style={styles.flex}>
+                  <View style={styles.callTop}>
+                    <Text style={[styles.callOutcome, { color: info.color }]}>{title}</Text>
+                    {duration && <Text style={styles.callDuration}>{duration}</Text>}
+                    {fromPhone && (
+                      <Text style={styles.phoneTag} accessibilityLabel="From the phone's call log">
+                        📱
+                      </Text>
+                    )}
                   </View>
-                  <View style={styles.timelineBody}>
-                    <Text style={styles.timelineText}>{describe(item)}</Text>
-                    <Text style={styles.timelineMeta}>
-                      {formatDateTime(item.created_at)}
-                      {who ? ` · ${who}` : ''}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })
-          )}
-          <ShowMoreButton {...activityMore} />
-          <VoicePlayer file={playing} onClose={() => setPlaying(null)} />
-        </Section>
-
-        {hasPermission('leads.delete') && (
-          <Button title="Delete lead" variant="danger" onPress={confirmDelete} fullWidth />
+                  {c.notes && <NoteText text={c.notes} />}
+                  <VoiceChips list={voicesByCall.get(c.id)} onPlay={setPlaying} onLongPress={onLongPressVoice} />
+                  <Text style={styles.timelineMeta}>
+                    {formatDateTime(c.called_at)}
+                    {c.caller ? ` · ${personName(c.caller)}` : ''}
+                    {c.sim_label ? ` · ${c.sim_label}` : ''}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })
         )}
-      </ScrollView>
+        <ShowMoreButton {...feedMore} />
+        {!!lead.phone && (
+          <Button title="+ Log a call made from another phone" variant="ghost" onPress={() => logManually('phone')} />
+        )}
+        <Button title="+ WhatsApp log (call or message)" variant="ghost" onPress={() => logManually('whatsapp')} />
+        {calls.some((c) => c.source === 'phone' || c.phone_verified) && (
+          <Text style={styles.hint}>📱 = taken from the phone’s call log (real time and length)</Text>
+        )}
+        {feed.length > 0 && <Text style={styles.hint}>Long-press a call, note or voice note to delete it.</Text>}
+      </Section>
+    </>
+  );
+  const interestEl = (
+    <>
+      {/* Interest */}
+      <Section title="Interest">
+        <InfoRow label="Courses" value={courses.length > 0 ? courses.join(', ') : null} />
+        {tags.length > 0 && (
+          <View style={styles.tags}>
+            {tags.map((t) => (
+              <View key={t.id} style={[styles.tag, { backgroundColor: t.color + '22' }]}>
+                <Text style={[styles.tagText, { color: t.color }]}>{t.name}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </Section>
+    </>
+  );
+  const detailsEl = (
+    <>
+      {/* Contact, guardian and source: the main lines, the rest under "More details" */}
+      <Section title="Details">
+        {lead.phone && <PhoneRow label="Phone" phone={lead.phone} onCall={call} />}
+        <InfoRow label="WhatsApp" value={lead.whatsapp_number} />
+        <InfoRow label="WhatsApp username" value={lead.whatsapp_username ? '@' + lead.whatsapp_username : null} />
+        <InfoRow label="Area" value={lead.area} />
+        <InfoRow label="Source" value={lead.source?.name ?? null} />
+        {detailsOpen && (
+          <>
+            {lead.alt_phone && <PhoneRow label="Alternative" phone={lead.alt_phone} onCall={call} />}
+            <InfoRow label="Email" value={lead.email} />
+            <InfoRow
+              label="Last contacted"
+              value={lead.last_contacted_at ? formatDateTime(lead.last_contacted_at) : 'Never'}
+            />
+            <InfoRow
+              label="Guardian"
+              value={[lead.guardian_name, lead.guardian_relation && `(${lead.guardian_relation})`]
+                .filter(Boolean)
+                .join(' ')}
+            />
+            {lead.guardian_phone && <PhoneRow label="Guardian phone" phone={lead.guardian_phone} onCall={call} />}
+            <InfoRow label="Campaign" value={lead.campaign?.name ?? null} />
+            <InfoRow label="Referred by" value={lead.referred_by} />
+            <InfoRow label="Lead type" value={lead.lead_type?.name ?? null} />
+            <InfoRow label="Added" value={formatDateTime(lead.created_at)} />
+          </>
+        )}
+        <ShowMoreButton
+          expanded={detailsOpen}
+          hidden={1}
+          toggle={() => setDetailsOpen((o) => !o)}
+          label="More details"
+        />
+      </Section>
+    </>
+  );
+  const activityEl = (
+    <>
+      {/* Activity */}
+      <Section title="Activity">
+        {activity.length === 0 ? (
+          <Text style={styles.muted}>No activity yet.</Text>
+        ) : (
+          activityMore.visible.map((item, index) => {
+            const who = actorName(item);
+            const det = (item.details ?? {}) as Record<string, unknown>;
+            const voice = item.action === 'file_added' && det.kind === 'voice' && typeof det.file_id === 'string';
+            return (
+              <Pressable
+                key={item.id}
+                style={styles.timelineRow}
+                disabled={!voice}
+                onPress={() =>
+                  setPlaying({
+                    id: String(det.file_id),
+                    name: String(det.name ?? 'Voice note'),
+                    duration_sec: Number(det.duration_sec ?? 0) || null,
+                  })
+                }
+                accessibilityRole={voice ? 'button' : undefined}
+                accessibilityHint={voice ? 'Plays the voice note' : undefined}
+              >
+                <View style={styles.timelineMarker}>
+                  <View style={styles.timelineDot} />
+                  {index < activityMore.visible.length - 1 && <View style={styles.timelineLine} />}
+                </View>
+                <View style={styles.timelineBody}>
+                  <Text style={styles.timelineText}>{describe(item)}</Text>
+                  <Text style={styles.timelineMeta}>
+                    {formatDateTime(item.created_at)}
+                    {who ? ` · ${who}` : ''}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })
+        )}
+        <ShowMoreButton {...activityMore} />
+        <VoicePlayer file={playing} onClose={() => setPlaying(null)} />
+      </Section>
+    </>
+  );
+  const deleteEl = (
+    <>
+      {hasPermission('leads.delete') && (
+        <Button title="Delete lead" variant="danger" onPress={confirmDelete} fullWidth />
+      )}
+    </>
+  );
+  const screenEl = (
+    <>
+      {!embedded && (
+        <Stack.Screen
+          options={{
+            title: lead.name,
+            // 🌐 The website's full page has its own header
+            headerShown: webLayout !== 'full',
+            headerRight: () => (
+              <Pressable
+                onPress={() => router.push(`/leads/edit/${lead.id}` as Href)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Edit lead"
+              >
+                <Text style={styles.headerAction}>Edit</Text>
+              </Pressable>
+            ),
+          }}
+        />
+      )}
+    </>
+  );
+
+  return (
+    <>
+      {webLayout ? (
+        <WebStudentLayout
+          mode={webLayout}
+          wide={winWidth >= 1280}
+          lead={lead}
+          parts={{
+            screen: screenEl,
+            recent: lastCall || lastNote || lastVoice ? recentEl : null,
+            pipeline: pipelineEl,
+            approval: approvalEl,
+            visit: visitEl,
+            fee: feeEl,
+            papers: papersEl,
+            files: filesEl,
+            follow: followEl,
+            calls: callsEl,
+            interest: interestEl,
+            details: detailsEl,
+            activity: activityEl,
+            remove: deleteEl,
+          }}
+          onWhatsApp={() => (tapOpensTemplates ? setTemplateChannel('whatsapp') : whatsapp())}
+          onChanged={(message) => {
+            showToast(message);
+            load();
+          }}
+        />
+      ) : (
+        <ScrollView
+          style={styles.screen}
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                load();
+              }}
+            />
+          }
+        >
+          {screenEl}
+          {headerEl}
+          {pipelineEl}
+          {approvalEl}
+          {visitEl}
+          {feeEl}
+          {papersEl}
+          {filesEl}
+          {followEl}
+          {callsEl}
+          {interestEl}
+          {detailsEl}
+          {activityEl}
+          {deleteEl}
+        </ScrollView>
+      )}
 
       {toast && (
         <View style={styles.toast} pointerEvents="none">
@@ -1447,7 +1548,12 @@ function PhoneRow({ label, phone, onCall }: { label: string; phone: string; onCa
   return (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
-      <Pressable onPress={() => onCall(phone)} hitSlop={6} accessibilityRole="link" accessibilityLabel={`Call ${phone}`}>
+      <Pressable
+        onPress={() => onCall(phone)}
+        hitSlop={6}
+        accessibilityRole="link"
+        accessibilityLabel={`Call ${phone}`}
+      >
         <Text style={[styles.infoValue, styles.link]}>{phone} 📞</Text>
       </Pressable>
     </View>
@@ -1561,7 +1667,13 @@ const styles = StyleSheet.create({
   hint: { fontSize: fontSize.caption, color: colors.textMuted },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
   infoLabel: { fontSize: fontSize.small, color: colors.textMuted },
-  infoValue: { flexShrink: 1, fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text, textAlign: 'right' },
+  infoValue: {
+    flexShrink: 1,
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    textAlign: 'right',
+  },
   link: { color: colors.primary },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   tag: { paddingVertical: 3, paddingHorizontal: spacing.md, borderRadius: radius.pill },
