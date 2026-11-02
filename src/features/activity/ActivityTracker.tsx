@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 import { AppState, View, type AppStateStatus } from 'react-native';
 
 import { getDeviceId, isCallLogAvailable } from '@/features/call-sync/api';
+import { currentVersionInfo } from '@/features/updates/api';
 import { supabase } from '@/shared/lib/supabase';
 
 // =====================================================================
@@ -38,6 +39,9 @@ type Report = {
   p_device_id?: string;
   p_device_label?: string;
   p_app_version?: string;
+  p_update_id?: string;
+  p_update_at?: string;
+  p_channel?: string;
 };
 
 function uuid(): string {
@@ -49,6 +53,16 @@ function uuid(): string {
 
 const deviceLabel = [Device.manufacturer, Device.modelName].filter(Boolean).join(' ') || undefined;
 const appVersion = Constants.expoConfig?.version ?? undefined;
+
+function updateInfo(): Pick<Report, 'p_update_id' | 'p_update_at' | 'p_channel'> {
+  const u = currentVersionInfo();
+  if (!u.enabled) return {};
+  return {
+    p_update_id: u.builtIn ? undefined : (u.updateId ?? undefined),
+    p_update_at: !u.builtIn && u.createdAt ? u.createdAt.toISOString() : undefined,
+    p_channel: u.channel ?? undefined,
+  };
+}
 
 async function send(report: Report): Promise<boolean> {
   try {
@@ -107,6 +121,8 @@ export function ActivityTracker({ children }: { children: React.ReactNode }) {
         p_device_id: deviceId,
         p_device_label: deviceLabel,
         p_app_version: appVersion,
+        // 📱 Which EAS update runs (More → App versions)
+        ...updateInfo(),
       };
       s.lastPingAt = Date.now();
       send(r).then((ok) => {
