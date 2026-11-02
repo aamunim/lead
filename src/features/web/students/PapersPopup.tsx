@@ -56,7 +56,9 @@ export function PapersPopup({
                     : data.done < data.required
                       ? `${data.required - data.done} required paper${data.required - data.done > 1 ? 's' : ''} missing`
                       : 'All required papers are in'}
-                  {data.originalsHeld ? ` · ${data.originalsHeld} original${data.originalsHeld > 1 ? 's' : ''} with us` : ''}
+                  {data.originalsHeld
+                    ? ` · ${data.originalsHeld} original${data.originalsHeld > 1 ? 's' : ''} with us`
+                    : ''}
                 </Text>
               </View>
               {!!data.folder && <Text style={styles.muted}>📁 File kept at: {data.folder}</Text>}
@@ -100,24 +102,56 @@ export function PapersPopup({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  back: { flex: 1, backgroundColor: 'rgba(16,26,51,0.45)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
-  box: { width: '100%', maxWidth: 480, maxHeight: '85%', gap: spacing.sm, padding: spacing.xl, borderRadius: radius.lg, backgroundColor: colors.surface },
+  back: {
+    flex: 1,
+    backgroundColor: 'rgba(16,26,51,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  box: {
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '85%',
+    gap: spacing.sm,
+    padding: spacing.xl,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
   title: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
   sub: { fontSize: fontSize.small, color: colors.textMuted, marginTop: -4 },
   loader: { marginVertical: spacing.xl },
-  summary: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.background },
+  summary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.background,
+  },
   big: { fontSize: fontSize.heading, fontWeight: fontWeight.bold },
   good: { color: colors.success },
   warn: { color: colors.warning },
   muted: { flexShrink: 1, fontSize: fontSize.caption, color: colors.textMuted },
   list: { marginTop: spacing.xs },
-  row: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
+  row: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   icon: { fontSize: fontSize.body, width: 24 },
   name: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
   missing: { color: colors.warning },
   error: { fontSize: fontSize.small, color: colors.danger },
   buttons: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm },
-  btn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, borderRadius: radius.sm, backgroundColor: colors.primary },
+  btn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary,
+  },
   btnText: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
   ghost: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
   ghostText: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.textMuted },

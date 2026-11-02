@@ -4,6 +4,7 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import {
   DEFAULT_APPROVAL_SETTINGS,
   approveAdmission,
+  listAdmission,
   approveRegistration,
   canApprove,
   getApprovalSettings,
@@ -54,6 +55,9 @@ export type ApprovalLead = {
   registration_by: string | null;
   registration_at: string | null;
   registration_note: string | null;
+  /** 📋 listed without pay */
+  listed_at?: string | null;
+  listed_by?: string | null;
 };
 
 type Sheet =
@@ -66,6 +70,7 @@ type Sheet =
   | 'reg_approve'
   | 'reg_return'
   | 'reg_resubmit'
+  | 'list'
   | null;
 export type ApprovalSheetKind = Exclude<Sheet, null>;
 
@@ -133,9 +138,9 @@ export function ApprovalCard({
       <Step
         n={1}
         title="Admission"
-        status={status}
-        by={nameOf(lead.approval_by)}
-        at={lead.approval_at}
+        status={status === 'waiting' && lead.listed_at ? 'listed' : status}
+        by={nameOf(status === 'waiting' && lead.listed_at ? (lead.listed_by ?? null) : lead.approval_by)}
+        at={status === 'waiting' && lead.listed_at ? lead.listed_at : lead.approval_at}
         note={lead.approval_note}
       />
       <Step
@@ -187,6 +192,13 @@ export function ApprovalCard({
               🔒 Approve opens when {money(settings.admission_min_paid)} is paid (paid {money(paid)}).
             </Text>
           )}
+          {/* 📋 Section + NU Admission ID before any money */}
+          <Button
+            title={lead.listed_at ? '📋 Listed (no pay): change' : '📋 List without pay (section + NU ID)'}
+            variant="secondary"
+            onPress={() => setSheet('list')}
+            fullWidth
+          />
           <View style={styles.row}>
             <View style={styles.flex}>
               <Button title="↩ Send back" variant="secondary" onPress={() => setSheet('return')} fullWidth />
@@ -273,9 +285,11 @@ function Step({
       ? '✅ Approved'
       : status === 'returned'
         ? '↩ Sent back'
-        : status === 'waiting'
-          ? '⏳ Waiting'
-          : 'After the admission';
+        : status === 'listed'
+          ? '📋 Listed (no pay)'
+          : status === 'waiting'
+            ? '⏳ Waiting'
+            : 'After the admission';
   const pill =
     status === 'approved'
       ? styles.pillGood
@@ -465,7 +479,7 @@ export function ApprovalActionSheet({
   const [error, setError] = useState<string | null>(null);
 
   const needsReason = kind === 'return' || kind === 'reg_return';
-  const withPlacement = kind === 'approve' || kind === 'place';
+  const withPlacement = kind === 'approve' || kind === 'place' || kind === 'list';
 
   const save = async () => {
     setError(null);
@@ -474,12 +488,16 @@ export function ApprovalActionSheet({
     if (withPlacement && (!place.courseId || !place.batchId || !place.sectionId)) {
       return setError('Please choose the course, batch and section.');
     }
+    if (kind === 'list' && !nu.trim()) return setError('Please type the NU Admission ID.');
     if (kind === 'approve' && warnings > 0 && !text.trim()) {
       return setError('Some checks are not done. Please write why you approve anyway.');
     }
     setSaving(true);
     try {
-      if (kind === 'approve') {
+      if (kind === 'list') {
+        await listAdmission(lead.id, place, nu, text);
+        onDone('📋 Listed without pay: section and NU Admission ID saved.');
+      } else if (kind === 'approve') {
         await approveAdmission(lead.id, nu, text, place);
         onDone('✅ Admission approved. Registration is next.');
       } else if (kind === 'return') {
@@ -515,6 +533,7 @@ export function ApprovalActionSheet({
   };
 
   const titles: Record<ApprovalSheetKind, string> = {
+    list: '📋 List without pay',
     approve: '✅ Approve admission',
     return: '↩ Send the admission back',
     resubmit: 'Send for admission approval again',
@@ -546,9 +565,15 @@ export function ApprovalActionSheet({
                 A new course changes the fee to that course's fee (its fee talk, or the full fee).
               </Text>
             )}
-            {(kind === 'approve' || kind === 'nu') && (
+            {(kind === 'approve' || kind === 'nu' || kind === 'list') && (
               <TextField
-                label={kind === 'approve' ? 'NU Admission ID (now or later)' : 'NU Admission ID'}
+                label={
+                  kind === 'approve'
+                    ? 'NU Admission ID (now or later)'
+                    : kind === 'list'
+                      ? 'NU Admission ID *'
+                      : 'NU Admission ID'
+                }
                 value={nu}
                 onChangeText={setNu}
                 autoCapitalize="characters"

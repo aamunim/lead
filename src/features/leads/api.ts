@@ -70,6 +70,7 @@ export type LeadListItem = Pick<
   | 'nu_admission_id'
   | 'registration_status'
   | 'admitted_section_id'
+  | 'listed_at'
   // Papers (counts kept up to date by the database)
   | 'papers_required'
   | 'papers_received'
@@ -167,6 +168,8 @@ export type QuickFilter =
   | 'no_nu_id'
   // 📝 Registration (after the admission is approved)
   | 'registration_waiting'
+  // 📋 Listed without pay (section + NU ID, no money yet)
+  | 'listed'
   | 'registered'
   | 'no_section';
 
@@ -272,7 +275,7 @@ function toError(error: { message: string }): Error {
 const LIST_SELECT = `
   id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
   alt_phone, guardian_name, guardian_phone, email, area,
-  approval_status, nu_admission_id, registration_status, admitted_section_id,
+  approval_status, nu_admission_id, registration_status, admitted_section_id, listed_at,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
   fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, admitted_at, admitted_by,
@@ -381,6 +384,7 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
     if (quick === 'approval_returned') {
       query = query.or('approval_status.eq.returned,registration_status.eq.returned');
     }
+    if (quick === 'listed') query = query.eq('approval_status', 'waiting').not('listed_at', 'is', null);
     if (quick === 'registration_waiting') query = query.eq('registration_status', 'waiting');
     if (quick === 'registered') query = query.eq('registration_status', 'approved');
     if (quick === 'no_section') query = query.not('approval_status', 'is', null).is('admitted_section_id', null);

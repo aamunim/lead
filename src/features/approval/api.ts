@@ -64,6 +64,7 @@ export function canApprove(s: ApprovalSettings, profile: MyProfile | null, isAdm
 export function stageBadge(
   approval: string | null | undefined,
   registration: string | null | undefined,
+  listedAt?: string | null,
 ): { text: string; color: 'wait' | 'good' | 'bad' } | null {
   if (approval === 'approved') {
     if (registration === 'approved') return { text: '✅ Registered', color: 'good' };
@@ -71,6 +72,7 @@ export function stageBadge(
     return { text: '📝 Registration waiting', color: 'wait' };
   }
   if (approval === 'returned') return { text: '↩ Admission sent back', color: 'bad' };
+  if (approval === 'waiting' && listedAt) return { text: '📋 Listed (no pay)', color: 'wait' };
   if (approval === 'waiting') return { text: '⏳ Admission waiting', color: 'wait' };
   return null;
 }
@@ -113,6 +115,21 @@ export async function approveAdmission(
     p_course: placement.courseId ?? undefined,
     p_batch: placement.batchId ?? undefined,
     p_section: placement.sectionId ?? undefined,
+  });
+  if (error) throw toError(error);
+}
+
+/** 📋 Listed without pay: the section (and course / batch) and the NU Admission ID, before any money */
+export async function listAdmission(leadId: string, p: Placement, nuAdmissionId: string, note: string): Promise<void> {
+  if (!p.courseId || !p.batchId || !p.sectionId) throw new Error('Please choose the course, batch and section.');
+  if (!nuAdmissionId.trim()) throw new Error('Please type the NU Admission ID.');
+  const { error } = await supabase.rpc('list_admission', {
+    p_lead: leadId,
+    p_course: p.courseId,
+    p_batch: p.batchId,
+    p_section: p.sectionId,
+    p_nu_admission_id: nuAdmissionId.trim(),
+    p_note: note.trim() || undefined,
   });
   if (error) throw toError(error);
 }

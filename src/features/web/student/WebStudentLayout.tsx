@@ -23,6 +23,13 @@ import { FeeChangeSheet } from '@/features/fees/FeeChangeSheet';
 import { downloadLeadFile, listLeadFiles } from '@/features/files/api';
 import { addNoteToLeads, type LeadDetail } from '@/features/leads/api';
 import { listMissingPapers } from '@/features/papers/api';
+import {
+  openWhatsAppOnWeb,
+  setWebWhatsAppMode,
+  webWhatsAppMode,
+  whatsAppDigits,
+  type WebWhatsApp,
+} from '@/features/leads/contact';
 import { dialogOpen, loadPref, onKey, savePref, typingInField } from '@/features/web/prefs';
 import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, isDark, radius, spacing } from '@/shared/theme';
@@ -73,6 +80,8 @@ export function WebStudentLayout({
   lead,
   parts,
   onWhatsApp,
+  onLogWhatsApp,
+  nameOf,
   onChanged,
 }: {
   mode: 'panel' | 'full';
@@ -81,6 +90,9 @@ export function WebStudentLayout({
   lead: LeadDetail;
   parts: StudentParts;
   onWhatsApp: () => void;
+  /** 📝 write down a WhatsApp call / message (the call popup) */
+  onLogWhatsApp: () => void;
+  nameOf: (id: string | null | undefined) => string | null;
   /** something was saved: a short message, then the page loads again */
   onChanged: (message: string) => void;
 }) {
@@ -95,6 +107,9 @@ export function WebStudentLayout({
   const [feeOpen, setFeeOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | 'calls' | 'changes'>('all');
+  // 💬 WhatsApp Web (default) or the Desktop app (calls work only there)
+  const [waOpen, setWaOpen] = useState(false);
+  const [waMode, setWaMode] = useState<WebWhatsApp>(() => webWhatsAppMode());
   const noteRef = useRef<{ focus: () => void } | null>(null);
 
   const setTab = (t: Tab) => {
@@ -181,6 +196,15 @@ export function WebStudentLayout({
   type Step = { tone: 'warn' | 'bad' | 'info'; text: string; action?: { label: string; run: () => void } };
   const steps: Step[] = [];
   if (admitted && settings.enabled && lead.approval_status) {
+    // 📋 No money yet: list without pay (section + NU Admission ID)
+    const toList = lead.approval_status === 'waiting' && !lead.listed_at;
+    if (toList) {
+      steps.push({
+        tone: 'info',
+        text: 'Not listed yet: section + NU Admission ID (no money needed)',
+        action: officer ? { label: '📋 List', run: () => setSheet('list') } : undefined,
+      });
+    }
     if (lead.approval_status === 'waiting') {
       if (paid < settings.admission_min_paid) {
         steps.push({
@@ -217,7 +241,7 @@ export function WebStudentLayout({
         action: officer ? { label: 'Add', run: () => setSheet('ref') } : undefined,
       });
     }
-    if (!lead.nu_admission_id) {
+    if (!lead.nu_admission_id && !toList) {
       steps.push({
         tone: 'warn',
         text: 'No NU Admission ID',
@@ -299,7 +323,7 @@ export function WebStudentLayout({
         .filter(Boolean)
         .join(' · ')
     : '';
-  const badge = admitted ? stageBadge(lead.approval_status, lead.registration_status) : null;
+  const badge = admitted ? stageBadge(lead.approval_status, lead.registration_status, lead.listed_at) : null;
   const due = Number(lead.fee_due ?? 0);
   const compact = mode === 'panel' || !wide;
 
@@ -353,7 +377,8 @@ export function WebStudentLayout({
               onPress={() => (router.canGoBack() ? router.back() : router.navigate('/students' as Href))}
             />
           )}
-          <Action label="💬 WhatsApp" onPress={onWhatsApp} />
+          <Action label={`💬 WhatsApp${waMode === 'app' ? ' (app)' : ''}`} onPress={onWhatsApp} />
+          <Action label="▾" onPress={() => setWaOpen(true)} />
           <Action
             label="📝 Note"
             onPress={() => (mode === 'full' && wide ? noteRef.current?.focus() : setNoteOpen(true))}
@@ -413,8 +438,135 @@ export function WebStudentLayout({
     </>
   );
 
+  // 🧭 Who did what: admitted, listed, approved, registered
+  const when = (iso: string | null | undefined) =>
+    iso
+      ? new Date(iso).toLocaleString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+      : '';
+  const sectionName = places?.sections.find((x) => x.id === lead.admitted_section_id)?.name;
+  const journeyRows: {
+    icon: string;
+    label: string;
+    who: string | null;
+    at: string | null;
+    note?: string | null;
+    tone?: 'bad' | 'off';
+  }[] = admitted
+    ? [
+        { icon: '🎓', label: 'Admitted', who: nameOf(lead.admitted_by), at: lead.admitted_at },
+        ...(lead.listed_at
+          ? [
+              {
+                icon: '📋',
+                label: 'Listed (no pay)',
+                who: nameOf(lead.listed_by),
+                at: lead.listed_at,
+                note: [
+                  sectionName ? `Section ${sectionName}` : null,
+                  lead.nu_admission_id ? `NU ${lead.nu_admission_id}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · '),
+              },
+            ]
+          : []),
+        lead.approval_status === 'approved'
+          ? {
+              icon: '✅',
+              label: 'Admission approved',
+              who: nameOf(lead.approval_by),
+              at: lead.approval_at,
+              note: lead.approval_note,
+            }
+          : lead.approval_status === 'returned'
+            ? {
+                icon: '↩',
+                label: 'Admission sent back',
+                who: nameOf(lead.approval_by),
+                at: lead.approval_at,
+                note: lead.approval_note,
+                tone: 'bad' as const,
+              }
+            : {
+                icon: '⏳',
+                label: 'Admission approval',
+                who: null,
+                at: null,
+                note:
+                  paid < settings.admission_min_paid
+                    ? `needs ${money(settings.admission_min_paid - paid)} more`
+                    : 'waiting',
+                tone: 'off' as const,
+              },
+        reg === 'approved'
+          ? {
+              icon: '📝',
+              label: 'Registered',
+              who: nameOf(lead.registration_by),
+              at: lead.registration_at,
+              note: lead.registration_note,
+            }
+          : reg === 'returned'
+            ? {
+                icon: '↩',
+                label: 'Registration sent back',
+                who: nameOf(lead.registration_by),
+                at: lead.registration_at,
+                note: lead.registration_note,
+                tone: 'bad' as const,
+              }
+            : {
+                icon: '📝',
+                label: 'Registration',
+                who: null,
+                at: null,
+                note:
+                  reg !== 'waiting'
+                    ? 'after the admission'
+                    : paid < settings.registration_min_paid
+                      ? `needs ${money(settings.registration_min_paid - paid)} more`
+                      : 'waiting',
+                tone: 'off' as const,
+              },
+      ]
+    : [];
+  const journey =
+    admitted && settings.enabled ? (
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>🧭 Journey</Text>
+        {journeyRows.map((j, i) => (
+          <View key={j.label} style={styles.jRow}>
+            <View style={styles.jMarker}>
+              <Text style={[styles.jIcon, j.tone === 'off' && styles.jOff]}>{j.icon}</Text>
+              {i < journeyRows.length - 1 && <View style={styles.jLine} />}
+            </View>
+            <View style={styles.flex}>
+              <Text style={[styles.jLabel, j.tone === 'bad' && styles.jBad, j.tone === 'off' && styles.jOff]}>
+                {j.label}
+                {j.who ? <Text style={styles.jWho}>{`  ·  ${j.who}`}</Text> : null}
+              </Text>
+              {(!!j.at || !!j.note) && (
+                <Text style={[styles.jMeta, j.tone === 'bad' && styles.jBad]}>
+                  {[when(j.at), j.note ? (j.tone === 'bad' ? `“${j.note}”` : j.note) : null]
+                    .filter(Boolean)
+                    .join('  ·  ')}
+                </Text>
+              )}
+            </View>
+          </View>
+        ))}
+      </View>
+    ) : null;
+
   const overview = (
     <>
+      {journey}
       {nextSteps}
       {parts.approval}
       {parts.recent && <View style={styles.card}>{parts.recent}</View>}
@@ -429,6 +581,63 @@ export function WebStudentLayout({
 
   const dialogs = (
     <>
+      {waOpen && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setWaOpen(false)}>
+          <Pressable style={styles.waBack} onPress={() => setWaOpen(false)} accessibilityLabel="Close menu">
+            <Pressable style={styles.waBox} onPress={() => undefined}>
+              <Text style={styles.cardTitle}>💬 WhatsApp · {lead.name}</Text>
+              {(
+                [
+                  ['web', '🌐 WhatsApp Web', "Messages in the browser (it can't call)"],
+                  ['app', '🖥 WhatsApp Desktop app', 'Opens the chat; press 📞 there to call'],
+                ] as const
+              ).map(([m, label, hint]) => (
+                <Pressable
+                  key={m}
+                  onPress={() => {
+                    setWebWhatsAppMode(m);
+                    setWaMode(m);
+                    setWaOpen(false);
+                    openWhatsAppOnWeb(lead, m);
+                  }}
+                  style={(st) => [styles.waItem, (st as { hovered?: boolean }).hovered && styles.waHover]}
+                  accessibilityRole="menuitem"
+                >
+                  <Text style={styles.waLabel}>
+                    {label}
+                    {waMode === m ? '  ✓ default' : ''}
+                  </Text>
+                  <Text style={styles.waHint}>{hint}</Text>
+                </Pressable>
+              ))}
+              {!!whatsAppDigits(lead) && (
+                <Pressable
+                  onPress={() => {
+                    copy(`+${whatsAppDigits(lead)}`);
+                    setWaOpen(false);
+                  }}
+                  style={(st) => [styles.waItem, (st as { hovered?: boolean }).hovered && styles.waHover]}
+                  accessibilityRole="menuitem"
+                >
+                  <Text style={styles.waLabel}>📋 Copy the number</Text>
+                  <Text style={styles.waHint}>+{whatsAppDigits(lead)}</Text>
+                </Pressable>
+              )}
+              <Pressable
+                onPress={() => {
+                  setWaOpen(false);
+                  onLogWhatsApp();
+                }}
+                style={(st) => [styles.waItem, (st as { hovered?: boolean }).hovered && styles.waHover]}
+                accessibilityRole="menuitem"
+              >
+                <Text style={styles.waLabel}>📝 Write down a WhatsApp call / message</Text>
+                <Text style={styles.waHint}>What was said, how it went</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
       {sheet && (
         <ApprovalActionSheet
           kind={sheet}
@@ -476,6 +685,7 @@ export function WebStudentLayout({
         <View style={styles.columns}>
           <ScrollView style={styles.colLeft} contentContainerStyle={styles.colContent}>
             <Text style={styles.colTitle}>PROFILE</Text>
+            {journey}
             {nextSteps}
             {parts.approval}
             {parts.pipeline}
@@ -759,6 +969,34 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   cardTitle: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  jRow: { flexDirection: 'row', gap: spacing.md },
+  jMarker: { width: 22, alignItems: 'center' },
+  jIcon: { fontSize: fontSize.body },
+  jLine: { flex: 1, width: 2, minHeight: 10, backgroundColor: colors.border, marginVertical: 2 },
+  jLabel: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text },
+  jWho: { fontWeight: fontWeight.regular, color: colors.textMuted },
+  jMeta: { fontSize: fontSize.caption, color: colors.textMuted, marginBottom: spacing.sm },
+  jBad: { color: colors.danger },
+  jOff: { color: colors.textMuted, opacity: 0.7 },
+  waBack: {
+    flex: 1,
+    backgroundColor: 'rgba(16,26,51,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  waBox: {
+    width: '100%',
+    maxWidth: 420,
+    gap: spacing.xs,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
+  waItem: { paddingVertical: 9, paddingHorizontal: spacing.md, borderRadius: radius.sm },
+  waHover: { backgroundColor: colors.primarySoft },
+  waLabel: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
+  waHint: { fontSize: fontSize.caption, color: colors.textMuted },
   done: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.success },
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   stepDot: { width: 8, height: 8, borderRadius: 4 },

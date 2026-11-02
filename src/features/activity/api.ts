@@ -427,6 +427,8 @@ export function describeChange(
       return { text: '🎓 Sent for approval again', warn: false };
     case 'nu_id_set':
       return { text: `🆔 NU Admission ID: ${d.to ? q(d.to) : 'removed'}`, warn: false };
+    case 'admission_listed':
+      return { text: `📋 Listed without pay${d.nu_admission_id ? ` · NU ${q(d.nu_admission_id)}` : ''}`, warn: false };
     case 'placement_changed':
       return { text: `🏫 Course · batch · section: ${q(d.to)}`, warn: false };
     case 'registration_approved':

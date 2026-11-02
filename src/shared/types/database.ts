@@ -1554,6 +1554,8 @@ export type Database = {
           registration_by: string | null
           registration_at: string | null
           registration_note: string | null
+          listed_at: string | null
+          listed_by: string | null
           admission_note: string | null
           admitted_at: string | null
           admitted_batch_id: string | null
@@ -1626,6 +1628,8 @@ export type Database = {
           registration_by?: string | null
           registration_at?: string | null
           registration_note?: string | null
+          listed_at?: string | null
+          listed_by?: string | null
           admission_note?: string | null
           admitted_at?: string | null
           admitted_batch_id?: string | null
@@ -1698,6 +1702,8 @@ export type Database = {
           registration_by?: string | null
           registration_at?: string | null
           registration_note?: string | null
+          listed_at?: string | null
+          listed_by?: string | null
           admission_note?: string | null
           admitted_at?: string | null
           admitted_batch_id?: string | null
@@ -2571,6 +2577,17 @@ export type Database = {
         Returns: undefined
       }
       lead_paid: { Args: { p_lead: string }; Returns: number }
+      list_admission: {
+        Args: {
+          p_lead: string
+          p_course: string
+          p_batch: string
+          p_section: string
+          p_nu_admission_id: string
+          p_note?: string
+        }
+        Returns: undefined
+      }
       upload_rules_setting: { Args: never; Returns: Json }
       can_edit_upload_rules: { Args: never; Returns: boolean }
       set_upload_defaults: { Args: { p_img_max_side: number; p_img_max_kb: number; p_pdf_max_kb: number }; Returns: undefined }

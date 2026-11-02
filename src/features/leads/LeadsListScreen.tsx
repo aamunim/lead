@@ -141,6 +141,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         ...(approvalOn
           ? [
               { key: 'approval_waiting' as QuickFilter, label: '⏳ Admission waiting' },
+              { key: 'listed' as QuickFilter, label: '📋 Listed' },
               { key: 'registration_waiting' as QuickFilter, label: '📝 Registration waiting' },
               { key: 'registered' as QuickFilter, label: '✅ Registered' },
               { key: 'approval_returned' as QuickFilter, label: '↩ Sent back' },

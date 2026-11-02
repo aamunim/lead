@@ -308,7 +308,8 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
 // =====================================================================
 // Take a payment
 // =====================================================================
-function PaySheet({
+/** 💵 Take a payment (also from the website’s table row) */
+export function PaySheet({
   visible,
   leadId,
   due,

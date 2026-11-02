@@ -131,7 +131,55 @@ async function openWhatsAppHome(username: string): Promise<boolean> {
  * a template's text is copied instead, after the username.
  * Returns false when WhatsApp did not open.
  */
+// ---------------------------------------------------------------------
+// 🌐 Website: WhatsApp Web (default) or the WhatsApp Desktop app
+//   (calls only work in the Desktop app; WhatsApp Web can't call)
+// ---------------------------------------------------------------------
+export type WebWhatsApp = 'web' | 'app';
+const WA_KEY = 'web_whatsapp';
+
+export function webWhatsAppMode(): WebWhatsApp {
+  try {
+    return localStorage.getItem(WA_KEY) === 'app' ? 'app' : 'web';
+  } catch {
+    return 'web';
+  }
+}
+
+export function setWebWhatsAppMode(m: WebWhatsApp): void {
+  try {
+    localStorage.setItem(WA_KEY, m);
+  } catch {
+    // not remembered
+  }
+}
+
+/** The number in WhatsApp's form (8801…), or null */
+export function whatsAppDigits(lead: LeadContact): string | null {
+  const number = lead.whatsapp_number || lead.phone;
+  return number ? waDigits(number) : null;
+}
+
+/** 🌐 Open the chat in WhatsApp Web (a new tab) or the Desktop app */
+export function openWhatsAppOnWeb(lead: LeadContact, mode: WebWhatsApp = webWhatsAppMode(), text?: string): boolean {
+  const d = whatsAppDigits(lead);
+  const t = text ? encodeURIComponent(text) : '';
+  if (!d) {
+    if (!lead.whatsapp_username) return false;
+    window.open('https://web.whatsapp.com/', '_blank');
+    return true;
+  }
+  if (mode === 'app') {
+    window.location.href = `whatsapp://send?phone=${d}${t ? `&text=${t}` : ''}`;
+  } else {
+    window.open(`https://web.whatsapp.com/send?phone=${d}${t ? `&text=${t}` : ''}`, '_blank');
+  }
+  return true;
+}
+
 export async function openWhatsApp(lead: LeadContact, text?: string): Promise<boolean> {
+  // 🌐 Website: WhatsApp Web (or the Desktop app, if chosen)
+  if (Platform.OS === 'web') return openWhatsAppOnWeb(lead, webWhatsAppMode(), text);
   const number = lead.whatsapp_number || lead.phone;
   if (number) {
     const d = waDigits(number);
