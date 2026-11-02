@@ -57,7 +57,7 @@ export function TodayStats({ onOpenCalls }: { onOpenCalls?: () => void }) {
       bg: md.primaryC,
       fg: md.onPrimaryC,
       value: s ? String(s.today) : '–',
-      label: 'Calls today',
+      label: 'Calls',
       onPress: onOpenCalls,
     },
     {
@@ -73,7 +73,7 @@ export function TodayStats({ onOpenCalls }: { onOpenCalls?: () => void }) {
       bg: md.warnC,
       fg: md.onWarnC,
       value: s ? String(s.visits) : '–',
-      label: 'Visits today',
+      label: 'Visits',
       onPress: onOpenCalls,
     },
     {
@@ -81,7 +81,7 @@ export function TodayStats({ onOpenCalls }: { onOpenCalls?: () => void }) {
       bg: md.okC,
       fg: md.onOkC,
       value: s?.taken != null ? taka(s.taken) : '–',
-      label: 'Taken today',
+      label: 'Taken',
       onPress: () => router.push({ pathname: '/students', params: { quick: 'paid' } } as unknown as Href),
     },
   ];
@@ -92,9 +92,7 @@ export function TodayStats({ onOpenCalls }: { onOpenCalls?: () => void }) {
     <View style={styles.grid}>
       {shown.map((t) => (
         <Tap key={t.label} onPress={t.onPress} style={styles.tile} label={`${t.label}: ${t.value}`}>
-          <View style={[styles.icon, { backgroundColor: t.bg }]}>
-            <MIcon name={t.icon} size={20} color={t.fg} />
-          </View>
+          <MIcon name={t.icon} size={18} color={t.fg} />
           <Text style={styles.value} numberOfLines={1}>
             {t.value}
           </Text>
@@ -108,18 +106,17 @@ export function TodayStats({ onOpenCalls }: { onOpenCalls?: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 18 },
+  grid: { flexDirection: 'row', gap: 8, marginTop: 12 },
   tile: {
-    flexBasis: '47%',
-    flexGrow: 1,
-    padding: 14,
-    paddingBottom: 12,
-    gap: 6,
-    borderRadius: 16,
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+    paddingTop: 10,
+    paddingBottom: 8,
+    borderRadius: 14,
     backgroundColor: md.surface1,
     overflow: 'hidden',
   },
-  icon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  value: { fontSize: 26, lineHeight: 30, fontWeight: fontWeight.semibold, color: colors.text },
-  label: { fontSize: fontSize.caption, color: colors.textMuted, letterSpacing: 0.2 },
+  value: { fontSize: 17, lineHeight: 22, fontWeight: fontWeight.semibold, color: colors.text },
+  label: { fontSize: 11, color: colors.textMuted },
 });

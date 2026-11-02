@@ -12,7 +12,7 @@ import {
   type LeadReport,
 } from '@/features/reports/api';
 import { PipelineBars } from '@/features/reports/charts';
-import { card } from '@/features/home/md';
+import { B, Fold, md } from '@/features/home/md';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -50,27 +50,31 @@ export function ReportHomeCard() {
   const s = report.summary;
 
   return (
-    <Pressable
-      onPress={() => router.push('/reports' as Href)}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={`This month: ${s.new_leads} new leads, ${s.admitted} admitted. Open reports`}
+    <Fold
+      id="month"
+      icon="insights"
+      tint={{ bg: md.primaryC, fg: md.onPrimaryC }}
+      title="This month"
+      summary={
+        <>
+          <B>{s.admitted}</B> admitted
+        </>
+      }
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>This month</Text>
-        <Text style={styles.link}>Reports ›</Text>
+      <View style={styles.body}>
+        <View style={styles.stats}>
+          <Stat value={String(s.new_leads)} label="new" />
+          <Stat value={String(s.admitted)} label="admitted" />
+          <Stat value={pct(s.cohort_admitted, s.new_leads)} label="conversion" />
+          <Stat value={String(s.lost)} label="lost" />
+        </View>
+        {/* Where this month's new leads are now */}
+        {s.new_leads > 0 && <PipelineBars steps={report.pipeline} mode="period" compact />}
+        <Pressable onPress={() => router.push('/reports' as Href)} accessibilityRole="button" hitSlop={8}>
+          <Text style={styles.link}>Open Reports →</Text>
+        </Pressable>
       </View>
-
-      <View style={styles.stats}>
-        <Stat value={String(s.new_leads)} label="new" />
-        <Stat value={String(s.admitted)} label="admitted" />
-        <Stat value={pct(s.cohort_admitted, s.new_leads)} label="conversion" />
-        <Stat value={String(s.lost)} label="lost" />
-      </View>
-
-      {/* Where this month's new leads are now */}
-      {s.new_leads > 0 && <PipelineBars steps={report.pipeline} mode="period" compact />}
-    </Pressable>
+    </Fold>
   );
 }
 
@@ -84,12 +88,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    gap: spacing.md,
-    padding: spacing.lg,
-    ...card,
-    marginTop: 16,
-  },
+  body: { gap: spacing.md, padding: spacing.md, paddingHorizontal: spacing.lg },
   pressed: { opacity: 0.8 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
