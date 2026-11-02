@@ -11,6 +11,7 @@ import { listSyncHealth } from '@/features/call-sync/health';
 import { canImportContacts } from '@/features/contacts/api';
 import { countDiscountsToAnswer } from '@/features/fees/api';
 import { checkAndDownload, currentVersionInfo, restartWithUpdate } from '@/features/updates/api';
+import { WhatsNewSheet } from '@/features/updates/WhatsNewSheet';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
@@ -50,6 +51,7 @@ function PhoneMore() {
   // 🔄 EAS Update (not in development builds)
   const update = currentVersionInfo();
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'ready' | 'latest'>('idle');
+  const [whatsNew, setWhatsNew] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -225,6 +227,15 @@ function PhoneMore() {
             {canManageSettings && (
               <Row icon="⚙️" title="Settings" href="/settings" divider={canManageUsers} />
             )}
+            {canManageSettings && (
+              <Row
+                icon="📱"
+                title="App versions"
+                subtitle="Who runs which update"
+                href={'/app-versions' as Href}
+                divider
+              />
+            )}
           </View>
         </View>
       )}
@@ -233,7 +244,14 @@ function PhoneMore() {
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>ABOUT</Text>
         <View style={styles.group}>
-          <View style={styles.row}>
+          <Pressable
+            onPress={() => setWhatsNew(true)}
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.rowTitle}>🆕 What’s new</Text>
+          </Pressable>
+          <View style={[styles.row, styles.divider]}>
             <Text style={styles.rowTitle}>App version</Text>
             <Text style={styles.muted}>{Constants.expoConfig?.version ?? '—'}</Text>
           </View>
@@ -285,6 +303,7 @@ function PhoneMore() {
         fullWidth
       />
       <Button title="Sign out" variant="secondary" onPress={handleSignOut} loading={signingOut} fullWidth />
+      {whatsNew && <WhatsNewSheet onClose={() => setWhatsNew(false)} />}
     </ScrollView>
   );
 }

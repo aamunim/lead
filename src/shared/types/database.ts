@@ -2427,9 +2427,27 @@ export type Database = {
           p_id: string
           p_last_seen_at: string
           p_started_at: string
+          p_update_id?: string
+          p_update_at?: string
+          p_channel?: string
         }
         Returns: undefined
       }
+      app_versions: {
+        Args: never
+        Returns: {
+          user_id: string
+          full_name: string
+          role_name: string | null
+          device_label: string | null
+          app_version: string | null
+          update_id: string | null
+          update_at: string | null
+          channel: string | null
+          last_seen_at: string | null
+        }[]
+      }
+      ask_app_update: { Args: { p_users: string[] }; Returns: number }
       plan_visit: {
         Args: { p_at: string; p_lead_id: string; p_note?: string }
         Returns: string

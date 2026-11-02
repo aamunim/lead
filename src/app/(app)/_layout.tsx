@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 
 import { ActivityTracker } from '@/features/activity/ActivityTracker';
 import { PushSetup } from '@/features/notifications/PushSetup';
+import { WhatsNewOnUpdate } from '@/features/updates/WhatsNewSheet';
 import { colors, fontWeight } from '@/shared/theme';
 import { isWeb } from '@/features/web/api';
 import { WebShell } from '@/features/web/WebShell';
@@ -54,6 +55,8 @@ export default function AppLayout() {
       {/* Phone push: token, taps, app icon number */}
       <PushSetup />
       {stack}
+      {/* 🆕 After an update: what changed (once) */}
+      <WhatsNewOnUpdate />
     </ActivityTracker>
   );
 }
