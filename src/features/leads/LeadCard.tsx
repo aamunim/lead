@@ -13,7 +13,7 @@ import { visitBadge } from '@/features/visits/api';
 import { clock } from '@/features/voice/format';
 import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
-import { approvalBadge } from '@/features/approval/api';
+import { stageBadge } from '@/features/approval/api';
 
 // =====================================================================
 // 🗂 One lead's card: the Leads / Students list and the pipeline board
@@ -104,7 +104,7 @@ export function LeadCard({
 
   const admittedTo =
     kind === 'won' && lead.admitted_course
-      ? [lead.admitted_course.name, lead.admitted_batch?.name].filter(Boolean).join(' · ')
+      ? [lead.admitted_course.name, lead.admitted_batch?.name, lead.admitted_section ? `Sec ${lead.admitted_section.name}` : null].filter(Boolean).join(' · ')
       : null;
   const metaParts = (
     student
@@ -142,7 +142,7 @@ export function LeadCard({
 
   // 💰 Negotiating / ⏳ Discount / 💰 −৳3,500
   const fee = kind === 'open' || kind === 'won' ? feeBadge(lead) : null;
-  const approval = student && kind === 'won' ? approvalBadge(lead.approval_status) : null;
+  const approval = student && kind === 'won' ? stageBadge(lead.approval_status, lead.registration_status) : null;
   const approvalColor =
     approval?.color === 'good' ? colors.success : approval?.color === 'bad' ? colors.danger : colors.warning;
 

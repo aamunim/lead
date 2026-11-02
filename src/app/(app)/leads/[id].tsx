@@ -552,13 +552,21 @@ export function LeadDetailView({
       case 'files_downloaded':
         return `📦 Downloaded all files (${d.count ?? 0})`;
       case 'admission_approved':
-        return `✅ Admission approved${d.nu_admission_id ? ` · NU ${d.nu_admission_id}` : ''}${d.note ? ` · “${d.note}”` : ''}`;
+        return `✅ Admission approved${d.section ? ` · Section ${d.section}` : ''}${d.nu_admission_id ? ` · NU ${d.nu_admission_id}` : ''}${d.note ? ` · “${d.note}”` : ''}`;
       case 'admission_returned':
         return `↩ Admission sent back: ${d.reason ?? ''}`;
       case 'admission_resubmitted':
         return `🎓 Sent for approval again${d.note ? `: ${d.note}` : ''}`;
       case 'nu_id_set':
         return d.to ? `🆔 NU Admission ID: ${d.to}${d.from ? ` (was ${d.from})` : ''}` : `🆔 NU Admission ID removed (was ${d.from ?? ''})`;
+      case 'placement_changed':
+        return `🏫 ${d.from ? `${d.from} → ` : ''}${d.to ?? ''}`;
+      case 'registration_approved':
+        return `📝 Registration approved${d.note ? ` · “${d.note}”` : ''}`;
+      case 'registration_returned':
+        return `↩ Registration sent back${d.reason ? `: ${d.reason}` : ''}`;
+      case 'registration_resubmitted':
+        return `📝 Registration sent again${d.note ? ` · ${d.note}` : ''}`;
       case 'final_fee_changed':
         return `💰 Final fee changed: ${money(Number(d.from ?? 0))} → ${money(Number(d.to ?? 0))} (discount ${money(Number(d.discount_from ?? 0))} → ${money(Number(d.discount_to ?? 0))})${d.reason ? ` · ${d.reason}` : ''}`;
       case 'student_ref_changed':

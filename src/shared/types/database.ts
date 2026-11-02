@@ -548,6 +548,12 @@ export type Database = {
         }
         Relationships: []
       }
+      batch_sections: {
+        Row: { id: string; batch_id: string; name: string; sort_order: number; is_active: boolean; created_at: string }
+        Insert: { id?: string; batch_id: string; name: string; sort_order?: number; is_active?: boolean; created_at?: string }
+        Update: { id?: string; batch_id?: string; name?: string; sort_order?: number; is_active?: boolean; created_at?: string }
+        Relationships: []
+      }
       batches: {
         Row: {
           class_time: string | null
@@ -1519,6 +1525,11 @@ export type Database = {
           approval_note: string | null
           approval_status: string | null
           nu_admission_id: string | null
+          admitted_section_id: string | null
+          registration_status: string | null
+          registration_by: string | null
+          registration_at: string | null
+          registration_note: string | null
           admission_note: string | null
           admitted_at: string | null
           admitted_batch_id: string | null
@@ -1586,6 +1597,11 @@ export type Database = {
           approval_note?: string | null
           approval_status?: string | null
           nu_admission_id?: string | null
+          admitted_section_id?: string | null
+          registration_status?: string | null
+          registration_by?: string | null
+          registration_at?: string | null
+          registration_note?: string | null
           admission_note?: string | null
           admitted_at?: string | null
           admitted_batch_id?: string | null
@@ -1653,6 +1669,11 @@ export type Database = {
           approval_note?: string | null
           approval_status?: string | null
           nu_admission_id?: string | null
+          admitted_section_id?: string | null
+          registration_status?: string | null
+          registration_by?: string | null
+          registration_at?: string | null
+          registration_note?: string | null
           admission_note?: string | null
           admitted_at?: string | null
           admitted_batch_id?: string | null
@@ -2507,7 +2528,25 @@ export type Database = {
       }
       link_voice_notes: { Args: { p_call_id: string; p_file_ids: string[] }; Returns: number }
       password_changed: { Args: never; Returns: undefined }
-      approve_admission: { Args: { p_lead: string; p_note?: string; p_nu_admission_id?: string }; Returns: undefined }
+      approve_admission: {
+        Args: {
+          p_lead: string
+          p_note?: string
+          p_nu_admission_id?: string
+          p_course?: string
+          p_batch?: string
+          p_section?: string
+        }
+        Returns: undefined
+      }
+      approve_registration: { Args: { p_lead: string; p_note?: string }; Returns: undefined }
+      return_registration: { Args: { p_lead: string; p_reason: string }; Returns: undefined }
+      resubmit_registration: { Args: { p_lead: string; p_note?: string }; Returns: undefined }
+      set_admission_placement: {
+        Args: { p_lead: string; p_course: string; p_batch: string; p_section: string }
+        Returns: undefined
+      }
+      lead_paid: { Args: { p_lead: string }; Returns: number }
       return_admission: { Args: { p_lead: string; p_reason: string }; Returns: undefined }
       resubmit_admission: { Args: { p_lead: string; p_note?: string }; Returns: undefined }
       set_nu_admission_id: { Args: { p_lead: string; p_value: string }; Returns: undefined }

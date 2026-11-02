@@ -153,6 +153,7 @@ export const VARIABLES: { key: string; label: string }[] = [
   { key: 'next_call', label: 'Next call' },
   { key: 'papers_missing', label: 'Papers missing' },
   { key: 'student_id', label: 'Student ID' },
+  { key: 'section', label: 'Section' },
   { key: 'my_name', label: 'My name' },
   { key: 'my_phone', label: 'My phone' },
   { key: 'institute', label: 'Institute' },
@@ -197,7 +198,7 @@ export async function loadTemplateContext(
   const { data: lead } = await supabase
     .from('leads')
     .select(
-      'name, student_ref, next_follow_up_at, visit_at, visit_status, admitted_course_id, admitted_batch_id, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, lead_courses(course_id)',
+      'name, student_ref, next_follow_up_at, visit_at, visit_status, admitted_course_id, admitted_batch_id, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, lead_courses(course_id), section:batch_sections(name)',
     )
     .eq('id', leadId)
     .maybeSingle();
@@ -205,6 +206,7 @@ export async function loadTemplateContext(
   const l = lead as unknown as {
     name: string;
     student_ref: string | null;
+    section: { name: string } | null;
     next_follow_up_at: string | null;
     visit_at: string | null;
     visit_status: string | null;
@@ -278,6 +280,7 @@ export async function loadTemplateContext(
     next_call: dateText(l?.next_follow_up_at, true),
     papers_missing: missing.join('\n'),
     student_id: l?.student_ref ?? '',
+    section: l?.section?.name ?? '',
     my_name: me?.full_name ?? '',
     my_phone: me?.phone ?? '',
     institute: settings.institute.name,
