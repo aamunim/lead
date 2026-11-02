@@ -94,3 +94,15 @@ links).
   - **Last call / note**: click → every call and note of the student.
   - **Fee ✏️** (Admission Officer): change the total discount / final fee
     (reason needed; not below what is paid). Also on the Fee card in the app.
+
+## ITTC look (website only)
+
+- Name: **ITTC Admission Management System** (Ideal Teachers' Training College);
+  the logo is in `assets/web/` (also the browser tab icon). The phone app keeps its name.
+- **Sign-in page**: the college on the left, the sign-in card on the right
+  (show / hide password, Caps Lock warning, remember my email — never the password).
+- **🖥 / ☀️ / 🌙** in the top bar: System (like the computer), Light or Dark.
+  The page reloads once with the new colours.
+- **☰ Comfortable / Compact** rows; **📋** next to College ID, NU ID and phone on a hovered row.
+- Admission Officer: the Students menu shows how many wait for approval; a note
+  pops up when new ones come (checked every minute) → **Show** opens them.

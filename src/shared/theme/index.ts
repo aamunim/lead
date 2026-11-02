@@ -1,7 +1,9 @@
+import { Platform } from 'react-native';
+
 // ---------------------------------------------------------------------
 // Colors
 // ---------------------------------------------------------------------
-export const colors = {
+const light = {
   // Brand
   primary: '#3557D4',
   primaryDark: '#2440A8',
@@ -32,7 +34,66 @@ export const colors = {
   hot: '#D9480F',
   warm: '#E0901C',
   cold: '#64748B',
-} as const;
+};
+
+export type Colors = { [K in keyof typeof light]: string };
+
+// 🌐🌙 The website's dark colours (the phone app stays light)
+const dark: Colors = {
+  primary: '#6E8BFF',
+  primaryDark: '#4C6BE6',
+  primarySoft: '#1E2949',
+  accent: '#F2A93B',
+
+  text: '#E7EBF4',
+  textMuted: '#9AA4BB',
+  textOnPrimary: '#FFFFFF',
+
+  background: '#0D1322',
+  surface: '#161E31',
+  border: '#28324B',
+
+  success: '#3FB97A',
+  successSoft: '#14301F',
+  warning: '#E6A845',
+  warningSoft: '#3A2B12',
+  danger: '#F2805E',
+  dangerSoft: '#3C1D15',
+  info: '#8CA6FF',
+  infoSoft: '#1E2949',
+
+  hot: '#F26B3A',
+  warm: '#E9A43C',
+  cold: '#94A3B8',
+};
+
+/** 🌐 Website colour choice (Settings in the top bar): light / dark / system */
+export type WebTheme = 'light' | 'dark' | 'system';
+export const WEB_THEME_KEY = 'web_theme';
+
+export function webThemeChoice(): WebTheme {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(WEB_THEME_KEY) : null;
+    const v = raw ? (JSON.parse(raw) as WebTheme) : 'system';
+    return v === 'light' || v === 'dark' ? v : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function startsDark(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  const choice = webThemeChoice();
+  if (choice !== 'system') return choice === 'dark';
+  return !!window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+}
+
+/** True when the website is shown in dark colours (always false on the phone) */
+export const isDark = startsDark();
+
+// Chosen once when the page opens (all styles are built from it); a new
+// choice reloads the page.
+export const colors: Colors = isDark ? dark : light;
 
 // ---------------------------------------------------------------------
 // Spacing (4-point scale)

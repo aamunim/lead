@@ -40,7 +40,7 @@ import { countActiveFilters, type LeadFilters } from '@/features/leads/filters';
 import { ago, callLineText } from '@/features/leads/lastActivity';
 import { StudentsSummary } from '@/features/students/StudentsSummary';
 import { dialogOpen, loadPref, onKey, savePref, typingInField } from '@/features/web/prefs';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { colors, fontSize, fontWeight, isDark, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
 // 🌐🎓 Students on a computer screen
@@ -66,7 +66,12 @@ type ColKey =
 type PopupKind = 'papers' | 'notes' | 'fee' | 'approve' | 'return';
 
 /** What a row's cells can open */
-type Act = { officer: boolean; open: (kind: PopupKind, r: LeadListItem) => void };
+type Act = {
+  officer: boolean;
+  open: (kind: PopupKind, r: LeadListItem) => void;
+  /** 📋 copy a value (College ID, NU ID, phone) */
+  copy: (value: string, what: string) => void;
+};
 
 type Col = {
   key: ColKey;
@@ -98,11 +103,50 @@ const PANEL_COLS: ColKey[] = ['ref', 'name', 'fee', 'papers', 'approval'];
 /** Narrowest a growing column gets (then the table scrolls sideways) */
 const FLEX_MIN = 150;
 
-const DEFAULT_COLS: ColKey[] = ['ref', 'name', 'phone', 'course', 'fee', 'papers', 'approval', 'nu', 'last', 'admitted'];
+const DEFAULT_COLS: ColKey[] = [
+  'ref',
+  'name',
+  'phone',
+  'course',
+  'fee',
+  'papers',
+  'approval',
+  'nu',
+  'last',
+  'admitted',
+];
 // (v2: Papers shown by default)
 const COLS_KEY = 'web_students_cols_v2';
 const SORT_KEY = 'web_students_sort';
+const DENSE_KEY = 'web_students_compact';
 const CHECK_W = 40;
+
+/** Table colours (light / dark website) */
+const T = isDark
+  ? {
+      head: '#1B2439',
+      headHover: '#232E48',
+      zebra: '#141C2E',
+      hover: '#1D2740',
+      ticked: '#1C2848',
+      line: '#222B42',
+      dim: '#5E6883',
+      track: '#28324B',
+      box: '#4A5573',
+      dark: '#080C17',
+    }
+  : {
+      head: '#F1F4FA',
+      headHover: '#E6EBF6',
+      zebra: '#FBFCFE',
+      hover: '#F2F5FC',
+      ticked: '#EEF3FF',
+      line: '#EEF1F6',
+      dim: '#A3ABBD',
+      track: '#E8ECF4',
+      box: '#B5BED3',
+      dark: '#101A33',
+    };
 
 const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
@@ -156,6 +200,8 @@ export function WebStudentsScreen() {
   const [sort, setSort] = useState<LeadSort>(() => loadPref<LeadSort>(SORT_KEY, 'admitted_newest'));
   const [cols, setCols] = useState<ColKey[]>(() => loadPref<ColKey[]>(COLS_KEY, DEFAULT_COLS));
   const [colsOpen, setColsOpen] = useState(false);
+  // Row height: comfortable or compact (more students on one screen)
+  const [dense, setDense] = useState(() => loadPref(DENSE_KEY, false));
 
   // Search waits a moment while typing
   const [debounced, setDebounced] = useState(search);
@@ -346,7 +392,16 @@ export function WebStudentsScreen() {
   };
 
   const nFilters = countActiveFilters(filters);
-  const act: Act = { officer, open: (kind, r) => setPopup({ kind, row: r }) };
+  const act: Act = {
+    officer,
+    open: (kind, r) => setPopup({ kind, row: r }),
+    copy: (value, what) => {
+      navigator.clipboard
+        ?.writeText(value)
+        .then(() => showToast(`📋 ${what} copied: ${value}`))
+        .catch(() => showToast('Could not copy.'));
+    },
+  };
   const popupDone = (message: string) => {
     setPopup(null);
     showToast(message);
@@ -433,6 +488,7 @@ export function WebStudentsScreen() {
                 ticked={ticked.has(r.id)}
                 nameOf={nameOf}
                 act={act}
+                dense={dense}
                 onOpen={() => openStudent(r.id)}
                 onTick={() => toggleTick(r.id)}
               />
@@ -463,6 +519,14 @@ export function WebStudentsScreen() {
               onPress={() => setFilterOpen(true)}
             />
             <ToolButton label="▦ Columns" onPress={() => setColsOpen(true)} />
+            <ToolButton
+              label={dense ? '☰ Compact' : '☰ Comfortable'}
+              a11y="Row height"
+              onPress={() => {
+                setDense(!dense);
+                savePref(DENSE_KEY, !dense);
+              }}
+            />
             <ToolButton
               label={exporting ? 'Exporting…' : ticked.size ? `⬇ Export ${ticked.size}` : '⬇ Export'}
               onPress={exporting ? undefined : doExport}
@@ -569,12 +633,7 @@ export function WebStudentsScreen() {
         />
       )}
       {popup?.kind === 'fee' && (
-        <FeeChangeSheet
-          leadId={popup.row.id}
-          name={popup.row.name}
-          onClose={() => setPopup(null)}
-          onDone={popupDone}
-        />
+        <FeeChangeSheet leadId={popup.row.id} name={popup.row.name} onClose={() => setPopup(null)} onDone={popupDone} />
       )}
       {(popup?.kind === 'approve' || popup?.kind === 'return') && (
         <ApprovalActionSheet
@@ -630,9 +689,11 @@ function Row({
   ticked,
   nameOf,
   act,
+  dense,
   onOpen,
   onTick,
 }: {
+  dense: boolean;
   row: LeadListItem;
   shown: Col[];
   zebra: boolean;
@@ -648,6 +709,7 @@ function Row({
       onPress={onOpen}
       style={(state) => [
         styles.row,
+        dense && styles.rowDense,
         zebra && styles.rowZebra,
         (state as { hovered?: boolean }).hovered && styles.rowHover,
         ticked && styles.rowTicked,
@@ -656,20 +718,31 @@ function Row({
       accessibilityRole="button"
       accessibilityLabel={`Open ${r.name}`}
     >
-      <Pressable
-        style={[styles.cell, { width: CHECK_W }]}
-        onPress={onTick}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: ticked }}
-        accessibilityLabel={`Tick ${r.name}`}
-      >
-        <Box on={ticked} />
-      </Pressable>
-      {shown.map((c) => (
-        <View key={c.key} style={[styles.cell, colStyle(c)]}>
-          <Cell col={c.key} r={r} nameOf={nameOf} act={act} />
-        </View>
-      ))}
+      {(state) => (
+        <>
+          <Pressable
+            style={[styles.cell, { width: CHECK_W }]}
+            onPress={onTick}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: ticked }}
+            accessibilityLabel={`Tick ${r.name}`}
+          >
+            <Box on={ticked} />
+          </Pressable>
+          {shown.map((c) => (
+            <View key={c.key} style={[styles.cell, dense && styles.cellDense, colStyle(c)]}>
+              <Cell
+                col={c.key}
+                r={r}
+                nameOf={nameOf}
+                act={act}
+                dense={dense}
+                hovered={!!(state as { hovered?: boolean }).hovered}
+              />
+            </View>
+          ))}
+        </>
+      )}
     </Pressable>
   );
 }
@@ -693,19 +766,39 @@ function Cell({
   r,
   nameOf,
   act,
+  dense = false,
+  hovered = false,
 }: {
   col: ColKey;
   r: LeadListItem;
   nameOf: (id: string | null) => string | null;
   act: Act;
+  dense?: boolean;
+  hovered?: boolean;
 }) {
+  // 📋 shown on a hovered row next to IDs and the phone
+  const copyBtn = (value: string | null | undefined, what: string) =>
+    hovered && value ? (
+      <Pressable
+        onPress={() => act.copy(value, what)}
+        hitSlop={6}
+        style={(state) => [styles.copy, (state as { hovered?: boolean }).hovered && styles.copyHover]}
+        accessibilityRole="button"
+        accessibilityLabel={`Copy ${what}`}
+      >
+        <Text style={styles.copyText}>📋</Text>
+      </Pressable>
+    ) : null;
   const admitted = r.stage?.kind === 'won';
   switch (col) {
     case 'ref':
       return (
-        <Text style={[styles.mono, !r.student_ref && styles.dim]} numberOfLines={1}>
-          {r.student_ref ?? '—'}
-        </Text>
+        <View style={styles.withCopy}>
+          <Text style={[styles.mono, styles.shrink, !r.student_ref && styles.dim]} numberOfLines={1}>
+            {r.student_ref ?? '—'}
+          </Text>
+          {copyBtn(r.student_ref, 'College ID')}
+        </View>
       );
     case 'name': {
       const cancelled = r.stage?.kind === 'cancelled';
@@ -718,12 +811,17 @@ function Cell({
         </View>
       );
     }
-    case 'phone':
+    case 'phone': {
+      const phone = r.phone ?? r.whatsapp_number ?? (r.whatsapp_username ? '@' + r.whatsapp_username : null);
       return (
-        <Text style={styles.text} numberOfLines={1}>
-          {r.phone ?? r.whatsapp_number ?? (r.whatsapp_username ? '@' + r.whatsapp_username : '—')}
-        </Text>
+        <View style={styles.withCopy}>
+          <Text style={[styles.text, styles.shrink]} numberOfLines={1}>
+            {phone ?? '—'}
+          </Text>
+          {copyBtn(phone, 'Phone')}
+        </View>
       );
+    }
     case 'course':
       return (
         <Text style={styles.text} numberOfLines={1}>
@@ -739,7 +837,7 @@ function Cell({
         <View style={styles.feeCell}>
           <Text style={[styles.text, due > 0 ? styles.bad : styles.good]} numberOfLines={1}>
             {due > 0 ? `${money(due)} due` : '✓ Paid'}
-            {act.officer && admitted ? <Text style={styles.editMark}>  ✏️</Text> : null}
+            {act.officer && admitted ? <Text style={styles.editMark}> ✏️</Text> : null}
           </Text>
           <View style={styles.bar}>
             <View style={[styles.barFill, { width: `${Math.round(paidPart * 100)}%` }, due <= 0 && styles.barDone]} />
@@ -808,9 +906,12 @@ function Cell({
     }
     case 'nu':
       return (
-        <Text style={[styles.mono, !r.nu_admission_id && styles.dim]} numberOfLines={1}>
-          {r.nu_admission_id ?? '—'}
-        </Text>
+        <View style={styles.withCopy}>
+          <Text style={[styles.mono, styles.shrink, !r.nu_admission_id && styles.dim]} numberOfLines={1}>
+            {r.nu_admission_id ?? '—'}
+          </Text>
+          {copyBtn(r.nu_admission_id, 'NU Admission ID')}
+        </View>
       );
     case 'last': {
       const last = r.last;
@@ -820,7 +921,7 @@ function Cell({
       // 📝 A click: every call and note of this student
       return (
         <Hit onPress={() => act.open('notes', r)} label={`All notes of ${r.name}`}>
-          {!!call && (
+          {!!call && !(dense && note) && (
             <Text style={styles.small} numberOfLines={1}>
               {call}
             </Text>
@@ -869,7 +970,9 @@ function approvalChecks(r: LeadListItem): { ok: boolean; text: string }[] {
   const due = Number(r.fee_due ?? 0);
   return [
     { ok: !!r.student_ref, text: r.student_ref ? `College ID: ${r.student_ref}` : 'No College ID yet' },
-    ...(req > 0 ? [{ ok: miss === 0, text: miss === 0 ? `Papers: all ${req} in` : `Papers: ${miss} of ${req} missing` }] : []),
+    ...(req > 0
+      ? [{ ok: miss === 0, text: miss === 0 ? `Papers: all ${req} in` : `Papers: ${miss} of ${req} missing` }]
+      : []),
     { ok: due <= 0, text: due > 0 ? `Fee: ${money(due)} due` : 'Fee: fully paid' },
     { ok: !!r.admitted_batch, text: r.admitted_batch ? `Batch: ${r.admitted_batch.name}` : 'No batch yet' },
   ];
@@ -1054,7 +1157,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: '#101A33',
+    backgroundColor: T.dark,
   },
   bulkText: { flex: 1, fontSize: fontSize.small, fontWeight: fontWeight.bold, color: '#fff' },
   bulkBtn: {
@@ -1079,11 +1182,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 42,
-    backgroundColor: '#F1F4FA',
+    backgroundColor: T.head,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  headHover: { backgroundColor: '#E6EBF6' },
+  headHover: { backgroundColor: T.headHover },
   headText: {
     fontSize: fontSize.caption,
     fontWeight: fontWeight.bold,
@@ -1097,14 +1200,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: 52,
     borderBottomWidth: 1,
-    borderBottomColor: '#EEF1F6',
+    borderBottomColor: T.line,
     borderLeftWidth: 3,
     borderLeftColor: 'transparent',
   },
-  rowZebra: { backgroundColor: '#FBFCFE' },
-  rowHover: { backgroundColor: '#F2F5FC' },
-  rowTicked: { backgroundColor: '#EEF3FF' },
+  rowZebra: { backgroundColor: T.zebra },
+  rowHover: { backgroundColor: T.hover },
+  rowTicked: { backgroundColor: T.ticked },
   rowOpen: { backgroundColor: colors.primarySoft, borderLeftColor: colors.primary },
+  rowDense: { minHeight: 36 },
+  cellDense: { paddingVertical: 2 },
+  withCopy: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  shrink: { flexShrink: 1 },
+  copy: { paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4 },
+  copyHover: { backgroundColor: colors.primarySoft },
+  copyText: { fontSize: 12 },
   cell: { paddingHorizontal: spacing.sm, paddingVertical: 6, justifyContent: 'center', alignSelf: 'stretch' },
 
   text: { fontSize: fontSize.small, color: colors.text },
@@ -1116,7 +1226,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
   },
-  dim: { fontSize: fontSize.small, color: '#A3ABBD' },
+  dim: { fontSize: fontSize.small, color: T.dim },
   nameCell: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   name: { flexShrink: 1, fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text },
   struck: { textDecorationLine: 'line-through', color: colors.textMuted },
@@ -1132,10 +1242,17 @@ const styles = StyleSheet.create({
   approveBtn: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: radius.sm, backgroundColor: colors.success },
   approveHover: { opacity: 0.85 },
   approveText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: '#fff' },
-  returnBtn: { paddingVertical: 4, paddingHorizontal: 9, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  returnBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
   returnHover: { borderColor: colors.danger },
   returnText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.danger },
-  bar: { height: 4, borderRadius: 2, backgroundColor: '#E8ECF4', overflow: 'hidden' },
+  bar: { height: 4, borderRadius: 2, backgroundColor: T.track, overflow: 'hidden' },
   barFill: { height: 4, backgroundColor: colors.accent },
   barDone: { backgroundColor: colors.success },
   pill: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
@@ -1149,7 +1266,7 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: '#B5BED3',
+    borderColor: T.box,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1222,7 +1339,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
-    backgroundColor: '#101A33',
+    backgroundColor: T.dark,
   },
   toastText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: '#fff' },
 });
