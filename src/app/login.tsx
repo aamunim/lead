@@ -4,12 +4,15 @@ import {
     StyleSheet,
     Text,
     View,
+    useWindowDimensions,
     type TextInput,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { signIn } from '@/features/auth/api';
+import { isWeb } from '@/features/web/api';
+import { WebLogin } from '@/features/web/WebLogin';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
@@ -17,6 +20,13 @@ import { TextField } from '@/shared/ui/TextField';
 type Errors = { email?: string; password?: string };
 
 export default function LoginScreen() {
+  const { width } = useWindowDimensions();
+  // 🌐 Website on a computer screen: the ITTC sign-in page
+  if (isWeb && width >= 900) return <WebLogin />;
+  return <PhoneLogin />;
+}
+
+function PhoneLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<Errors>({});

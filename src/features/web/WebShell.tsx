@@ -1,14 +1,27 @@
 import { router, useGlobalSearchParams, usePathname, type Href } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import Constants from 'expo-constants';
+import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { signOut } from '@/features/auth/api';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { canSeeStudents, getStudentsSettings } from '@/features/students/api';
+import { canApprove, countWaitingApproval, getApprovalSettings } from '@/features/approval/api';
 import { canUseWeb, getWebSettings } from '@/features/web/api';
+import { COLLEGE, SYSTEM } from '@/features/web/brand';
 import { loadPref, onKey, savePref, typingInField } from '@/features/web/prefs';
 import { installWebCss } from '@/shared/web/webCss';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import {
+  WEB_THEME_KEY,
+  colors,
+  fontSize,
+  fontWeight,
+  isDark,
+  radius,
+  spacing,
+  webThemeChoice,
+  type WebTheme,
+} from '@/shared/theme';
 
 // =====================================================================
 // 🌐 The website's frame (for a computer screen)
@@ -20,7 +33,25 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 installWebCss();
 
-type Item = { label: string; icon: string; href: string; match: (path: string) => boolean };
+type Item = { label: string; icon: string; href: string; match: (path: string) => boolean; badge?: number };
+
+export const LOGO = require('../../../assets/web/ittc-logo-192.png');
+const VERSION = Constants.expoConfig?.version ?? '';
+
+const THEMES: { key: WebTheme; icon: string; label: string }[] = [
+  { key: 'system', icon: '🖥', label: 'System (like this computer)' },
+  { key: 'light', icon: '☀️', label: 'Light' },
+  { key: 'dark', icon: '🌙', label: 'Dark' },
+];
+
+/** A new colour choice: remembered, then the page reloads with it */
+function pickTheme(t: WebTheme) {
+  savePref(WEB_THEME_KEY, t);
+  window.location.reload();
+}
+
+/** How often the Admission Officer's "waiting" count is checked */
+const WAITING_EVERY_MS = 60_000;
 
 const SMALL_KEY = 'web_side_small';
 
@@ -52,6 +83,41 @@ export function WebShell({ children }: { children: React.ReactNode }) {
   const [query, setQuery] = useState(typeof params.q === 'string' ? params.q : '');
   const [help, setHelp] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const theme = webThemeChoice();
+
+  // 🔔 Admission Officer: how many wait for approval (badge), and a note when more come
+  const [officer, setOfficer] = useState(false);
+  const [waiting, setWaiting] = useState<number | null>(null);
+  const [newOnes, setNewOnes] = useState(0);
+  const lastWaiting = useRef<number | null>(null);
+  useEffect(() => {
+    getApprovalSettings()
+      .then((s) => setOfficer(s.enabled && canApprove(s, profile, isAdmin)))
+      .catch(() => setOfficer(false));
+  }, [profile, isAdmin]);
+  useEffect(() => {
+    if (!officer) return;
+    let live = true;
+    const check = () =>
+      countWaitingApproval()
+        .then((n) => {
+          if (!live) return;
+          if (lastWaiting.current != null && n > lastWaiting.current) setNewOnes(n - lastWaiting.current);
+          lastWaiting.current = n;
+          setWaiting(n);
+        })
+        .catch(() => undefined);
+    check();
+    const timer = setInterval(check, WAITING_EVERY_MS);
+    const onFocus = () => check();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      live = false;
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [officer]);
   // (the TextInput type here has no focus/blur, the web element has)
   const searchRef = useRef<{ focus: () => void; blur: () => void } | null>(null);
 
@@ -84,6 +150,11 @@ export function WebShell({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  // The browser tab's name
+  useEffect(() => {
+    document.title = `${pageTitle(path).split(' › ').pop()} · ITTC Admission`;
+  }, [path]);
+
   const onStudents = path === '/students' || path === '/';
   const search = (text: string) => {
     setQuery(text);
@@ -101,6 +172,7 @@ export function WebShell({ children }: { children: React.ReactNode }) {
           href: '/students',
           // A student's page opens from the list
           match: (p: string) => p.startsWith('/students') || p.startsWith('/leads/'),
+          badge: officer && waiting ? waiting : undefined,
         },
       ]
     : [];
@@ -119,7 +191,7 @@ export function WebShell({ children }: { children: React.ReactNode }) {
         <Text style={styles.bigIcon}>🌐</Text>
         <Text style={styles.title}>The website is not open for you</Text>
         <Text style={styles.muted}>
-          Please use the Lead Management app on your phone. An admin can allow you in Settings → Website.
+          This is the {SYSTEM}. Please use the app on your phone, or ask an admin to allow you (Settings → Website).
         </Text>
         <Pressable onPress={() => signOut()} style={styles.signOutBig} accessibilityRole="button">
           <Text style={styles.signOutText}>Sign out</Text>
@@ -141,13 +213,16 @@ export function WebShell({ children }: { children: React.ReactNode }) {
       {/* ── Menu ─────────────────────────────────────────── */}
       <View style={[styles.side, small && styles.sideSmall]}>
         <View style={[styles.brandRow, small && styles.brandRowSmall]}>
-          <View style={styles.logo}>
-            <Text style={styles.logoText}>LM</Text>
-          </View>
+          <Image source={LOGO} style={styles.logo} accessibilityLabel="ITTC" />
           {!small && (
-            <Text style={styles.brand} numberOfLines={1}>
-              Lead Management
-            </Text>
+            <View style={styles.flex}>
+              <Text style={styles.brand} numberOfLines={1}>
+                ITTC
+              </Text>
+              <Text style={styles.brandSub} numberOfLines={1}>
+                Admission Management
+              </Text>
+            </View>
           )}
         </View>
 
@@ -171,7 +246,12 @@ export function WebShell({ children }: { children: React.ReactNode }) {
               >
                 {on && <View style={styles.itemBar} />}
                 <Text style={styles.itemIcon}>{it.icon}</Text>
-                {!small && <Text style={[styles.itemText, on && styles.itemTextOn]}>{it.label}</Text>}
+                {!small && <Text style={[styles.itemText, styles.flex, on && styles.itemTextOn]}>{it.label}</Text>}
+                {!!it.badge && (
+                  <View style={[styles.badge, small && styles.badgeSmall]}>
+                    <Text style={styles.badgeText}>{it.badge > 99 ? '99+' : it.badge}</Text>
+                  </View>
+                )}
               </Pressable>
             );
           })}
@@ -199,6 +279,11 @@ export function WebShell({ children }: { children: React.ReactNode }) {
           <Text style={styles.itemIcon}>{small ? '»' : '«'}</Text>
           {!small && <Text style={styles.collapseText}>Narrow menu</Text>}
         </Pressable>
+        {!small && (
+          <Text style={styles.footer}>
+            {VERSION ? `v${VERSION} · ` : ''}© {COLLEGE}
+          </Text>
+        )}
       </View>
 
       <View style={styles.main}>
@@ -238,9 +323,38 @@ export function WebShell({ children }: { children: React.ReactNode }) {
           </View>
 
           <View style={styles.flex} />
+          {/* 🌙 Light / dark / like the computer */}
+          <View>
+            <Pressable
+              onPress={() => setThemeOpen(!themeOpen)}
+              style={(state) => [styles.iconBtn, (state as { hovered?: boolean }).hovered && styles.topHover]}
+              accessibilityRole="button"
+              accessibilityLabel="Colours: light or dark"
+            >
+              <Text style={styles.iconBtnText}>{THEMES.find((t) => t.key === theme)?.icon ?? '🖥'}</Text>
+            </Pressable>
+            {themeOpen && (
+              <View style={[styles.dropdown, styles.dropdownTheme]}>
+                {THEMES.map((t) => (
+                  <Pressable
+                    key={t.key}
+                    onPress={() => (t.key === theme ? setThemeOpen(false) : pickTheme(t.key))}
+                    style={(state) => [styles.dropItem, (state as { hovered?: boolean }).hovered && styles.topHover]}
+                    accessibilityRole="menuitem"
+                    accessibilityState={{ selected: t.key === theme }}
+                  >
+                    <Text style={[styles.dropText, t.key === theme && { color: colors.primary }]}>
+                      {t.icon} {t.label}
+                      {t.key === theme ? '  ✓' : ''}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
           <Pressable
             onPress={() => setHelp(true)}
-            style={(state) => [styles.iconBtn, (state as { hovered?: boolean }).hovered && styles.itemHover]}
+            style={(state) => [styles.iconBtn, (state as { hovered?: boolean }).hovered && styles.topHover]}
             accessibilityRole="button"
             accessibilityLabel="Keyboard shortcuts"
           >
@@ -250,7 +364,7 @@ export function WebShell({ children }: { children: React.ReactNode }) {
           <View>
             <Pressable
               onPress={() => setMenuOpen(!menuOpen)}
-              style={(state) => [styles.me, (state as { hovered?: boolean }).hovered && styles.itemHover]}
+              style={(state) => [styles.me, (state as { hovered?: boolean }).hovered && styles.topHover]}
               accessibilityRole="button"
               accessibilityLabel="My account"
             >
@@ -269,14 +383,14 @@ export function WebShell({ children }: { children: React.ReactNode }) {
                     setMenuOpen(false);
                     router.navigate('/password' as Href);
                   }}
-                  style={(state) => [styles.dropItem, (state as { hovered?: boolean }).hovered && styles.itemHover]}
+                  style={(state) => [styles.dropItem, (state as { hovered?: boolean }).hovered && styles.topHover]}
                   accessibilityRole="link"
                 >
                   <Text style={styles.dropText}>🔐 Change password</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => signOut()}
-                  style={(state) => [styles.dropItem, (state as { hovered?: boolean }).hovered && styles.itemHover]}
+                  style={(state) => [styles.dropItem, (state as { hovered?: boolean }).hovered && styles.topHover]}
                   accessibilityRole="button"
                 >
                   <Text style={[styles.dropText, { color: colors.danger }]}>Sign out</Text>
@@ -290,6 +404,28 @@ export function WebShell({ children }: { children: React.ReactNode }) {
       </View>
 
       {help && <ShortcutsDialog onClose={() => setHelp(false)} />}
+
+      {/* 🔔 New admissions to approve (Admission Officer) */}
+      {newOnes > 0 && (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>
+            🎓 {newOnes} new admission{newOnes > 1 ? 's' : ''} waiting for approval
+          </Text>
+          <Pressable
+            onPress={() => {
+              setNewOnes(0);
+              router.navigate({ pathname: '/students', params: { quick: 'approval_waiting' } } as Href);
+            }}
+            style={styles.noticeBtn}
+            accessibilityRole="button"
+          >
+            <Text style={styles.noticeBtnText}>Show</Text>
+          </Pressable>
+          <Pressable onPress={() => setNewOnes(0)} hitSlop={8} accessibilityLabel="Close">
+            <Text style={styles.noticeClose}>✕</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -322,21 +458,59 @@ const styles = StyleSheet.create({
     width: 232,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.md,
-    backgroundColor: '#101A33',
+    backgroundColor: isDark ? '#080C17' : '#101A33',
+    borderRightWidth: isDark ? 1 : 0,
+    borderRightColor: colors.border,
   },
   sideSmall: { width: 68, paddingHorizontal: spacing.sm },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.xs },
   brandRowSmall: { justifyContent: 'center', paddingHorizontal: 0 },
-  logo: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.sm,
-    backgroundColor: colors.primary,
+  logo: { width: 40, height: 40 },
+  brand: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: '#fff', letterSpacing: 1 },
+  brandSub: { fontSize: 11, color: '#8E9AB8' },
+  badge: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoText: { color: '#fff', fontWeight: fontWeight.bold, fontSize: fontSize.small },
-  brand: { flex: 1, fontSize: fontSize.body, fontWeight: fontWeight.bold, color: '#fff' },
+  badgeSmall: { position: 'absolute', top: 2, right: 4, minWidth: 16, height: 16, paddingHorizontal: 4 },
+  badgeText: { fontSize: 11, fontWeight: fontWeight.bold, color: '#101A33' },
+  footer: { marginTop: spacing.sm, paddingHorizontal: spacing.sm, fontSize: 10, lineHeight: 14, color: '#6F7B99' },
+  topHover: { backgroundColor: colors.background },
+  dropdownTheme: { width: 250 },
+  notice: {
+    position: 'absolute',
+    top: 72,
+    right: spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  noticeText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
+  noticeBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary,
+  },
+  noticeBtnText: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
+  noticeClose: { fontSize: fontSize.small, color: colors.textMuted },
   menu: { marginTop: spacing.xl, gap: spacing.xs },
   item: {
     flexDirection: 'row',
