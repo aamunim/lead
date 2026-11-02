@@ -27,8 +27,10 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        // Material: the new tab's screen slides in a little
-        animation: 'shift',
+        // ✨ Our own tab change: the new screen glides in from the side it
+        //   is on, growing a little out of depth; the old one fades past
+        sceneStyleInterpolator: depthGlide,
+        transitionSpec: { animation: 'spring', config: { stiffness: 320, damping: 30, mass: 0.9 } },
         tabBarActiveTintColor: md.onPrimaryC,
         tabBarInactiveTintColor: colors.textMuted,
         // 🌐 Website: the menu on the left replaces the tabs
@@ -84,21 +86,55 @@ export default function TabsLayout() {
   );
 }
 
-/** Material 3 navigation bar icon: a tinted pill grows behind the chosen one */
+/**
+ * The new screen comes in from the side of its tab (progress -1 → 0 or
+ * 1 → 0), a little smaller and faded; the old one grows slightly and fades.
+ */
+function depthGlide({ current }: { current: { progress: Animated.AnimatedInterpolation<number> } }) {
+  const p = current.progress;
+  return {
+    sceneStyle: {
+      opacity: p.interpolate({ inputRange: [-1, -0.4, 0, 0.4, 1], outputRange: [0, 0.2, 1, 0.2, 0] }),
+      transform: [
+        { translateX: p.interpolate({ inputRange: [-1, 0, 1], outputRange: [-36, 0, 36] }) },
+        { scale: p.interpolate({ inputRange: [-1, 0, 1], outputRange: [0.94, 1, 0.94] }) },
+      ],
+    },
+  };
+}
+
+/** Material 3 navigation bar icon: the pill springs in, the icon pops */
 function PillIcon({ focused, on, off }: { focused: boolean; on: MIconName; off: MIconName }) {
   const grow = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const pop = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    Animated.spring(grow, { toValue: focused ? 1 : 0, useNativeDriver: true, speed: 18, bounciness: 6 }).start();
-  }, [focused, grow]);
+    Animated.spring(grow, { toValue: focused ? 1 : 0, useNativeDriver: true, speed: 16, bounciness: 8 }).start();
+    if (focused) {
+      pop.setValue(0.7);
+      Animated.spring(pop, { toValue: 1, useNativeDriver: true, speed: 14, bounciness: 14 }).start();
+    }
+  }, [focused, grow, pop]);
   return (
     <View style={styles.pillBox}>
       <Animated.View
         style={[
           styles.pill,
-          { opacity: grow, transform: [{ scaleX: grow.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }] },
+          {
+            opacity: grow,
+            transform: [{ scaleX: grow.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }],
+          },
         ]}
       />
-      <MIcon name={focused ? on : off} size={24} color={focused ? md.onPrimaryC : colors.textMuted} />
+      <Animated.View
+        style={{
+          transform: [
+            { scale: pop },
+            { translateY: pop.interpolate({ inputRange: [0.7, 1, 1.2], outputRange: [2, 0, -2] }) },
+          ],
+        }}
+      >
+        <MIcon name={focused ? on : off} size={24} color={focused ? md.onPrimaryC : colors.textMuted} />
+      </Animated.View>
     </View>
   );
 }

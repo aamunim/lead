@@ -1,11 +1,11 @@
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 
 import { canApprove, countWaitingApproval, getApprovalSettings } from '@/features/approval/api';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { card } from '@/features/home/md';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { MIcon, Tap, md } from '@/features/home/md';
+import { fontSize, fontWeight } from '@/shared/theme';
 
 // 🎓 Home: the Admission Officer's "waiting for approval" (only when some wait)
 export function ApprovalHomeCard() {
@@ -28,36 +28,33 @@ export function ApprovalHomeCard() {
 
   if (waiting === 0) return null;
   return (
-    <Pressable
+    <Tap
       onPress={() => router.push({ pathname: '/students', params: { quick: 'approval_waiting' } } as unknown as Href)}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-      accessibilityRole="button"
+      style={styles.line}
+      label={`${waiting} waiting for approval. Review`}
     >
-      <Text style={styles.icon}>🎓</Text>
-      <View style={styles.flex}>
-        <Text style={styles.title}>
-          {waiting} {waiting === 1 ? 'student' : 'students'} waiting for approval (admission / registration)
-        </Text>
-        <Text style={styles.text}>Check and approve, or send back to fix</Text>
-      </View>
-      <Text style={styles.chevron}>›</Text>
-    </Pressable>
+      <MIcon name="pending-actions" size={20} color={md.onWarnC} />
+      <Text style={styles.text} numberOfLines={1}>
+        {waiting} {waiting === 1 ? 'student' : 'students'} waiting for approval
+      </Text>
+      <Text style={styles.action}>Review</Text>
+    </Tap>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  card: {
+  line: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
-    ...card,
-    marginTop: 16,
+    gap: 10,
+    height: 42,
+    marginTop: 10,
+    paddingLeft: 12,
+    paddingRight: 14,
+    borderRadius: 12,
+    backgroundColor: md.warnC,
+    overflow: 'hidden',
   },
-  pressed: { opacity: 0.8 },
-  icon: { fontSize: 26 },
-  title: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
-  text: { fontSize: fontSize.caption, color: colors.textMuted },
-  chevron: { fontSize: 22, color: colors.textMuted },
+  text: { flex: 1, fontSize: 13.5, fontWeight: fontWeight.medium, color: '#2C1600' },
+  action: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: md.onWarnC },
 });

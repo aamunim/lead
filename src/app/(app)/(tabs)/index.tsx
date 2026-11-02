@@ -20,7 +20,7 @@ import { isWeb } from '@/features/web/api';
 import { APP_COLLEGE, APP_PRODUCT } from '@/features/web/brand';
 import { takeBootUrl } from '@/shared/web/bootUrl';
 import { countPendingUsers } from '@/features/users/api';
-import { MIcon, SectionHeader, Tap, md, type MIconName } from '@/features/home/md';
+import { MIcon, Tap, md, type MIconName } from '@/features/home/md';
 import { TodayStats } from '@/features/home/TodayStats';
 import { colors, fontSize, fontWeight } from '@/shared/theme';
 import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
@@ -68,11 +68,7 @@ function PhoneHome() {
   const canManageUsers = hasPermission('users.manage');
 
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there';
-  const today = new Date().toLocaleDateString([], {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
+  const today = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
   // --- reminder ----------------------------------------------------------
   const openSetup = useCallback((n: Nudge) => {
@@ -162,12 +158,12 @@ function PhoneHome() {
 
   const quick: { icon: MIconName; label: string; href: Href; show: boolean }[] = [
     { icon: 'groups', label: 'All leads', href: '/leads', show: true },
-    { icon: 'contacts', label: 'Phone contacts', href: '/contacts', show: contactsAllowed },
+    { icon: 'contacts', label: 'Contacts', href: '/contacts', show: contactsAllowed },
     { icon: 'emoji-events', label: 'Scorecard', href: '/scorecard' as Href, show: true },
     { icon: 'insights', label: 'Reports', href: '/reports', show: reportsAllowed },
     {
       icon: 'today',
-      label: myAdded ? `Added today: ${myAdded.today}` : 'Added today',
+      label: myAdded ? `Added: ${myAdded.today}` : 'Added today',
       href: { pathname: '/leads', params: { addedBy: profile?.id ?? '', addedDay: 'today' } } as unknown as Href,
       show: !!profile?.id,
     },
@@ -214,16 +210,15 @@ function PhoneHome() {
         onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 4)}
         scrollEventThrottle={32}
       >
-        {/* ── Greeting ─────────────────────────────── */}
-        <Text style={styles.hello}>
+        {/* ── Greeting (one line) ──────────────────── */}
+        <Text style={styles.hello} numberOfLines={1}>
           {greeting()}, {firstName}
+          <Text style={styles.date}>
+            {'   '}
+            {today} ·{' '}
+            {profile?.role?.name ?? 'No role'}
+          </Text>
         </Text>
-        <View style={styles.helloSub}>
-          <Text style={styles.date}>{today}</Text>
-          <View style={styles.roleChip}>
-            <Text style={styles.roleChipText}>{profile?.role?.name ?? 'No role'}</Text>
-          </View>
-        </View>
 
         {/* ── Today at a glance ────────────────────── */}
         <TodayStats onOpenCalls={() => scrollRef.current?.scrollTo({ y: callsY.current, animated: true })} />
@@ -272,14 +267,13 @@ function PhoneHome() {
         <ReportHomeCard />
 
         {/* ── Quick actions ────────────────────────── */}
-        <SectionHeader title="Quick actions" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quick}>
           {quick
             .filter((q) => q.show)
             .map((q) => (
               <Tap key={q.label} onPress={() => router.push(q.href)} style={styles.quickItem} label={q.label}>
                 <View style={styles.quickIcon}>
-                  <MIcon name={q.icon} size={26} color={colors.primary} />
+                  <MIcon name={q.icon} size={22} color={colors.primary} />
                 </View>
                 <Text style={styles.quickText} numberOfLines={2}>
                   {q.label}
@@ -291,8 +285,7 @@ function PhoneHome() {
 
       {/* ── Add lead (FAB) ─────────────────────────── */}
       <Tap onPress={() => router.push('/leads/edit/new' as Href)} style={styles.fab} label="Add a lead">
-        <MIcon name="person-add" size={24} color={md.onPrimaryC} />
-        <Text style={styles.fabText}>Add lead</Text>
+        <MIcon name="person-add" size={26} color={md.onPrimaryC} />
       </Tap>
 
       {nudge && (
@@ -335,16 +328,11 @@ function Banner({
   const t = TONES[tone];
   return (
     <Tap onPress={onPress} style={[styles.banner, { backgroundColor: t.bg }]} label={`${title}. ${action}`}>
-      <MIcon name={icon} size={26} color={t.fg} />
+      <MIcon name={icon} size={20} color={t.fg} />
       <View style={styles.flex}>
-        <Text style={[styles.bannerTitle, { color: t.text }]} numberOfLines={2}>
+        <Text style={[styles.bannerTitle, { color: t.text }]} numberOfLines={1}>
           {title}
         </Text>
-        {!!sub && (
-          <Text style={[styles.bannerSub, { color: t.sub }]} numberOfLines={1}>
-            {sub}
-          </Text>
-        )}
       </View>
       <Text style={[styles.bannerAction, { color: t.fg }]}>{action}</Text>
     </Tap>
@@ -357,7 +345,7 @@ const styles = StyleSheet.create({
   // top app bar
   bar: { backgroundColor: colors.background },
   barScrolled: { backgroundColor: md.surface1 },
-  barRow: { height: 60, flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 16, paddingRight: 8 },
+  barRow: { height: 54, flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 16, paddingRight: 8 },
   barLogo: {
     width: 34,
     height: 34,
@@ -401,56 +389,43 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: md.onPrimaryC },
   // body
   content: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 110, gap: 0 },
-  hello: { fontSize: 24, lineHeight: 32, fontWeight: fontWeight.regular, color: colors.text },
-  helloSub: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  date: { fontSize: fontSize.small, color: colors.textMuted },
-  roleChip: {
-    height: 24,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: md.outline,
-    justifyContent: 'center',
-  },
-  roleChipText: { fontSize: fontSize.caption, fontWeight: fontWeight.medium, color: colors.textMuted },
+  hello: { fontSize: 18, lineHeight: 24, fontWeight: fontWeight.semibold, color: colors.text, marginTop: 2 },
+  date: { fontSize: 12.5, fontWeight: fontWeight.regular, color: colors.textMuted },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginTop: 14,
-    paddingVertical: 12,
-    paddingLeft: 14,
-    paddingRight: 16,
-    borderRadius: 16,
+    gap: 10,
+    height: 42,
+    marginTop: 10,
+    paddingLeft: 12,
+    paddingRight: 14,
+    borderRadius: 12,
     overflow: 'hidden',
   },
-  bannerTitle: { fontSize: fontSize.small, fontWeight: fontWeight.medium },
-  bannerSub: { fontSize: fontSize.caption, marginTop: 1 },
-  bannerAction: { fontSize: fontSize.small, fontWeight: fontWeight.semibold },
-  quick: { gap: 8, paddingRight: 8 },
-  quickItem: { width: 82, alignItems: 'center', gap: 6, paddingVertical: 4, borderRadius: 16, overflow: 'hidden' },
+  bannerTitle: { fontSize: 13.5, fontWeight: fontWeight.medium },
+  bannerAction: { fontSize: fontSize.caption, fontWeight: fontWeight.bold },
+  quick: { gap: 4, paddingTop: 14, paddingRight: 8 },
+  quickItem: { width: 66, alignItems: 'center', gap: 4, paddingVertical: 4, borderRadius: 14, overflow: 'hidden' },
   quickIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: md.surface1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quickText: { fontSize: fontSize.caption, color: colors.text, textAlign: 'center' },
+  quickText: { fontSize: 11, color: colors.text, textAlign: 'center' },
   // FAB
   fab: {
     position: 'absolute',
     right: 16,
     bottom: 16,
-    height: 56,
-    paddingLeft: 16,
-    paddingRight: 20,
+    width: 54,
+    height: 54,
     borderRadius: 16,
     backgroundColor: md.primaryC,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'center',
     overflow: 'hidden',
     elevation: 3,
     shadowColor: '#000',
@@ -458,5 +433,4 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
-  fabText: { fontSize: 15, fontWeight: fontWeight.semibold, color: md.onPrimaryC },
 });

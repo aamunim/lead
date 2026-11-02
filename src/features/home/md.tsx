@@ -1,6 +1,21 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import type { ComponentProps, ReactNode } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import {
+  Animated,
+  LayoutAnimation,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  UIManager,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+
+// Old-architecture Android needs this for LayoutAnimation (a no-op elsewhere)
+if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
 import { colors, fontSize, fontWeight } from '@/shared/theme';
 
@@ -129,4 +144,92 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
   sectionAction: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 16 },
   sectionActionText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.primary },
+});
+
+// ---------------------------------------------------------------------
+// 📂 Fold: one line (icon, title, a short summary, ⌄); tap opens the
+//   details. Each fold remembers on this phone whether it was open.
+// ---------------------------------------------------------------------
+const foldKey = (id: string) => `home_fold_${id}`;
+
+export function Fold({
+  id,
+  icon,
+  tint,
+  title,
+  summary,
+  children,
+  defaultOpen = false,
+}: {
+  id: string;
+  icon: MIconName;
+  tint: { bg: string; fg: string };
+  title: string;
+  summary?: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const turn = useRef(new Animated.Value(defaultOpen ? 1 : 0)).current;
+  useEffect(() => {
+    AsyncStorage.getItem(foldKey(id))
+      .then((v) => {
+        if (v == null) return;
+        const o = v === '1';
+        setOpen(o);
+        turn.setValue(o ? 1 : 0);
+      })
+      .catch(() => undefined);
+  }, [id, turn]);
+
+  const toggle = () => {
+    const next = !open;
+    LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
+    setOpen(next);
+    Animated.timing(turn, { toValue: next ? 1 : 0, duration: 220, useNativeDriver: true }).start();
+    AsyncStorage.setItem(foldKey(id), next ? '1' : '0').catch(() => undefined);
+  };
+
+  return (
+    <View style={[card, foldStyles.fold]}>
+      <Tap onPress={toggle} style={foldStyles.foldHead} label={`${title}${open ? ', open' : ''}`}>
+        <View style={[foldStyles.foldIcon, { backgroundColor: tint.bg }]}>
+          <MIcon name={icon} size={18} color={tint.fg} />
+        </View>
+        <Text style={foldStyles.foldTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        {summary != null && (
+          <Text style={foldStyles.foldSummary} numberOfLines={1}>
+            {summary}
+          </Text>
+        )}
+        <Animated.View
+          style={{ transform: [{ rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }] }}
+        >
+          <MIcon name="expand-more" size={22} color={colors.textMuted} />
+        </Animated.View>
+      </Tap>
+      {open && <View style={foldStyles.foldBody}>{children}</View>}
+    </View>
+  );
+}
+
+/** Bold numbers inside a fold's summary */
+export function B({ children, tone }: { children: ReactNode; tone?: 'bad' | 'good' }) {
+  return (
+    <Text style={[foldStyles.b, tone === 'bad' && { color: md.onErrorC }, tone === 'good' && { color: md.onOkC }]}>
+      {children}
+    </Text>
+  );
+}
+
+const foldStyles = StyleSheet.create({
+  fold: { marginTop: 10 },
+  foldHead: { height: 50, flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 12, paddingRight: 10 },
+  foldIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  foldTitle: { flex: 1, fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
+  foldSummary: { fontSize: fontSize.caption, color: colors.textMuted, maxWidth: '50%' },
+  foldBody: { borderTopWidth: 1, borderTopColor: md.surface2 },
+  b: { fontWeight: fontWeight.semibold, color: colors.text },
 });

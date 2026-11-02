@@ -10,7 +10,7 @@ import {
   shortMoney,
   type StudentsSummaryData,
 } from '@/features/students/api';
-import { card } from '@/features/home/md';
+import { B, Fold, md } from '@/features/home/md';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -36,23 +36,29 @@ export function StudentsHomeCard() {
   if (!allowed || !s || s.students === 0) return null;
 
   return (
-    <Pressable
-      onPress={() => router.push('/students' as Href)}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={`${s.students} students. Open Students`}
+    <Fold
+      id="students"
+      icon="school"
+      tint={{ bg: md.okC, fg: md.onOkC }}
+      title="Students"
+      summary={
+        <>
+          <B>{s.students}</B> · {shortMoney(s.due)} due
+        </>
+      }
     >
-      <View style={styles.top}>
-        <Text style={styles.title}>Students</Text>
-        <Text style={styles.link}>Open ›</Text>
+      <View style={styles.body}>
+        <View style={styles.row}>
+          <Stat value={String(s.students)} label="students" />
+          <Stat value={shortMoney(s.due)} label={`due · ${s.with_due}`} tone={s.due > 0 ? 'warn' : undefined} />
+          <Stat value={String(s.overdue)} label="late" tone={s.overdue > 0 ? 'bad' : undefined} />
+          <Stat value={shortMoney(s.collected_month)} label="this month" tone="good" />
+        </View>
+        <Pressable onPress={() => router.push('/students' as Href)} accessibilityRole="button" hitSlop={8}>
+          <Text style={styles.link}>Open Students →</Text>
+        </Pressable>
       </View>
-      <View style={styles.row}>
-        <Stat value={String(s.students)} label="students" />
-        <Stat value={shortMoney(s.due)} label={`due · ${s.with_due}`} tone={s.due > 0 ? 'warn' : undefined} />
-        <Stat value={String(s.overdue)} label="late" tone={s.overdue > 0 ? 'bad' : undefined} />
-        <Stat value={shortMoney(s.collected_month)} label="this month" tone="good" />
-      </View>
-    </Pressable>
+    </Fold>
   );
 }
 
@@ -70,12 +76,7 @@ function Stat({ value, label, tone }: { value: string; label: string; tone?: 'go
 }
 
 const styles = StyleSheet.create({
-  card: {
-    gap: spacing.sm,
-    padding: spacing.lg,
-    ...card,
-    marginTop: 16,
-  },
+  body: { gap: spacing.md, padding: spacing.md, paddingHorizontal: spacing.lg },
   pressed: { opacity: 0.7 },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
