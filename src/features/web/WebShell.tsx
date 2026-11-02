@@ -69,6 +69,7 @@ function pageTitle(path: string): string {
   if (path.startsWith('/leads/edit/')) return 'Students › Edit';
   if (path.startsWith('/leads/')) return 'Students › Student';
   if (path.startsWith('/password')) return 'Change password';
+  if (path.startsWith('/settings/uploads')) return 'Settings › Upload rules';
   return 'Students';
 }
 
@@ -164,18 +165,31 @@ export function WebShell({ children }: { children: React.ReactNode }) {
     if (!onStudents) router.navigate({ pathname: '/students', params: query ? { q: query } : {} } as Href);
   };
 
-  const items: Item[] = students
-    ? [
-        {
-          label: 'Students',
-          icon: '🎓',
-          href: '/students',
-          // A student's page opens from the list
-          match: (p: string) => p.startsWith('/students') || p.startsWith('/leads/'),
-          badge: officer && waiting ? waiting : undefined,
-        },
-      ]
-    : [];
+  const items: Item[] = [
+    ...(students
+      ? [
+          {
+            label: 'Students',
+            icon: '🎓',
+            href: '/students',
+            // A student's page opens from the list
+            match: (p: string) => p.startsWith('/students') || p.startsWith('/leads/'),
+            badge: officer && waiting ? waiting : undefined,
+          },
+        ]
+      : []),
+    // ⚙️ Admins and the Admission Officer
+    ...(isAdmin || officer
+      ? [
+          {
+            label: 'Upload rules',
+            icon: '📎',
+            href: '/settings/uploads',
+            match: (p: string) => p.startsWith('/settings/uploads'),
+          },
+        ]
+      : []),
+  ];
 
   if (allowed === null) {
     return (

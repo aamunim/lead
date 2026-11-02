@@ -18,6 +18,8 @@ import {
   type LeadFile,
 } from '@/features/files/api';
 import { getLeadPapers, type LeadPaper } from '@/features/papers/api';
+import { ruleFor } from '@/features/files/uploadRules';
+import { prepareImage } from '@/features/files/prepareImage';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
@@ -108,19 +110,51 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
     ]);
   };
 
-  const send = async (paper: LeadPaper | null, file: { uri: string; name: string; mimeType: string }) => {
+  const send = async (
+    paper: LeadPaper | null,
+    file: { uri: string; name: string; mimeType: string; blob?: Blob | null },
+  ) => {
     setUploading(paper?.name ?? file.name);
     try {
-      await uploadLeadFile({
+      let { name, mimeType } = file;
+      let blob: Blob | null = file.blob ?? null;
+      let originalSize: number | null = null;
+      let note = '';
+      // 🌐 Website: the paper's upload rule (Settings → Upload rules)
+      if (Platform.OS === 'web') {
+        const rule = await ruleFor(paper?.paperId ?? null);
+        const isImage = mimeType.startsWith('image/');
+        const isPdf = mimeType === 'application/pdf' || name.toLowerCase().endsWith('.pdf');
+        if (rule.accept === 'image' && !isImage)
+          throw new Error(`${paper?.name ?? 'This paper'}: only a picture can be uploaded.`);
+        if (rule.accept === 'pdf' && !isPdf)
+          throw new Error(`${paper?.name ?? 'This paper'}: only a PDF can be uploaded.`);
+        // 🖼 A picture: the set size, then under the KB limit (JPEG)
+        if (isImage && !/gif|svg/.test(mimeType)) {
+          const source = blob ?? (await (await fetch(file.uri)).blob());
+          const out = await prepareImage(source, { exact: rule.exact, maxSide: rule.maxSide, maxKb: rule.imgMaxKb });
+          originalSize = source.size;
+          blob = out.blob;
+          mimeType = 'image/jpeg';
+          name = name.replace(/\.[^.]+$/, '') + '.jpg';
+          note = ` · 🖼 ${sizeText(source.size)} → ${sizeText(out.blob.size)} (${out.width}×${out.height})${
+            out.underLimit ? '' : ` · still over ${rule.imgMaxKb} KB`
+          }`;
+        }
+      }
+      const row = await uploadLeadFile({
         leadId,
-        kind: paper ? 'paper' : file.mimeType.startsWith('audio/') ? 'voice' : 'other',
+        kind: paper ? 'paper' : mimeType.startsWith('audio/') ? 'voice' : 'other',
         paperId: paper?.paperId ?? null,
         uri: file.uri,
-        name: file.name,
-        mimeType: file.mimeType,
+        name,
+        mimeType,
+        file: blob,
+        originalSize,
       });
+      if (row.compressed) note = ` · 📄 ${sizeText(row.compressed.from)} → ${sizeText(row.compressed.to)}`;
       await load();
-      onChanged(`📎 ${paper?.name ?? file.name} saved to Google Drive.`);
+      onChanged(`📎 ${paper?.name ?? name} saved to Google Drive${note}.`);
       return true;
     } catch (e) {
       Alert.alert('Could not upload', e instanceof Error ? e.message : '');
@@ -139,6 +173,8 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
       uri: a.uri,
       name: paper ? `${paper.name}${ext}` : a.name,
       mimeType: a.mimeType ?? 'application/octet-stream',
+      // 🌐 the browser's own file
+      blob: (a as { file?: File }).file ?? null,
     });
   };
 
@@ -148,12 +184,17 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
     const ImagePicker = require('expo-image-picker') as typeof import('expo-image-picker');
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('Camera not allowed', 'Allow it in the phone’s Settings → Apps → Lead Management → Permissions → Camera.');
+      Alert.alert(
+        'Camera not allowed',
+        'Allow it in the phone’s Settings → Apps → Lead Management → Permissions → Camera.',
+      );
       return;
     }
     const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: true });
     if (shot.canceled || !shot.assets?.[0]) return;
-    const base = paper?.name ?? `Photo ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    const base =
+      paper?.name ??
+      `Photo ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
     const ok = await send(paper, {
       uri: shot.assets[0].uri,
       name: `${base}${page > 1 ? ` (${page})` : ''}.jpg`,
@@ -204,22 +245,30 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
 
   const remove = (f: LeadFile) => {
     if (f.uploaded_by !== profile?.id && !isAdmin) return;
-    Alert.alert('Remove this file?', `${f.name} will be removed here and moved to Google Drive's Trash (it can be brought back from there for 30 days).`, [
-      { text: 'Keep', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const drive = await deleteLeadFile(f.id);
-            await load();
-            onChanged(drive === 'trashed' ? 'File removed (moved to Google Drive’s Trash).' : 'File removed here; it is still in Google Drive.');
-          } catch (e) {
-            Alert.alert('Could not remove', e instanceof Error ? e.message : '');
-          }
+    Alert.alert(
+      'Remove this file?',
+      `${f.name} will be removed here and moved to Google Drive's Trash (it can be brought back from there for 30 days).`,
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const drive = await deleteLeadFile(f.id);
+              await load();
+              onChanged(
+                drive === 'trashed'
+                  ? 'File removed (moved to Google Drive’s Trash).'
+                  : 'File removed here; it is still in Google Drive.',
+              );
+            } catch (e) {
+              Alert.alert('Could not remove', e instanceof Error ? e.message : '');
+            }
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   return (
@@ -285,7 +334,11 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
               {f.kind === 'paper' && paperName(f.paper_id) ? paperName(f.paper_id) : f.name}
             </Text>
             <Text style={styles.meta} numberOfLines={1}>
-              {[f.duration_sec ? `▶ ${clock(f.duration_sec)}` : sizeText(f.size_bytes), when(f.created_at), nameOf(f.uploaded_by)]
+              {[
+                f.duration_sec ? `▶ ${clock(f.duration_sec)}` : sizeText(f.size_bytes),
+                when(f.created_at),
+                nameOf(f.uploaded_by),
+              ]
                 .filter(Boolean)
                 .join(' · ')}
             </Text>

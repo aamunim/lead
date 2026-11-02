@@ -40,6 +40,11 @@ export type Database = {
           name: string
           sort_order: number
           updated_at: string
+          img_width: number | null
+          img_height: number | null
+          img_max_kb: number | null
+          pdf_max_kb: number | null
+          accept: string
         }
         Insert: {
           course_ids?: string[] | null
@@ -51,6 +56,11 @@ export type Database = {
           name: string
           sort_order?: number
           updated_at?: string
+          img_width?: number | null
+          img_height?: number | null
+          img_max_kb?: number | null
+          pdf_max_kb?: number | null
+          accept?: string
         }
         Update: {
           course_ids?: string[] | null
@@ -62,6 +72,11 @@ export type Database = {
           name?: string
           sort_order?: number
           updated_at?: string
+          img_width?: number | null
+          img_height?: number | null
+          img_max_kb?: number | null
+          pdf_max_kb?: number | null
+          accept?: string
         }
         Relationships: []
       }
@@ -2547,6 +2562,40 @@ export type Database = {
         Returns: undefined
       }
       lead_paid: { Args: { p_lead: string }; Returns: number }
+      upload_rules_setting: { Args: never; Returns: Json }
+      can_edit_upload_rules: { Args: never; Returns: boolean }
+      set_upload_defaults: { Args: { p_img_max_side: number; p_img_max_kb: number; p_pdf_max_kb: number }; Returns: undefined }
+      set_paper_upload_rule: {
+        Args: {
+          p_paper: string
+          p_accept: string
+          p_img_width?: number
+          p_img_height?: number
+          p_img_max_kb?: number
+          p_pdf_max_kb?: number
+        }
+        Returns: undefined
+      }
+      list_ilovepdf_accounts: {
+        Args: never
+        Returns: {
+          id: string
+          label: string
+          key_hint: string
+          is_active: boolean
+          sort_order: number
+          files_month: number
+          last_used_at: string | null
+          last_error: string | null
+          last_error_at: string | null
+        }[]
+      }
+      add_ilovepdf_account: { Args: { p_label: string; p_public_key: string }; Returns: string }
+      update_ilovepdf_account: {
+        Args: { p_id: string; p_label: string; p_is_active?: boolean; p_sort_order?: number }
+        Returns: undefined
+      }
+      delete_ilovepdf_account: { Args: { p_id: string }; Returns: undefined }
       return_admission: { Args: { p_lead: string; p_reason: string }; Returns: undefined }
       resubmit_admission: { Args: { p_lead: string; p_note?: string }; Returns: undefined }
       set_nu_admission_id: { Args: { p_lead: string; p_value: string }; Returns: undefined }
