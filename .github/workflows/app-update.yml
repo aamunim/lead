@@ -1,0 +1,104 @@
+# =====================================================================
+# 📱 Update the app from the phone (GitHub app → Actions → "App update"
+#   → Run workflow). Does what you would type on the computer:
+#     1. npx supabase db push               (if chosen)
+#     2. npx supabase functions deploy …    (only the ones you name)
+#     3. eas update --channel production    (if chosen)
+#   Runs on GitHub's machine: the computer can stay off.
+#   Repository secrets (Settings → Secrets and variables → Actions):
+#     EXPO_TOKEN              expo.dev → Access tokens (already there for "Build Android")
+#     SUPABASE_ACCESS_TOKEN   supabase.com → Account → Access Tokens
+#     SUPABASE_DB_PASSWORD    the database password (Project Settings → Database)
+#     SUPABASE_PROJECT_REF    the project id in the dashboard address (…/project/<ref>)
+#   Steps and screenshots: docs/EAS-UPDATE.md
+# =====================================================================
+name: App update
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'What changed (shown in EAS)'
+        type: string
+        required: true
+      what:
+        description: 'What to do'
+        type: choice
+        options:
+          - Database + app update
+          - App update only
+          - Database only
+        default: Database + app update
+      functions:
+        description: 'Edge Functions to deploy (optional, space between names, e.g. photo-cutout drive-upload)'
+        type: string
+        required: false
+        default: ''
+
+concurrency:
+  group: app-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      # inputs through env, never pasted into the script
+      MESSAGE: ${{ inputs.message }}
+      WHAT: ${{ inputs.what }}
+      FUNCTIONS: ${{ inputs.functions }}
+    steps:
+      - name: Check the secrets
+        run: |
+          missing=""
+          if [ "$WHAT" != "Database only" ] && [ -z "$EXPO_TOKEN" ]; then missing="$missing EXPO_TOKEN"; fi
+          if [ "$WHAT" != "App update only" ] || [ -n "$FUNCTIONS" ]; then
+            [ -z "$SUPABASE_ACCESS_TOKEN" ] && missing="$missing SUPABASE_ACCESS_TOKEN"
+            [ -z "$SUPABASE_PROJECT_REF" ] && missing="$missing SUPABASE_PROJECT_REF"
+          fi
+          if [ "$WHAT" != "App update only" ] && [ -z "$SUPABASE_DB_PASSWORD" ]; then missing="$missing SUPABASE_DB_PASSWORD"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Add these repository secrets (Settings → Secrets and variables → Actions):$missing"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install packages
+        run: npm ci
+
+      - name: 🗄 Database (supabase db push)
+        if: inputs.what != 'App update only'
+        run: |
+          npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          # answers "Y" to "Do you want to push these migrations?"
+          yes | npx supabase db push --password "$SUPABASE_DB_PASSWORD"
+          echo "✅ Database updated" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: ⚡ Edge Functions
+        if: inputs.functions != ''
+        run: |
+          for f in $FUNCTIONS; do
+            if [ ! -d "supabase/functions/$f" ]; then
+              echo "::error::No Edge Function called $f (supabase/functions/)"
+              exit 1
+            fi
+            npx supabase functions deploy "$f" --use-api --project-ref "$SUPABASE_PROJECT_REF"
+            echo "✅ Function $f deployed" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: 📱 App update (eas update)
+        if: inputs.what != 'Database only'
+        run: |
+          npx eas-cli@latest update --channel production --environment production --message "$MESSAGE" --non-interactive
+          echo "✅ App update sent: $MESSAGE" >> "$GITHUB_STEP_SUMMARY"
