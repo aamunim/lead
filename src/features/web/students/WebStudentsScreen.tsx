@@ -20,7 +20,9 @@ import {
   getApprovalSettings,
   type ApprovalSettings,
 } from '@/features/approval/api';
-import { ApprovalActionSheet, admissionChecks } from '@/features/approval/ApprovalCard';
+import { ApprovalActionSheet, admissionChecks, type ApprovalSheetKind } from '@/features/approval/ApprovalCard';
+import { RowMenu, RowNote, RowPay, RowUpload, type RowAction } from '@/features/web/students/RowActions';
+import { canTakePayments, getFeeSettings, type FeeSettings } from '@/features/fees/api';
 import { FeeChangeSheet } from '@/features/fees/FeeChangeSheet';
 import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
 import { PapersPopup } from '@/features/web/students/PapersPopup';
@@ -64,7 +66,20 @@ type ColKey =
   | 'admitted'
   | 'admitted_by';
 
-type PopupKind = 'papers' | 'notes' | 'fee' | 'approve' | 'return' | 'reg_approve' | 'reg_return';
+type PopupKind = 'menu' | RowAction;
+
+const APPROVAL_KINDS: ApprovalSheetKind[] = [
+  'list',
+  'approve',
+  'return',
+  'resubmit',
+  'reg_approve',
+  'reg_return',
+  'reg_resubmit',
+  'place',
+  'nu',
+  'ref',
+];
 
 /** What a row's cells can open */
 type Act = {
@@ -125,6 +140,8 @@ const COLS_KEY = 'web_students_cols_v3';
 const SORT_KEY = 'web_students_sort';
 const DENSE_KEY = 'web_students_compact';
 const CHECK_W = 40;
+/** ⋯ the row's menu */
+const MENU_W = 36;
 
 /** Table colours (light / dark website) */
 const T = isDark
@@ -177,6 +194,14 @@ export function WebStudentsScreen() {
   const officer = canApprove(approval, profile, hasPermission('settings.manage'));
   // A popup opened from a row
   const [popup, setPopup] = useState<{ kind: PopupKind; row: LeadListItem } | null>(null);
+  // 💵 Payments from the row (Settings → Fee: who takes payments)
+  const [feeSettings, setFeeSettings] = useState<FeeSettings | null>(null);
+  useEffect(() => {
+    getFeeSettings()
+      .then(setFeeSettings)
+      .catch(() => setFeeSettings(null));
+  }, []);
+  const canPay = !!feeSettings && canTakePayments(feeSettings, profile, hasPermission('settings.manage'));
 
   const quickFilters: { key: QuickFilter; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -189,6 +214,7 @@ export function WebStudentsScreen() {
     ...(approvalOn
       ? [
           { key: 'approval_waiting' as QuickFilter, label: '⏳ Admission waiting' },
+          { key: 'listed' as QuickFilter, label: '📋 Listed' },
           { key: 'registration_waiting' as QuickFilter, label: '📝 Registration waiting' },
           { key: 'registered' as QuickFilter, label: '✅ Registered' },
           { key: 'approval_returned' as QuickFilter, label: '↩ Sent back' },
@@ -378,7 +404,7 @@ export function WebStudentsScreen() {
   const shown = compact ? chosen.filter((c) => PANEL_COLS.includes(c.key)) : chosen;
   // Too many columns for the screen: the table scrolls sideways
   const [tableW, setTableW] = useState(0);
-  const minW = CHECK_W + shown.reduce((sum, c) => sum + (c.width ?? FLEX_MIN), 0);
+  const minW = CHECK_W + MENU_W + shown.reduce((sum, c) => sum + (c.width ?? FLEX_MIN), 0);
   const innerW = Math.max(tableW, minW);
 
   const doExport = async () => {
@@ -430,6 +456,7 @@ export function WebStudentsScreen() {
           >
             <Box on={allTicked} />
           </Pressable>
+          <View style={[styles.cell, { width: MENU_W }]} />
           {shown.map((c) => {
             const on = !!c.sorts?.includes(sort);
             return (
@@ -643,12 +670,36 @@ export function WebStudentsScreen() {
       {popup?.kind === 'fee' && (
         <FeeChangeSheet leadId={popup.row.id} name={popup.row.name} onClose={() => setPopup(null)} onDone={popupDone} />
       )}
-      {(popup?.kind === 'approve' ||
-        popup?.kind === 'return' ||
-        popup?.kind === 'reg_approve' ||
-        popup?.kind === 'reg_return') && (
+      {popup?.kind === 'menu' && (
+        <RowMenu
+          row={popup.row}
+          officer={officer}
+          canPay={canPay}
+          mins={{ admission: approval.admission_min_paid, registration: approval.registration_min_paid }}
+          onClose={() => setPopup(null)}
+          onPick={(a) => {
+            const row = popup.row;
+            if (a === 'open') {
+              setPopup(null);
+              openStudent(row.id);
+            } else setPopup({ kind: a, row });
+          }}
+        />
+      )}
+      {popup?.kind === 'pay' && feeSettings && (
+        <RowPay
+          row={popup.row}
+          settings={feeSettings}
+          isAdmin={hasPermission('settings.manage')}
+          onClose={() => setPopup(null)}
+          onDone={popupDone}
+        />
+      )}
+      {popup?.kind === 'note' && <RowNote row={popup.row} onClose={() => setPopup(null)} onDone={popupDone} />}
+      {popup?.kind === 'upload' && <RowUpload row={popup.row} onClose={() => setPopup(null)} onDone={popupDone} />}
+      {popup && APPROVAL_KINDS.includes(popup.kind as ApprovalSheetKind) && (
         <ApprovalActionSheet
-          kind={popup.kind}
+          kind={popup.kind as ApprovalSheetKind}
           lead={approvalLead(popup.row)}
           checks={approvalChecks(popup.row)}
           warnings={approvalChecks(popup.row).filter((c) => !c.ok).length}
@@ -739,6 +790,20 @@ function Row({
             accessibilityLabel={`Tick ${r.name}`}
           >
             <Box on={ticked} />
+          </Pressable>
+          {/* ⋯ the everyday work on this student */}
+          <Pressable
+            style={(st) => [
+              styles.cell,
+              styles.menuCell,
+              { width: MENU_W },
+              (st as { hovered?: boolean }).hovered && styles.hitHover,
+            ]}
+            onPress={() => act.open('menu', r)}
+            accessibilityRole="button"
+            accessibilityLabel={`Actions for ${r.name}`}
+          >
+            <Text style={styles.menuDots}>⋯</Text>
           </Pressable>
           {shown.map((c) => (
             <View key={c.key} style={[styles.cell, dense && styles.cellDense, colStyle(c)]}>
@@ -881,7 +946,7 @@ function Cell({
       );
     }
     case 'approval': {
-      const b = admitted ? stageBadge(r.approval_status, r.registration_status) : null;
+      const b = admitted ? stageBadge(r.approval_status, r.registration_status, r.listed_at) : null;
       if (!b) return <Text style={styles.dim}>—</Text>;
       const paid = Number(r.fee_paid ?? 0);
       // ✅ The Admission Officer approves (or sends back) right here:
@@ -899,6 +964,34 @@ function Cell({
             : null;
       if (act.officer && step) {
         const ready = paid >= step.need;
+        // 📋 No money yet: list without pay (section + NU ID) right here
+        if (step.approve === 'approve' && !ready && !r.listed_at) {
+          return (
+            <View>
+              <View style={styles.approveRow}>
+                <Pressable
+                  onPress={() => act.open('list', r)}
+                  style={(state) => [styles.listBtn, (state as { hovered?: boolean }).hovered && styles.approveHover]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`List ${r.name} without pay`}
+                >
+                  <Text style={styles.listText}>📋 List</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => act.open('return', r)}
+                  style={(state) => [styles.returnBtn, (state as { hovered?: boolean }).hovered && styles.returnHover]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Send ${r.name} back`}
+                >
+                  <Text style={styles.returnText}>↩</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.needText} numberOfLines={1}>
+                Approve needs {money(step.need)} · paid {money(paid)}
+              </Text>
+            </View>
+          );
+        }
         return (
           <View>
             <View style={styles.approveRow}>
@@ -1044,7 +1137,7 @@ function cellText(col: ColKey, r: LeadListItem, nameOf: (id: string | null) => s
     case 'papers':
       return r.papers_required ? `${r.papers_missing ?? 0} missing of ${r.papers_required}` : null;
     case 'approval':
-      return stageBadge(r.approval_status, r.registration_status)?.text.replace(/^\S+\s/, '') ?? null;
+      return stageBadge(r.approval_status, r.registration_status, r.listed_at)?.text.replace(/^\S+\s/, '') ?? null;
     case 'section':
       return r.admitted_section?.name ?? null;
     case 'nu':
@@ -1285,6 +1378,10 @@ const styles = StyleSheet.create({
   warn: { color: colors.warning },
   bad: { color: colors.danger },
   feeCell: { gap: 4 },
+  menuCell: { alignItems: 'center' },
+  listBtn: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: radius.sm, backgroundColor: colors.primary },
+  listText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
+  menuDots: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.textMuted, lineHeight: 22 },
   hit: { marginHorizontal: -6, paddingHorizontal: 6, paddingVertical: 4, borderRadius: radius.sm },
   hitHover: { backgroundColor: 'rgba(53,87,212,0.08)' },
   editMark: { fontSize: 11 },

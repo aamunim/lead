@@ -555,6 +555,8 @@ export function LeadDetailView({
         return d.to
           ? `🆔 NU Admission ID: ${d.to}${d.from ? ` (was ${d.from})` : ''}`
           : `🆔 NU Admission ID removed (was ${d.from ?? ''})`;
+      case 'admission_listed':
+        return `📋 Listed without pay${d.section ? ` · Section ${d.section}` : ''}${d.nu_admission_id ? ` · NU ${d.nu_admission_id}` : ''}${d.note ? ` · “${d.note}”` : ''}`;
       case 'placement_changed':
         return `🏫 ${d.from ? `${d.from} → ` : ''}${d.to ?? ''}`;
       case 'registration_approved':
@@ -1418,6 +1420,8 @@ export function LeadDetailView({
             remove: deleteEl,
           }}
           onWhatsApp={() => (tapOpensTemplates ? setTemplateChannel('whatsapp') : whatsapp())}
+          onLogWhatsApp={() => logManually('whatsapp')}
+          nameOf={nameOf}
           onChanged={(message) => {
             showToast(message);
             load();
