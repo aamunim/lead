@@ -12,6 +12,7 @@ import { canImportContacts } from '@/features/contacts/api';
 import { countDiscountsToAnswer } from '@/features/fees/api';
 import { checkAndDownload, currentVersionInfo, restartWithUpdate } from '@/features/updates/api';
 import { WhatsNewSheet } from '@/features/updates/WhatsNewSheet';
+import { countNewFeedback, isDeveloper } from '@/features/feedback/api';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
@@ -53,8 +54,18 @@ function PhoneMore() {
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'ready' | 'latest'>('idle');
   const [whatsNew, setWhatsNew] = useState(false);
 
+  // 💬 The developer sees the inbox, with the new ones counted
+  const [developer, setDeveloper] = useState(false);
+  const [newFeedback, setNewFeedback] = useState(0);
+
   useFocusEffect(
     useCallback(() => {
+      isDeveloper()
+        .then(async (dev) => {
+          setDeveloper(dev);
+          if (dev) setNewFeedback(await countNewFeedback());
+        })
+        .catch(() => setDeveloper(false));
       countDiscountsToAnswer().then(setDiscounts);
       canImportContacts()
         .then(setContactsAllowed)
@@ -292,6 +303,29 @@ function PhoneMore() {
                 )}
               </Pressable>
             </>
+          )}
+        </View>
+      </View>
+
+      {/* 💬 Help */}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>HELP</Text>
+        <View style={styles.group}>
+          <Row
+            icon="💬"
+            title="Contact developer"
+            subtitle="A problem, an idea or a question"
+            href={'/feedback' as Href}
+          />
+          {developer && (
+            <Row
+              icon="📥"
+              title="Feedback inbox"
+              subtitle="Messages from everyone"
+              href={'/feedback/inbox' as Href}
+              badge={newFeedback > 0 ? `${newFeedback} new` : undefined}
+              divider
+            />
           )}
         </View>
       </View>

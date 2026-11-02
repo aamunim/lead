@@ -425,6 +425,23 @@ export type Database = {
         }
         Relationships: []
       }
+      feedback: {
+        Row: {
+          id: string
+          user_id: string
+          kind: string
+          message: string
+          info: Json
+          status: string
+          reply: string | null
+          replied_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       notification_prefs: {
         Row: { muted: string[]; user_id: string }
         Insert: { muted?: string[]; user_id: string }
@@ -2448,6 +2465,25 @@ export type Database = {
         }[]
       }
       ask_app_update: { Args: { p_users: string[] }; Returns: number }
+      is_developer: { Args: never; Returns: boolean }
+      send_feedback: { Args: { p_kind: string; p_message: string; p_info?: Json }; Returns: string }
+      answer_feedback: { Args: { p_id: string; p_status: string; p_reply: string }; Returns: undefined }
+      feedback_inbox: {
+        Args: never
+        Returns: {
+          id: string
+          user_id: string
+          sender: string | null
+          role_name: string | null
+          kind: string
+          message: string
+          info: Json
+          status: string
+          reply: string | null
+          replied_at: string | null
+          created_at: string
+        }[]
+      }
       plan_visit: {
         Args: { p_at: string; p_lead_id: string; p_note?: string }
         Returns: string
