@@ -161,12 +161,6 @@ function PhoneHome() {
     { icon: 'contacts', label: 'Contacts', href: '/contacts', show: contactsAllowed },
     { icon: 'emoji-events', label: 'Scorecard', href: '/scorecard' as Href, show: true },
     { icon: 'insights', label: 'Reports', href: '/reports', show: reportsAllowed },
-    {
-      icon: 'today',
-      label: myAdded ? `Added: ${myAdded.today}` : 'Added today',
-      href: { pathname: '/leads', params: { addedBy: profile?.id ?? '', addedDay: 'today' } } as unknown as Href,
-      show: !!profile?.id,
-    },
   ];
 
   return (
@@ -267,7 +261,8 @@ function PhoneHome() {
         <ReportHomeCard />
 
         {/* ── Quick actions ────────────────────────── */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quick}>
+        {/* Quick actions: spread evenly over the whole width */}
+        <View style={styles.quick}>
           {quick
             .filter((q) => q.show)
             .map((q) => (
@@ -275,12 +270,12 @@ function PhoneHome() {
                 <View style={styles.quickIcon}>
                   <MIcon name={q.icon} size={22} color={colors.primary} />
                 </View>
-                <Text style={styles.quickText} numberOfLines={2}>
+                <Text style={styles.quickText} numberOfLines={1}>
                   {q.label}
                 </Text>
               </Tap>
             ))}
-        </ScrollView>
+        </View>
       </ScrollView>
 
       {/* ── Add lead (FAB) ─────────────────────────── */}
@@ -404,8 +399,8 @@ const styles = StyleSheet.create({
   },
   bannerTitle: { fontSize: 13.5, fontWeight: fontWeight.medium },
   bannerAction: { fontSize: fontSize.caption, fontWeight: fontWeight.bold },
-  quick: { gap: 4, paddingTop: 14, paddingRight: 8 },
-  quickItem: { width: 66, alignItems: 'center', gap: 4, paddingVertical: 4, borderRadius: 14, overflow: 'hidden' },
+  quick: { flexDirection: 'row', marginTop: 14, marginHorizontal: -4 },
+  quickItem: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 4, borderRadius: 14, overflow: 'hidden' },
   quickIcon: {
     width: 44,
     height: 44,
