@@ -9,6 +9,7 @@ import {
   resubmitAdmission,
   returnAdmission,
   setNuAdmissionId,
+  setStudentRef,
   type ApprovalSettings,
 } from '@/features/approval/api';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -38,9 +39,10 @@ export type ApprovalLead = {
   admitted_batch_id: string | null;
 };
 
-type Sheet = 'approve' | 'return' | 'resubmit' | 'nu' | null;
+type Sheet = 'approve' | 'return' | 'resubmit' | 'nu' | 'ref' | null;
 
-const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
 export function ApprovalCard({
   lead,
@@ -66,7 +68,10 @@ export function ApprovalCard({
 
   // What the officer should look at before approving
   const checks: { ok: boolean; text: string }[] = [
-    { ok: !!lead.student_ref, text: lead.student_ref ? `College ID: ${lead.student_ref}` : 'No College ID (Student ID) yet' },
+    {
+      ok: !!lead.student_ref,
+      text: lead.student_ref ? `College ID: ${lead.student_ref}` : 'No College ID (Student ID) yet',
+    },
     ...((lead.papers_required ?? 0) > 0
       ? [
           {
@@ -78,28 +83,33 @@ export function ApprovalCard({
           },
         ]
       : []),
-    { ok: Number(lead.fee_due ?? 0) <= 0, text: Number(lead.fee_due ?? 0) > 0 ? `Fee: ${money(Number(lead.fee_due))} due` : 'Fee: fully paid' },
+    {
+      ok: Number(lead.fee_due ?? 0) <= 0,
+      text: Number(lead.fee_due ?? 0) > 0 ? `Fee: ${money(Number(lead.fee_due))} due` : 'Fee: fully paid',
+    },
     { ok: !!lead.admitted_batch_id, text: lead.admitted_batch_id ? 'Batch: set' : 'No batch yet' },
   ];
   const warnings = checks.filter((c) => !c.ok).length;
 
   const tone = status === 'approved' ? styles.good : status === 'returned' ? styles.bad : styles.wait;
   const title =
-    status === 'approved' ? '✅ Admission approved' : status === 'returned' ? '↩ Sent back to fix' : '⏳ Waiting for approval';
+    status === 'approved'
+      ? '✅ Admission approved'
+      : status === 'returned'
+        ? '↩ Sent back to fix'
+        : '⏳ Waiting for approval';
 
   return (
     <View style={[styles.card, tone]}>
       <Text style={styles.header}>🎓 Admission approval</Text>
       <Text style={styles.title}>{title}</Text>
       {status !== 'waiting' && lead.approval_at && (
-        <Text style={styles.meta}>
-          {[nameOf(lead.approval_by), day(lead.approval_at)].filter(Boolean).join(' · ')}
-        </Text>
+        <Text style={styles.meta}>{[nameOf(lead.approval_by), day(lead.approval_at)].filter(Boolean).join(' · ')}</Text>
       )}
       {!!lead.approval_note && <Text style={styles.note}>“{lead.approval_note}”</Text>}
 
       <View style={styles.ids}>
-        <IdRow label="College ID" value={lead.student_ref} />
+        <IdRow label="College ID" value={lead.student_ref} onEdit={officer ? () => setSheet('ref') : undefined} />
         <IdRow
           label="NU Admission ID"
           value={lead.nu_admission_id}
@@ -127,9 +137,7 @@ export function ApprovalCard({
       )}
       {status === 'waiting' && !officer && <Text style={styles.meta}>The Admission Officer will check it.</Text>}
 
-      {status === 'returned' && (
-        <Button title="Fixed: send again" onPress={() => setSheet('resubmit')} fullWidth />
-      )}
+      {status === 'returned' && <Button title="Fixed: send again" onPress={() => setSheet('resubmit')} fullWidth />}
 
       {sheet && (
         <ActionSheet
@@ -178,6 +186,7 @@ function ActionSheet({
   onDone: (message: string) => void;
 }) {
   const [nu, setNu] = useState(lead.nu_admission_id ?? '');
+  const [ref, setRef] = useState(lead.student_ref ?? '');
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +194,7 @@ function ActionSheet({
   const save = async () => {
     setError(null);
     if (kind === 'return' && !text.trim()) return setError('Please write what needs to be fixed.');
+    if (kind === 'ref' && !ref.trim()) return setError('Please type the College ID.');
     if (kind === 'approve' && warnings > 0 && !text.trim()) {
       return setError('Some checks are not done. Please write why you approve anyway.');
     }
@@ -199,6 +209,9 @@ function ActionSheet({
       } else if (kind === 'resubmit') {
         await resubmitAdmission(lead.id, text);
         onDone('Sent for approval again.');
+      } else if (kind === 'ref') {
+        await setStudentRef(lead.id, ref);
+        onDone('🎓 College ID saved.');
       } else {
         await setNuAdmissionId(lead.id, nu);
         onDone(nu.trim() ? '🆔 NU Admission ID saved.' : 'NU Admission ID removed.');
@@ -215,6 +228,7 @@ function ActionSheet({
     return: '↩ Send back to fix',
     resubmit: 'Send for approval again',
     nu: '🆔 NU Admission ID',
+    ref: '✏️ College ID',
   };
 
   return (
@@ -235,7 +249,17 @@ function ActionSheet({
                 placeholder="Type it as it is"
               />
             )}
-            {kind !== 'nu' && (
+            {kind === 'ref' && (
+              <TextField
+                label="College ID"
+                value={ref}
+                onChangeText={setRef}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                placeholder="Type it as it is"
+              />
+            )}
+            {kind !== 'nu' && kind !== 'ref' && (
               <TextField
                 label={
                   kind === 'return'
@@ -249,7 +273,13 @@ function ActionSheet({
                 value={text}
                 onChangeText={setText}
                 multiline
-                placeholder={kind === 'return' ? 'e.g. NID copy missing' : kind === 'approve' ? 'e.g. Fee in 2 installments' : 'e.g. NID copy given'}
+                placeholder={
+                  kind === 'return'
+                    ? 'e.g. NID copy missing'
+                    : kind === 'approve'
+                      ? 'e.g. Fee in 2 installments'
+                      : 'e.g. NID copy given'
+                }
               />
             )}
             {error && <Text style={styles.error}>{error}</Text>}
@@ -288,8 +318,20 @@ const styles = StyleSheet.create({
   checkWarn: { color: colors.warning, fontWeight: fontWeight.semibold },
   row: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
-  sheet: { maxHeight: '85%', backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
-  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, marginTop: spacing.sm },
+  sheet: {
+    maxHeight: '85%',
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.border,
+    marginTop: spacing.sm,
+  },
   sheetContent: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   sheetTitle: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
   error: { fontSize: fontSize.small, color: colors.danger },
