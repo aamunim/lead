@@ -49,7 +49,9 @@ export function canApprove(s: ApprovalSettings, profile: MyProfile | null, isAdm
 }
 
 /** Badge for a student's card and the approval card */
-export function approvalBadge(status: string | null | undefined): { text: string; color: 'wait' | 'good' | 'bad' } | null {
+export function approvalBadge(
+  status: string | null | undefined,
+): { text: string; color: 'wait' | 'good' | 'bad' } | null {
   switch (status) {
     case 'waiting':
       return { text: '⏳ Approval waiting', color: 'wait' };
@@ -90,6 +92,17 @@ export async function resubmitAdmission(leadId: string, note: string): Promise<v
 export async function setNuAdmissionId(leadId: string, value: string): Promise<void> {
   const { error } = await supabase.rpc('set_nu_admission_id', { p_lead: leadId, p_value: value.trim() });
   if (error) throw toError(error);
+}
+
+/** ✏️ College ID (Student ID) typed by hand (Admission Officer / admin) */
+export async function setStudentRef(leadId: string, value: string): Promise<void> {
+  const { error } = await supabase.rpc('set_student_ref', { p_lead: leadId, p_value: value.trim() });
+  if (error) {
+    // Two people saving the same ID at once: the database's own check
+    if (error.message.includes('leads_student_ref_unique'))
+      throw new Error('This College ID is already given to another student.');
+    throw toError(error);
+  }
 }
 
 /** Students waiting for approval (for the officer's Home card) */
