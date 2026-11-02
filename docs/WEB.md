@@ -87,3 +87,10 @@ links).
 - **Keyboard**: `Ctrl+K` or `/` search · `J`/`K` or `↓`/`↑` next/previous ·
   `Enter` full page · `X` tick · `Esc` close · `?` all shortcuts.
 - Sheets from the phone open as a dialog in the middle of the screen.
+- **From the row** (no need to open the student):
+  - **Papers**: click → which papers are in / missing, originals, where kept.
+  - **✅ Approve / ↩** (Admission Officer, waiting students): the approve dialog
+    with the check list, NU Admission ID and note.
+  - **Last call / note**: click → every call and note of the student.
+  - **Fee ✏️** (Admission Officer): change the total discount / final fee
+    (reason needed; not below what is paid). Also on the Fee card in the app.

@@ -39,6 +39,7 @@ export type ApprovalLead = {
   admitted_batch_id: string | null;
 };
 
+export type ApprovalSheetKind = Exclude<Sheet, null>;
 type Sheet = 'approve' | 'return' | 'resubmit' | 'nu' | 'ref' | null;
 
 const day = (iso: string) =>
@@ -140,7 +141,7 @@ export function ApprovalCard({
       {status === 'returned' && <Button title="Fixed: send again" onPress={() => setSheet('resubmit')} fullWidth />}
 
       {sheet && (
-        <ActionSheet
+        <ApprovalActionSheet
           kind={sheet}
           lead={lead}
           warnings={warnings}
@@ -172,16 +173,20 @@ function IdRow({ label, value, onEdit }: { label: string; value: string | null; 
 }
 
 // One small sheet for approve / send back / send again / NU ID
-function ActionSheet({
+/** The approve / send back / send again / ID dialog (also from the website's table) */
+export function ApprovalActionSheet({
   kind,
   lead,
   warnings,
+  checks,
   onClose,
   onDone,
 }: {
   kind: Exclude<Sheet, null>;
   lead: ApprovalLead;
   warnings: number;
+  /** 🌐 shown in the dialog when opened from the table (the card shows them itself) */
+  checks?: { ok: boolean; text: string }[];
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
@@ -239,6 +244,12 @@ function ActionSheet({
           <View style={styles.handle} />
           <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetTitle}>{titles[kind]}</Text>
+            {kind === 'approve' &&
+              checks?.map((c) => (
+                <Text key={c.text} style={[styles.check, !c.ok && styles.checkWarn]}>
+                  {c.ok ? '✅' : '⚠️'} {c.text}
+                </Text>
+              ))}
             {(kind === 'approve' || kind === 'nu') && (
               <TextField
                 label={kind === 'approve' ? 'NU Admission ID (now or later)' : 'NU Admission ID'}
