@@ -234,11 +234,40 @@ export async function linkVoiceNotes(fileIds: string[], callId: string): Promise
 /** 🎙 Voice notes recorded with the 🎙 button (they show in Calls & notes, not in Files) */
 export const isRecordedVoice = (f: Pick<LeadFile, 'kind' | 'context'>) => f.kind === 'voice' && !!f.context;
 
-/** 📦 Every file of a lead (that I may see) in one ZIP, in the phone's cache */
-export type LeadZip = { file: File; name: string };
+// ---------------------------------------------------------------------
+// 🌐 Website: no phone file system; the browser downloads / shows it
+// ---------------------------------------------------------------------
+async function fetchFileBlob(id: string): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(`${FUNCTIONS}/drive-file?id=${encodeURIComponent(id)}`, { headers: await authHeaders() });
+  } catch {
+    throw new Error('No internet connection. Please try again.');
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(res.status === 404 ? 'File not found, or you may not open it.' : body.error ?? 'Could not download the file.');
+  }
+  return res.blob();
+}
+
+/** The browser saves it to Downloads */
+function browserDownload(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** 📦 Every file of a lead (that I may see) in one ZIP, in the phone's cache (website: downloaded) */
+export type LeadZip = { file: File; name: string; downloaded?: boolean };
 
 export async function downloadAllFiles(leadId: string): Promise<LeadZip> {
-  const target = new File(Paths.cache, `lead-files-${leadId.slice(0, 8)}-${Date.now()}.zip`);
+  const target = Platform.OS === 'web' ? null : new File(Paths.cache, `lead-files-${leadId.slice(0, 8)}-${Date.now()}.zip`);
   let res: Response;
   try {
     res = await fetch(`${FUNCTIONS}/drive-zip?lead_id=${encodeURIComponent(leadId)}`, { headers: await authHeaders() });
@@ -253,6 +282,10 @@ export async function downloadAllFiles(leadId: string): Promise<LeadZip> {
   const header = res.headers.get('Content-Disposition') ?? '';
   const match = /filename\*=UTF-8''([^;]+)/.exec(header);
   const name = match ? decodeURIComponent(match[1]) : 'Lead files.zip';
+  if (!target) {
+    browserDownload(await res.blob(), name);
+    return { file: null as unknown as File, name, downloaded: true };
+  }
   target.write(new Uint8Array(await res.arrayBuffer()));
   return { file: target, name };
 }
@@ -277,6 +310,11 @@ export async function saveZip(zip: LeadZip, how: 'save' | 'share'): Promise<bool
 
 /** Download through the server into the phone's cache (kept for next time) */
 export async function downloadLeadFile(f: Pick<LeadFile, 'id' | 'name'>): Promise<File> {
+  // 🌐 Website: a link to the file in the browser's memory (only .uri is used)
+  if (Platform.OS === 'web') {
+    const blob = await fetchFileBlob(f.id);
+    return { uri: URL.createObjectURL(blob), exists: true } as unknown as File;
+  }
   const safeName = `${f.id.slice(0, 8)}-${f.name.replace(/[^\w.\- ]+/g, '_')}`;
   const target = new File(Paths.cache, safeName);
   if (!target.exists) {
@@ -294,6 +332,11 @@ export async function downloadLeadFile(f: Pick<LeadFile, 'id' | 'name'>): Promis
 
 /** Download through the server and open it in the phone's viewer */
 export async function openLeadFile(f: LeadFile): Promise<void> {
+  // 🌐 Website: the browser downloads it (to Downloads; it opens from there)
+  if (Platform.OS === 'web') {
+    browserDownload(await fetchFileBlob(f.id), f.name);
+    return;
+  }
   const target = await downloadLeadFile(f);
 
   if (Platform.OS === 'android') {

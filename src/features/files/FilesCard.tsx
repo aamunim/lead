@@ -227,6 +227,11 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
     setZipping(true);
     try {
       const zip = await downloadAllFiles(leadId);
+      // 🌐 Website: the browser already saved it to Downloads
+      if (zip.downloaded) {
+        onChanged(`📦 ${zip.name} downloaded.`);
+        return;
+      }
       const keep = (how: 'save' | 'share') =>
         saveZip(zip, how)
           .then((done) => done && how === 'save' && onChanged(`📦 ${zip.name} saved.`))
