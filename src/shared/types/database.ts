@@ -45,6 +45,9 @@ export type Database = {
           img_max_kb: number | null
           pdf_max_kb: number | null
           accept: string
+          passport: boolean
+          bg_color: string
+          face_pct: number
         }
         Insert: {
           course_ids?: string[] | null
@@ -61,6 +64,9 @@ export type Database = {
           img_max_kb?: number | null
           pdf_max_kb?: number | null
           accept?: string
+          passport?: boolean
+          bg_color?: string
+          face_pct?: number
         }
         Update: {
           course_ids?: string[] | null
@@ -77,6 +83,9 @@ export type Database = {
           img_max_kb?: number | null
           pdf_max_kb?: number | null
           accept?: string
+          passport?: boolean
+          bg_color?: string
+          face_pct?: number
         }
         Relationships: []
       }
@@ -2596,6 +2605,30 @@ export type Database = {
         Returns: undefined
       }
       delete_ilovepdf_account: { Args: { p_id: string }; Returns: undefined }
+      set_paper_passport: {
+        Args: { p_paper: string; p_passport: boolean; p_bg_color: string; p_face_pct: number }
+        Returns: undefined
+      }
+      list_removebg_accounts: {
+        Args: never
+        Returns: {
+          id: string
+          label: string
+          key_hint: string
+          is_active: boolean
+          sort_order: number
+          files_month: number
+          last_used_at: string | null
+          last_error: string | null
+          last_error_at: string | null
+        }[]
+      }
+      add_removebg_account: { Args: { p_label: string; p_api_key: string }; Returns: string }
+      update_removebg_account: {
+        Args: { p_id: string; p_label: string; p_is_active?: boolean; p_sort_order?: number }
+        Returns: undefined
+      }
+      delete_removebg_account: { Args: { p_id: string }; Returns: undefined }
       return_admission: { Args: { p_lead: string; p_reason: string }; Returns: undefined }
       resubmit_admission: { Args: { p_lead: string; p_note?: string }; Returns: undefined }
       set_nu_admission_id: { Args: { p_lead: string; p_value: string }; Returns: undefined }

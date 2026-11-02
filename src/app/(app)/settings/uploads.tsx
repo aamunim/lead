@@ -14,7 +14,11 @@ import {
 
 import {
   DEFAULT_UPLOAD,
+  addCutoutAccount,
   addPdfAccount,
+  deleteCutoutAccount,
+  listCutoutAccounts,
+  updateCutoutAccount,
   canEditUploadRules,
   deletePdfAccount,
   getUploadDefaults,
@@ -46,6 +50,7 @@ export default function UploadRulesScreen() {
   const [defaults, setDefaults] = useState<UploadDefaults>(DEFAULT_UPLOAD);
   const [papers, setPapers] = useState<PaperRule[]>([]);
   const [accounts, setAccounts] = useState<PdfAccount[]>([]);
+  const [cutAccounts, setCutAccounts] = useState<PdfAccount[]>([]);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
 
   const say = (text: string, bad = false) => {
@@ -57,7 +62,13 @@ export default function UploadRulesScreen() {
     const ok = await canEditUploadRules();
     setAllowed(ok);
     if (!ok) return;
-    const [d, p, a] = await Promise.all([getUploadDefaults(), listPaperRules(), listPdfAccounts().catch(() => [])]);
+    const [d, p, a, c] = await Promise.all([
+      getUploadDefaults(),
+      listPaperRules(),
+      listPdfAccounts().catch(() => []),
+      listCutoutAccounts().catch(() => []),
+    ]);
+    setCutAccounts(c);
     setDefaults(d);
     setPapers(p);
     setAccounts(a);
@@ -149,67 +160,39 @@ export default function UploadRulesScreen() {
         title="📄 PDF compressor (iLovePDF)"
         hint="Accounts are tried from the top; when one runs out of files for the month (or fails), the next one is used. The keys stay on the server."
       >
-        {accounts.length === 0 && (
-          <Text style={styles.warn}>
-            No account yet: big PDFs can't be made smaller, so people are asked to do it by hand.
-          </Text>
-        )}
-        {accounts.map((a, i) => (
-          <View key={a.id} style={[styles.account, !a.is_active && styles.accountOff]}>
-            <View style={styles.flex}>
-              <Text style={styles.accName}>
-                {i + 1}. {a.label}
-              </Text>
-              <Text style={styles.accMeta}>
-                {a.key_hint} · {a.files_month} file{a.files_month === 1 ? '' : 's'} this month
-                {a.last_used_at ? ` · last used ${new Date(a.last_used_at).toLocaleDateString('en-GB')}` : ''}
-              </Text>
-              {!!a.last_error && <Text style={styles.accError}>⚠ {a.last_error}</Text>}
-            </View>
-            <SmallButton
-              title="↑"
-              ghost
-              onPress={async () => {
-                if (i === 0) return;
-                const prev = accounts[i - 1];
-                await updatePdfAccount(a.id, { sort_order: prev.sort_order });
-                await updatePdfAccount(prev.id, {
-                  sort_order: a.sort_order === prev.sort_order ? a.sort_order + 1 : a.sort_order,
-                });
-                load();
-              }}
-            />
-            <Switch
-              value={a.is_active}
-              onValueChange={async (v) => {
-                await updatePdfAccount(a.id, { is_active: v });
-                load();
-              }}
-              trackColor={{ true: colors.primary, false: colors.border }}
-              accessibilityLabel={`${a.label} in use`}
-            />
-            <SmallButton
-              title="Remove"
-              ghost
-              onPress={async () => {
-                await deletePdfAccount(a.id);
-                say('Account removed.');
-                load();
-              }}
-            />
-          </View>
-        ))}
-        <AddAccount
-          onAdded={() => {
-            say('✓ Account added.');
-            load();
-          }}
-          onError={(t) => say(t, true)}
+        <Accounts
+          list={accounts}
+          empty="No account yet: big PDFs can't be made smaller, so people are asked to do it by hand."
+          keyHint="Public key (project_public_…)"
+          api={{ add: addPdfAccount, update: updatePdfAccount, remove: deletePdfAccount }}
+          say={say}
+          reload={load}
         />
         <Pressable onPress={() => Linking.openURL('https://developer.ilovepdf.com/')} accessibilityRole="link">
           <Text style={styles.link}>
             How to get a key: developer.ilovepdf.com → sign up (free: 250 files a month) → Projects → copy the Public
             key ↗
+          </Text>
+        </Pressable>
+      </Section>
+
+      {/* remove.bg */}
+      <Section
+        title="🪪 Passport photo background (remove.bg)"
+        hint="For papers with 🪪 Passport photo on: the person is cut out and the background made plain. Accounts are tried from the top; when one runs out of credits (or fails), the next one is used."
+      >
+        <Accounts
+          list={cutAccounts}
+          empty="No account yet: passport photos keep their own background (they are still placed and sized)."
+          keyHint="API key"
+          api={{ add: addCutoutAccount, update: updateCutoutAccount, remove: deleteCutoutAccount }}
+          say={say}
+          reload={load}
+        />
+        <Pressable onPress={() => Linking.openURL('https://www.remove.bg/dashboard#api-key')} accessibilityRole="link">
+          <Text style={styles.link}>
+            How to get a key: remove.bg → sign up (free: 50 small pictures a month, enough for passport photos) →
+            Dashboard → API Keys → New API Key ↗
           </Text>
         </Pressable>
       </Section>
@@ -229,98 +212,199 @@ function PaperRow({ rule, onSaved }: { rule: PaperRule; onSaved: (text: string, 
     setDirty(true);
   };
   return (
-    <View style={[styles.paperRow, !r.is_active && styles.accountOff]}>
-      <Text style={[styles.cellText, styles.colName]} numberOfLines={2}>
-        {r.name}
-      </Text>
-      <View style={[styles.colAccept, styles.chips]}>
-        {(
-          [
-            ['any', 'Any'],
-            ['image', 'Picture'],
-            ['pdf', 'PDF'],
-          ] as const
-        ).map(([k, label]) => (
+    <View style={[styles.paperWrap, !r.is_active && styles.accountOff]}>
+      <View style={styles.paperRow}>
+        <Text style={[styles.cellText, styles.colName]} numberOfLines={2}>
+          {r.name}
+        </Text>
+        <View style={[styles.colAccept, styles.chips]}>
+          {(
+            [
+              ['any', 'Any'],
+              ['image', 'Picture'],
+              ['pdf', 'PDF'],
+            ] as const
+          ).map(([k, label]) => (
+            <Pressable
+              key={k}
+              onPress={() => set({ accept: k })}
+              style={[styles.chip, r.accept === k && styles.chipOn]}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: r.accept === k }}
+            >
+              <Text style={[styles.chipText, r.accept === k && styles.chipTextOn]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={[styles.colSize, styles.sizeRow]}>
+          <Input value={r.img_width} onChange={(n) => set({ img_width: n })} placeholder="W" />
+          <Text style={styles.times}>×</Text>
+          <Input value={r.img_height} onChange={(n) => set({ img_height: n })} placeholder="H" />
+        </View>
+        <View style={styles.colKb}>
+          <Input value={r.img_max_kb} onChange={(n) => set({ img_max_kb: n })} placeholder="default" />
+        </View>
+        <View style={styles.colKb}>
+          <Input value={r.pdf_max_kb} onChange={(n) => set({ pdf_max_kb: n })} placeholder="default" />
+        </View>
+        <View style={styles.colSave}>
+          {dirty && (
+            <SmallButton
+              title="Save"
+              onPress={async () => {
+                try {
+                  await savePaperRule(r);
+                  onSaved(`✓ ${r.name} saved.`);
+                } catch (e) {
+                  onSaved(e instanceof Error ? e.message : 'Could not save.', true);
+                }
+              }}
+            />
+          )}
+        </View>
+      </View>
+      {/* 🪪 Passport photo: needs an exact size */}
+      {r.accept !== 'pdf' && (
+        <View style={styles.passRow}>
           <Pressable
-            key={k}
-            onPress={() => set({ accept: k })}
-            style={[styles.chip, r.accept === k && styles.chipOn]}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: r.accept === k }}
+            onPress={() => set({ passport: !r.passport })}
+            style={[styles.chip, r.passport && styles.chipOn]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: r.passport }}
           >
-            <Text style={[styles.chipText, r.accept === k && styles.chipTextOn]}>{label}</Text>
+            <Text style={[styles.chipText, r.passport && styles.chipTextOn]}>
+              🪪 Passport photo {r.passport ? 'on' : 'off'}
+            </Text>
           </Pressable>
-        ))}
-      </View>
-      <View style={[styles.colSize, styles.sizeRow]}>
-        <Input value={r.img_width} onChange={(n) => set({ img_width: n })} placeholder="W" />
-        <Text style={styles.times}>×</Text>
-        <Input value={r.img_height} onChange={(n) => set({ img_height: n })} placeholder="H" />
-      </View>
-      <View style={styles.colKb}>
-        <Input value={r.img_max_kb} onChange={(n) => set({ img_max_kb: n })} placeholder="default" />
-      </View>
-      <View style={styles.colKb}>
-        <Input value={r.pdf_max_kb} onChange={(n) => set({ pdf_max_kb: n })} placeholder="default" />
-      </View>
-      <View style={styles.colSave}>
-        {dirty && (
-          <SmallButton
-            title="Save"
-            onPress={async () => {
-              try {
-                await savePaperRule(r);
-                onSaved(`✓ ${r.name} saved.`);
-              } catch (e) {
-                onSaved(e instanceof Error ? e.message : 'Could not save.', true);
-              }
-            }}
-          />
-        )}
-      </View>
+          {r.passport && (
+            <>
+              <Text style={styles.passLabel}>Background</Text>
+              <View
+                style={[styles.dot, { backgroundColor: /^#[0-9a-f]{6}$/i.test(r.bg_color) ? r.bg_color : '#ffffff' }]}
+              />
+              <TextInput
+                value={r.bg_color}
+                onChangeText={(t) => set({ bg_color: t.trim() })}
+                autoCapitalize="none"
+                style={[styles.input, styles.inputHex]}
+                accessibilityLabel="Background colour"
+              />
+              <Text style={styles.passLabel}>Head: % of the height</Text>
+              <View style={styles.inputSmall}>
+                <Input value={r.face_pct} onChange={(n) => set({ face_pct: n ?? 55 })} />
+              </View>
+              {!(r.img_width && r.img_height) && <Text style={styles.warnSmall}>⚠ Give the picture size too</Text>}
+            </>
+          )}
+        </View>
+      )}
     </View>
   );
 }
 
-function AddAccount({ onAdded, onError }: { onAdded: () => void; onError: (t: string) => void }) {
+type AccountApi = {
+  add: (label: string, key: string) => Promise<void>;
+  update: (id: string, patch: { is_active?: boolean; sort_order?: number }) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+};
+
+/** A list of service accounts (iLovePDF, remove.bg): used from the top, the next when one fails */
+function Accounts({
+  list,
+  empty,
+  keyHint,
+  api,
+  say,
+  reload,
+}: {
+  list: PdfAccount[];
+  empty: string;
+  keyHint: string;
+  api: AccountApi;
+  say: (t: string, bad?: boolean) => void;
+  reload: () => void;
+}) {
   const [label, setLabel] = useState('');
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
+  const run = async (f: () => Promise<void>, ok?: string) => {
+    try {
+      await f();
+      if (ok) say(ok);
+      reload();
+    } catch (e) {
+      say(e instanceof Error ? e.message : 'Could not save.', true);
+    }
+  };
   return (
-    <View style={styles.addRow}>
-      <TextInput
-        value={label}
-        onChangeText={setLabel}
-        placeholder="Name, e.g. Office account 2"
-        placeholderTextColor={colors.textMuted}
-        style={[styles.input, styles.inputName]}
-      />
-      <TextInput
-        value={key}
-        onChangeText={setKey}
-        placeholder="Public key (project_public_…)"
-        placeholderTextColor={colors.textMuted}
-        autoCapitalize="none"
-        autoCorrect={false}
-        style={[styles.input, styles.flex]}
-      />
-      <SmallButton
-        title={busy ? '…' : '＋ Add account'}
-        onPress={async () => {
-          setBusy(true);
-          try {
-            await addPdfAccount(label, key);
-            setLabel('');
-            setKey('');
-            onAdded();
-          } catch (e) {
-            onError(e instanceof Error ? e.message : 'Could not add it.');
-          } finally {
+    <>
+      {list.length === 0 && <Text style={styles.warn}>{empty}</Text>}
+      {list.map((a, i) => (
+        <View key={a.id} style={[styles.account, !a.is_active && styles.accountOff]}>
+          <View style={styles.flex}>
+            <Text style={styles.accName}>
+              {i + 1}. {a.label}
+            </Text>
+            <Text style={styles.accMeta}>
+              {a.key_hint} · {a.files_month} file{a.files_month === 1 ? '' : 's'} this month
+              {a.last_used_at ? ` · last used ${new Date(a.last_used_at).toLocaleDateString('en-GB')}` : ''}
+            </Text>
+            {!!a.last_error && <Text style={styles.accError}>⚠ {a.last_error}</Text>}
+          </View>
+          <SmallButton
+            title="↑"
+            ghost
+            onPress={() =>
+              i > 0 &&
+              run(async () => {
+                const prev = list[i - 1];
+                await api.update(a.id, { sort_order: prev.sort_order });
+                await api.update(prev.id, {
+                  sort_order: a.sort_order === prev.sort_order ? a.sort_order + 1 : a.sort_order,
+                });
+              })
+            }
+          />
+          <Switch
+            value={a.is_active}
+            onValueChange={(v) => run(() => api.update(a.id, { is_active: v }))}
+            trackColor={{ true: colors.primary, false: colors.border }}
+            accessibilityLabel={`${a.label} in use`}
+          />
+          <SmallButton title="Remove" ghost onPress={() => run(() => api.remove(a.id), 'Account removed.')} />
+        </View>
+      ))}
+      <View style={styles.addRow}>
+        <TextInput
+          value={label}
+          onChangeText={setLabel}
+          placeholder="Name, e.g. Office account 2"
+          placeholderTextColor={colors.textMuted}
+          style={[styles.input, styles.inputName]}
+        />
+        <TextInput
+          value={key}
+          onChangeText={setKey}
+          placeholder={keyHint}
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={[styles.input, styles.flex]}
+        />
+        <SmallButton
+          title={busy ? '…' : '＋ Add account'}
+          onPress={async () => {
+            setBusy(true);
+            await run(async () => {
+              await api.add(label, key);
+              setLabel('');
+              setKey('');
+            }, '✓ Account added.');
             setBusy(false);
-          }
-        }}
-      />
-    </View>
+          }}
+        />
+      </View>
+    </>
   );
 }
 
@@ -421,14 +505,14 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   th: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.textMuted, textTransform: 'uppercase' },
-  paperRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
+  paperWrap: { gap: spacing.xs, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  passRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap', paddingLeft: 2 },
+  passLabel: { fontSize: fontSize.caption, color: colors.textMuted },
+  dot: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: colors.border },
+  inputHex: { width: 96 },
+  inputSmall: { width: 70 },
+  warnSmall: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.warning },
+  paperRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   cellText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
   colName: { flex: 1, minWidth: 140 },
   colAccept: { width: 210 },

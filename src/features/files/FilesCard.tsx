@@ -20,6 +20,7 @@ import {
 import { getLeadPapers, type LeadPaper } from '@/features/papers/api';
 import { ruleFor } from '@/features/files/uploadRules';
 import { prepareImage } from '@/features/files/prepareImage';
+import { PassportEditor } from '@/features/files/PassportEditor';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
@@ -68,6 +69,16 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
   const [zipping, setZipping] = useState(false);
   // ▶ A voice note / audio file being played in the app
   const [playing, setPlaying] = useState<LeadFile | null>(null);
+  // 🪪 Website: the passport photo editor, waiting for "Use this" (or Cancel)
+  const [editor, setEditor] = useState<{
+    source: Blob;
+    title: string;
+    width: number;
+    height: number;
+    bgColor: string;
+    facePct: number;
+    done: (picture: Blob | null) => void;
+  } | null>(null);
   const more = useShowMore(files, 4);
 
   const load = useCallback(async () => {
@@ -132,7 +143,29 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
         // 🖼 A picture: the set size, then under the KB limit (JPEG)
         if (isImage && !/gif|svg/.test(mimeType)) {
           const source = blob ?? (await (await fetch(file.uri)).blob());
-          const out = await prepareImage(source, { exact: rule.exact, maxSide: rule.maxSide, maxKb: rule.imgMaxKb });
+          let picture: Blob = source;
+          // 🪪 Passport photo: the person cut out, the head placed; checked in the editor
+          if (rule.passport && rule.exact) {
+            const exact = rule.exact;
+            const pass = rule.passport;
+            setUploading(null);
+            const edited = await new Promise<Blob | null>((done) =>
+              setEditor({
+                source,
+                title: paper?.name ?? 'Photo',
+                width: exact.width,
+                height: exact.height,
+                bgColor: pass.bgColor,
+                facePct: pass.facePct,
+                done,
+              }),
+            );
+            setEditor(null);
+            if (!edited) return false; // cancelled
+            setUploading(paper?.name ?? file.name);
+            picture = edited;
+          }
+          const out = await prepareImage(picture, { exact: rule.exact, maxSide: rule.maxSide, maxKb: rule.imgMaxKb });
           originalSize = source.size;
           blob = out.blob;
           mimeType = 'image/jpeg';
@@ -354,6 +387,18 @@ export function FilesCard({ leadId, stateKey, nameOf, onChanged }: Props) {
       <ShowMoreButton {...more} />
 
       <VoicePlayer file={playing} onClose={() => setPlaying(null)} />
+      {editor && (
+        <PassportEditor
+          source={editor.source}
+          title={editor.title}
+          width={editor.width}
+          height={editor.height}
+          bgColor={editor.bgColor}
+          facePct={editor.facePct}
+          onCancel={() => editor.done(null)}
+          onDone={(picture) => editor.done(picture)}
+        />
+      )}
 
       {/* Which paper is this? */}
       <Modal visible={picking} transparent animationType="slide" onRequestClose={() => setPicking(false)}>

@@ -122,3 +122,19 @@ links).
   ＋ Add account. Add several: they are used from the top; when one runs out
   or fails (shown in red) the next one is used. The keys stay on the server.
 - A paper can take Any / Picture only / PDF only.
+
+## 🪪 Passport photo (website)
+
+- Settings → Upload rules → a paper → **🪪 Passport photo on** (with a picture
+  size, e.g. 300 × 300), background colour (light blue #CFE6FA), head size (% of
+  the height). On for "Photo" to start with.
+- Uploading a picture there: the server asks **remove.bg** for the person (a
+  see-through PNG); the head is found from the person's outline and placed by
+  the passport rule; the background becomes the colour. An editor shows the
+  result: zoom, move, turn, background on/off and colour, brightness → **Use this**.
+- remove.bg accounts: remove.bg → sign up (free: 50 small "preview" pictures a
+  month, enough for passport sizes) → Dashboard → API Keys → New API Key →
+  Settings → Upload rules → remove.bg → ＋ Add account. Several accounts: used
+  from the top; one out of credits (or failing) → the next one.
+- No account / remove.bg not working: the editor still opens; the photo keeps
+  its background and is placed by hand.

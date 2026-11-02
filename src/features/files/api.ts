@@ -39,7 +39,12 @@ export type LeadFile = {
   created_at: string;
 };
 
-export type DriveStatus = { connected: boolean; email: string | null; connected_at: string | null; connected_by: string | null };
+export type DriveStatus = {
+  connected: boolean;
+  email: string | null;
+  connected_at: string | null;
+  connected_by: string | null;
+};
 
 const FUNCTIONS = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
 
@@ -111,7 +116,7 @@ export async function connectDrive(url: string, secret: string): Promise<{ email
     throw new Error(
       res.status === 404 && !body.error
         ? 'The Google Drive server part is not set up yet (Edge Functions not deployed).'
-        : body.error ?? 'Could not connect.',
+        : (body.error ?? 'Could not connect.'),
     );
   }
   return { email: body.email ?? null };
@@ -128,7 +133,9 @@ export async function disconnectDrive(): Promise<void> {
 export async function listLeadFiles(leadId: string): Promise<LeadFile[]> {
   const { data, error } = await supabase
     .from('lead_files')
-    .select('id, lead_id, kind, paper_id, call_id, name, mime_type, size_bytes, duration_sec, context, uploaded_by, created_at')
+    .select(
+      'id, lead_id, kind, paper_id, call_id, name, mime_type, size_bytes, duration_sec, context, uploaded_by, created_at',
+    )
     .eq('lead_id', leadId)
     .order('created_at', { ascending: false });
   if (error) throw toError(error);
@@ -169,17 +176,22 @@ export async function uploadLeadFile(input: {
       form.append('file', new globalThis.File([blob], input.name, { type: input.mimeType }));
       const r = await fetch(`${FUNCTIONS}/drive-upload`, { method: 'POST', headers: await authHeaders(), body: form });
       res = { status: r.status, body: await r.text() };
-    } else res = await new File(input.uri).upload(`${FUNCTIONS}/drive-upload`, {
-      httpMethod: 'POST',
-      uploadType: UploadType.MULTIPART,
-      fieldName: 'file',
-      mimeType: input.mimeType,
-      parameters,
-      headers: await authHeaders(),
-    });
+    } else
+      res = await new File(input.uri).upload(`${FUNCTIONS}/drive-upload`, {
+        httpMethod: 'POST',
+        uploadType: UploadType.MULTIPART,
+        fieldName: 'file',
+        mimeType: input.mimeType,
+        parameters,
+        headers: await authHeaders(),
+      });
   } catch (e) {
     const m = e instanceof Error ? e.message : '';
-    throw new Error(/network|internet|offline|timed out|unable to resolve/i.test(m) ? 'No internet connection. Please try again.' : m || 'Could not upload.');
+    throw new Error(
+      /network|internet|offline|timed out|unable to resolve/i.test(m)
+        ? 'No internet connection. Please try again.'
+        : m || 'Could not upload.',
+    );
   }
   let body: { error?: string } & Partial<LeadFile> = {};
   try {
@@ -191,7 +203,7 @@ export async function uploadLeadFile(input: {
     throw new Error(
       res.status === 404 && !body.error
         ? 'The Google Drive server part is not set up yet.'
-        : body.error ?? `Could not upload (${res.status}).`,
+        : (body.error ?? `Could not upload (${res.status}).`),
     );
   }
   return body as LeadFile & { compressed?: { from: number; to: number; account: string } | null };
@@ -246,7 +258,9 @@ async function fetchFileBlob(id: string): Promise<Blob> {
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(res.status === 404 ? 'File not found, or you may not open it.' : body.error ?? 'Could not download the file.');
+    throw new Error(
+      res.status === 404 ? 'File not found, or you may not open it.' : (body.error ?? 'Could not download the file.'),
+    );
   }
   return res.blob();
 }
@@ -267,7 +281,8 @@ function browserDownload(blob: Blob, name: string): void {
 export type LeadZip = { file: File; name: string; downloaded?: boolean };
 
 export async function downloadAllFiles(leadId: string): Promise<LeadZip> {
-  const target = Platform.OS === 'web' ? null : new File(Paths.cache, `lead-files-${leadId.slice(0, 8)}-${Date.now()}.zip`);
+  const target =
+    Platform.OS === 'web' ? null : new File(Paths.cache, `lead-files-${leadId.slice(0, 8)}-${Date.now()}.zip`);
   let res: Response;
   try {
     res = await fetch(`${FUNCTIONS}/drive-zip?lead_id=${encodeURIComponent(leadId)}`, { headers: await authHeaders() });
@@ -276,7 +291,11 @@ export async function downloadAllFiles(leadId: string): Promise<LeadZip> {
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(res.status === 404 && !body.error ? 'The Google Drive server part is not set up yet.' : body.error ?? `Could not download (${res.status}).`);
+    throw new Error(
+      res.status === 404 && !body.error
+        ? 'The Google Drive server part is not set up yet.'
+        : (body.error ?? `Could not download (${res.status}).`),
+    );
   }
   // The ZIP's name, from the server: "ADM-2026-0012 Rahim Uddin.zip"
   const header = res.headers.get('Content-Disposition') ?? '';
@@ -324,7 +343,11 @@ export async function downloadLeadFile(f: Pick<LeadFile, 'id' | 'name'>): Promis
       });
     } catch (e) {
       if (target.exists) target.delete();
-      throw new Error(e instanceof Error && /404/.test(e.message) ? 'File not found, or you may not open it.' : 'Could not download the file.');
+      throw new Error(
+        e instanceof Error && /404/.test(e.message)
+          ? 'File not found, or you may not open it.'
+          : 'Could not download the file.',
+      );
     }
   }
   return target;
@@ -357,4 +380,8 @@ export async function openLeadFile(f: LeadFile): Promise<void> {
 }
 
 export const sizeText = (bytes: number | null) =>
-  bytes == null ? '' : bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  bytes == null
+    ? ''
+    : bytes >= 1048576
+      ? `${(bytes / 1048576).toFixed(1)} MB`
+      : `${Math.max(1, Math.round(bytes / 1024))} KB`;

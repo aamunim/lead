@@ -18,6 +18,10 @@ export type PaperRule = {
   img_height: number | null;
   img_max_kb: number | null;
   pdf_max_kb: number | null;
+  /** 🪪 passport photo: the person cut out, the head placed, a plain background */
+  passport: boolean;
+  bg_color: string;
+  face_pct: number;
 };
 
 /** What applies to one upload (a paper's own rule, else the defaults) */
@@ -29,6 +33,8 @@ export type AppliedRule = {
   maxSide: number;
   imgMaxKb: number;
   pdfMaxKb: number;
+  /** 🪪 passport photo (with an exact size) */
+  passport: { bgColor: string; facePct: number } | null;
 };
 
 function toError(e: { message: string }): Error {
@@ -52,7 +58,7 @@ export async function saveUploadDefaults(d: UploadDefaults): Promise<void> {
 export async function listPaperRules(): Promise<PaperRule[]> {
   const { data, error } = await supabase
     .from('admission_papers')
-    .select('id, name, is_active, accept, img_width, img_height, img_max_kb, pdf_max_kb')
+    .select('id, name, is_active, accept, img_width, img_height, img_max_kb, pdf_max_kb, passport, bg_color, face_pct')
     .order('sort_order')
     .order('name');
   if (error) throw toError(error);
@@ -70,6 +76,13 @@ export async function savePaperRule(r: PaperRule): Promise<void> {
     p_pdf_max_kb: r.pdf_max_kb ?? null,
   } as never);
   if (error) throw toError(error);
+  const { error: e2 } = await supabase.rpc('set_paper_passport', {
+    p_paper: r.id,
+    p_passport: r.passport,
+    p_bg_color: r.bg_color,
+    p_face_pct: r.face_pct,
+  });
+  if (e2) throw toError(e2);
 }
 
 export async function canEditUploadRules(): Promise<boolean> {
@@ -80,12 +93,15 @@ export async function canEditUploadRules(): Promise<boolean> {
 /** The rule for one upload */
 export async function ruleFor(paperId: string | null): Promise<AppliedRule> {
   const d = await getUploadDefaults();
-  type Own = Pick<PaperRule, 'accept' | 'img_width' | 'img_height' | 'img_max_kb' | 'pdf_max_kb'>;
+  type Own = Pick<
+    PaperRule,
+    'accept' | 'img_width' | 'img_height' | 'img_max_kb' | 'pdf_max_kb' | 'passport' | 'bg_color' | 'face_pct'
+  >;
   let p: Own | null = null;
   if (paperId) {
     const { data } = await supabase
       .from('admission_papers')
-      .select('accept, img_width, img_height, img_max_kb, pdf_max_kb')
+      .select('accept, img_width, img_height, img_max_kb, pdf_max_kb, passport, bg_color, face_pct')
       .eq('id', paperId)
       .maybeSingle();
     p = (data as unknown as Own | null) ?? null;
@@ -96,6 +112,10 @@ export async function ruleFor(paperId: string | null): Promise<AppliedRule> {
     maxSide: d.img_max_side,
     imgMaxKb: p?.img_max_kb ?? d.img_max_kb,
     pdfMaxKb: p?.pdf_max_kb ?? d.pdf_max_kb,
+    passport:
+      p?.passport && p.img_width && p.img_height
+        ? { bgColor: p.bg_color || '#CFE6FA', facePct: p.face_pct || 55 }
+        : null,
   };
 }
 
@@ -141,5 +161,37 @@ export async function updatePdfAccount(
 
 export async function deletePdfAccount(id: string): Promise<void> {
   const { error } = await supabase.rpc('delete_ilovepdf_account', { p_id: id });
+  if (error) throw toError(error);
+}
+
+// ---------------------------------------------------------------------
+// remove.bg accounts (passport photos), the same way
+// ---------------------------------------------------------------------
+export async function listCutoutAccounts(): Promise<PdfAccount[]> {
+  const { data, error } = await supabase.rpc('list_removebg_accounts');
+  if (error) throw toError(error);
+  return (data ?? []) as PdfAccount[];
+}
+
+export async function addCutoutAccount(label: string, apiKey: string): Promise<void> {
+  const { error } = await supabase.rpc('add_removebg_account', { p_label: label, p_api_key: apiKey });
+  if (error) throw toError(error);
+}
+
+export async function updateCutoutAccount(
+  id: string,
+  patch: { label?: string; is_active?: boolean; sort_order?: number },
+) {
+  const { error } = await supabase.rpc('update_removebg_account', {
+    p_id: id,
+    p_label: patch.label ?? '',
+    p_is_active: patch.is_active ?? null,
+    p_sort_order: patch.sort_order ?? null,
+  } as never);
+  if (error) throw toError(error);
+}
+
+export async function deleteCutoutAccount(id: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_removebg_account', { p_id: id });
   if (error) throw toError(error);
 }
