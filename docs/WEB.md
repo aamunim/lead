@@ -106,3 +106,19 @@ links).
 - **☰ Comfortable / Compact** rows; **📋** next to College ID, NU ID and phone on a hovered row.
 - Admission Officer: the Students menu shows how many wait for approval; a note
   pops up when new ones come (checked every minute) → **Show** opens them.
+
+## 📎 Upload rules (Settings → Upload rules; admins and the Admission Officer)
+
+- **Pictures (website)**: made in the browser before upload: a paper with a
+  width × height gets exactly that size (stretched, nothing cut off); others
+  keep their shape with the longest side at most the default. Then JPEG
+  quality steps down until it is under the paper's KB limit.
+- **PDFs (website and app)**: over the paper's (or the default) KB limit →
+  the server makes it smaller with **iLovePDF** ("recommended", then
+  "extreme"). Still too big, or no account → the upload stops and asks for it
+  to be made smaller by hand.
+- **iLovePDF accounts**: developer.ilovepdf.com → sign up (free: 250 files a
+  month) → Projects → copy the **Public key** → Settings → Upload rules →
+  ＋ Add account. Add several: they are used from the top; when one runs out
+  or fails (shown in red) the next one is used. The keys stay on the server.
+- A paper can take Any / Picture only / PDF only.

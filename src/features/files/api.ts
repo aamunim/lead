@@ -145,7 +145,11 @@ export async function uploadLeadFile(input: {
   mimeType: string;
   durationSec?: number | null;
   context?: string | null;
-}): Promise<LeadFile> {
+  /** 🌐 the browser's own file (the website sends it straight) */
+  file?: Blob | null;
+  /** 📉 its size before it was made smaller in the browser */
+  originalSize?: number | null;
+}): Promise<LeadFile & { compressed?: { from: number; to: number; account: string } | null }> {
   // The phone's own upload (multipart): the app's fetch can't send a file from its uri
   const parameters: Record<string, string> = { lead_id: input.leadId, kind: input.kind, name: input.name };
   if (input.paperId) parameters.paper_id = input.paperId;
@@ -153,9 +157,19 @@ export async function uploadLeadFile(input: {
   if (input.durationSec) parameters.duration_sec = String(input.durationSec);
   if (input.context) parameters.context = input.context;
 
+  if (input.originalSize) parameters.original_size = String(input.originalSize);
+
   let res: { status: number; body: string };
   try {
-    res = await new File(input.uri).upload(`${FUNCTIONS}/drive-upload`, {
+    if (Platform.OS === 'web') {
+      // 🌐 Website: a normal form post
+      const blob = input.file ?? (await (await fetch(input.uri)).blob());
+      const form = new FormData();
+      for (const [k, v] of Object.entries(parameters)) form.append(k, v);
+      form.append('file', new globalThis.File([blob], input.name, { type: input.mimeType }));
+      const r = await fetch(`${FUNCTIONS}/drive-upload`, { method: 'POST', headers: await authHeaders(), body: form });
+      res = { status: r.status, body: await r.text() };
+    } else res = await new File(input.uri).upload(`${FUNCTIONS}/drive-upload`, {
       httpMethod: 'POST',
       uploadType: UploadType.MULTIPART,
       fieldName: 'file',
@@ -180,7 +194,7 @@ export async function uploadLeadFile(input: {
         : body.error ?? `Could not upload (${res.status}).`,
     );
   }
-  return body as LeadFile;
+  return body as LeadFile & { compressed?: { from: number; to: number; account: string } | null };
 }
 
 /**

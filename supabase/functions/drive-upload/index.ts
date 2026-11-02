@@ -9,6 +9,9 @@
 //   (as a photocopy) if it isn't ticked yet.
 // =====================================================================
 import { admin, asUser, cors, currentUser, json, leadFolder, uploadFile } from '../_shared/drive.ts';
+import { compressPdf } from '../_shared/ilovepdf.ts';
+
+const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
 
 const MAX_BYTES = 35 * 1024 * 1024; // the script takes ~50 MB of base64
 
@@ -40,9 +43,51 @@ Deno.serve(async (req) => {
     const context = String(form.get('context') ?? '').slice(0, 40) || null;
     const name = String(form.get('name') || file.name || 'file').slice(0, 120);
     const mime = file.type || 'application/octet-stream';
+    let bytes: Uint8Array = new Uint8Array(await file.arrayBuffer());
+    const originalSize = bytes.length;
+    let compressed: { from: number; to: number; account: string } | null = null;
+
+    // 📎 Upload rules (Settings → Upload rules): what the paper takes, the PDF's weight
+    const isPdf = mime === 'application/pdf' || name.toLowerCase().endsWith('.pdf');
+    const isImage = mime.startsWith('image/');
+    const { data: defaults } = await admin.rpc('upload_rules_setting');
+    let pdfMaxKb = Number((defaults as { pdf_max_kb?: number } | null)?.pdf_max_kb ?? 0) || null;
+    if (paperId) {
+      const { data: rule } = await admin
+        .from('admission_papers')
+        .select('name, accept, pdf_max_kb')
+        .eq('id', paperId)
+        .maybeSingle();
+      if (rule?.accept === 'image' && !isImage) return json({ error: `${rule.name}: only a picture can be uploaded.` }, 400);
+      if (rule?.accept === 'pdf' && !isPdf) return json({ error: `${rule.name}: only a PDF can be uploaded.` }, 400);
+      if (rule?.pdf_max_kb) pdfMaxKb = rule.pdf_max_kb;
+    }
+
+    // 📄 A PDF over its limit: smaller with iLovePDF, else made smaller by hand
+    if (isPdf && pdfMaxKb && bytes.length > pdfMaxKb * 1024) {
+      const limit = pdfMaxKb * 1024;
+      const r = await compressPdf(bytes, name, limit);
+      if (r.ok && r.bytes.length <= limit) {
+        compressed = { from: bytes.length, to: r.bytes.length, account: r.account };
+        bytes = r.bytes;
+      } else {
+        const why = !r.ok
+          ? r.reason === 'no_account'
+            ? 'No PDF compressor account is set (Settings → Upload rules).'
+            : 'The PDF compressor did not work right now.'
+          : `Even compressed it is ${kb(r.bytes.length)}.`;
+        return json(
+          {
+            error: `This PDF is ${kb(originalSize)}; the limit is ${kb(limit)}. ${why} Please make it smaller by hand (e.g. ilovepdf.com/compress_pdf) and upload it again.`,
+            code: 'pdf_too_big',
+          },
+          413,
+        );
+      }
+    }
 
     const folder = await leadFolder(lead, kind);
-    const driveId = await uploadFile(name, mime, new Uint8Array(await file.arrayBuffer()), folder);
+    const driveId = await uploadFile(name, mime, bytes, folder);
 
     const { data: row, error } = await admin
       .from('lead_files')
@@ -53,7 +98,7 @@ Deno.serve(async (req) => {
         call_id: callId,
         name,
         mime_type: mime,
-        size_bytes: file.size,
+        size_bytes: bytes.length,
         duration_sec: duration,
         context,
         drive_file_id: driveId,
@@ -67,7 +112,17 @@ Deno.serve(async (req) => {
       lead_id: lead.id,
       user_id: user.id,
       action: 'file_added',
-      details: { name, kind, file_id: row.id, paper_id: paperId, duration_sec: duration, context },
+      details: {
+        name,
+        kind,
+        file_id: row.id,
+        paper_id: paperId,
+        duration_sec: duration,
+        context,
+        // 📉 made smaller on the way (here, or in the browser: original_size)
+        original_size: Number(form.get('original_size') ?? '') || (compressed ? compressed.from : null),
+        size: bytes.length,
+      },
     });
 
     // Tick the paper in the checklist (as the uploader; a failed tick doesn't fail the upload)
@@ -91,7 +146,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ...row, paper_ticked: paperTicked });
+    return json({ ...row, paper_ticked: paperTicked, compressed });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
