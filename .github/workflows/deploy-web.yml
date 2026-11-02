@@ -61,7 +61,15 @@ jobs:
 
       - name: Build the website
         if: steps.check.outputs.ready == 'true'
-        run: npx expo export --platform web --output-dir dist
+        run: |
+          npx expo export --platform web --output-dir dist
+          # 🖼 Photo Studio: the face finder (MediaPipe) served from this site
+          mkdir -p dist/mediapipe
+          cp node_modules/@mediapipe/tasks-vision/vision_bundle.mjs dist/mediapipe/vision_bundle.js
+          cp node_modules/@mediapipe/tasks-vision/wasm/vision_wasm_internal.js dist/mediapipe/
+          cp node_modules/@mediapipe/tasks-vision/wasm/vision_wasm_internal.wasm dist/mediapipe/
+          curl -fsSL -o dist/mediapipe/blaze_face_short_range.tflite \
+            https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
 
       - name: Upload to lead.ittc.edu.bd
         if: steps.check.outputs.ready == 'true'

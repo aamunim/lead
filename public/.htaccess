@@ -18,3 +18,13 @@
     Header set Cache-Control "no-cache"
   </FilesMatch>
 </IfModule>
+
+# 🖼 Photo Studio's face finder (MediaPipe): the right type for WebAssembly
+<IfModule mod_mime.c>
+  AddType application/wasm .wasm
+</IfModule>
+<IfModule mod_headers.c>
+  <FilesMatch "\.(wasm|tflite)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+</IfModule>

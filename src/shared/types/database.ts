@@ -2622,6 +2622,7 @@ export type Database = {
         Returns: undefined
       }
       delete_ilovepdf_account: { Args: { p_id: string }; Returns: undefined }
+      set_photo_presets: { Args: { p_presets: Json }; Returns: undefined }
       set_paper_passport: {
         Args: { p_paper: string; p_passport: boolean; p_bg_color: string; p_face_pct: number }
         Returns: undefined

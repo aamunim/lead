@@ -70,6 +70,7 @@ function pageTitle(path: string): string {
   if (path.startsWith('/leads/')) return 'Students › Student';
   if (path.startsWith('/password')) return 'Change password';
   if (path.startsWith('/settings/uploads')) return 'Settings › Upload rules';
+  if (path.startsWith('/photo-studio')) return 'Photo Studio';
   return 'Students';
 }
 
@@ -186,6 +187,12 @@ export function WebShell({ children }: { children: React.ReactNode }) {
             icon: '📎',
             href: '/settings/uploads',
             match: (p: string) => p.startsWith('/settings/uploads'),
+          },
+          {
+            label: 'Photo Studio',
+            icon: '🖼',
+            href: '/photo-studio',
+            match: (p: string) => p.startsWith('/photo-studio'),
           },
         ]
       : []),
