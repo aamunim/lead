@@ -103,7 +103,7 @@ export default function SignUpScreen() {
           <View style={styles.header}>
             <Text style={styles.title}>Create your account</Text>
             <Text style={styles.subtitle}>
-              Join your team on Lead Management.
+              Join your team on ITTC Admission Tracker.
             </Text>
           </View>
 

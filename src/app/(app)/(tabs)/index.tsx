@@ -1,7 +1,7 @@
 import { router, useFocusEffect, type Href } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useState } from 'react';
-import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -16,10 +16,14 @@ import { addedRange, getLeadsAdded } from '@/features/leads/added';
 import { StudentsHomeCard } from '@/features/students/StudentsHomeCard';
 import { TodayVisits } from '@/features/visits/TodayVisits';
 import { isWeb } from '@/features/web/api';
+import { APP_COLLEGE, APP_PRODUCT } from '@/features/web/brand';
 import { takeBootUrl } from '@/shared/web/bootUrl';
 import { countPendingUsers } from '@/features/users/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const LOGO = require('../../../../assets/web/ittc-logo-64.png');
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -137,6 +141,18 @@ function PhoneHome() {
     <View style={styles.screen}>
       {/* Blue top area */}
       <SafeAreaView edges={['top']} style={styles.top}>
+        {/* 🎓 The app's name */}
+        <View style={styles.brandRow}>
+          <View style={styles.brandLogo}>
+            <Image source={LOGO} style={styles.brandImg} accessibilityLabel="ITTC logo" />
+          </View>
+          <View style={styles.flex}>
+            <Text style={styles.brandCollege} numberOfLines={1}>
+              {APP_COLLEGE}
+            </Text>
+            <Text style={styles.brandProduct}>{APP_PRODUCT}</Text>
+          </View>
+        </View>
         <View style={styles.topRow}>
           <Text style={[styles.greeting, styles.flex]}>
             {greeting()}, {firstName}
@@ -321,6 +337,26 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   greeting: { fontSize: fontSize.heading, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
+    marginBottom: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.25)',
+  },
+  brandLogo: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandImg: { width: 26, height: 26, resizeMode: 'contain' },
+  brandCollege: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
+  brandProduct: { fontSize: fontSize.caption, color: 'rgba(255,255,255,0.8)', letterSpacing: 0.3 },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   bell: {
     width: 40,
