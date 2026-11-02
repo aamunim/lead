@@ -56,7 +56,7 @@ const WAITING_EVERY_MS = 60_000;
 const SMALL_KEY = 'web_side_small';
 
 export const SHORTCUTS: [string, string][] = [
-  ['Ctrl + K  or  /', 'Search students'],
+  ['Ctrl + K  or  /', 'Search (leads or students)'],
   ['J  or  ↓', 'Next student'],
   ['K  or  ↑', 'Previous student'],
   ['Enter', 'Open the student’s full page'],
@@ -66,8 +66,14 @@ export const SHORTCUTS: [string, string][] = [
 ];
 
 function pageTitle(path: string): string {
-  if (path.startsWith('/leads/edit/')) return 'Students › Edit';
-  if (path.startsWith('/leads/')) return 'Students › Student';
+  if (path.startsWith('/leads/edit/new')) return 'Leads › New lead';
+  if (path.startsWith('/leads/edit/')) return 'Leads › Edit';
+  if (path.startsWith('/leads/')) return 'Leads › Lead';
+  if (path === '/leads') return 'Leads';
+  if (path.startsWith('/activity')) return 'Team activity';
+  if (path.startsWith('/changes')) return 'Change log';
+  if (path.startsWith('/reports')) return 'Reports';
+  if (path.startsWith('/import')) return 'Leads › Import';
   if (path.startsWith('/password')) return 'Change password';
   if (path.startsWith('/settings/uploads')) return 'Settings › Upload rules';
   if (path.startsWith('/photo-studio')) return 'Photo Studio';
@@ -158,7 +164,9 @@ export function WebShell({ children }: { children: React.ReactNode }) {
     document.title = `${pageTitle(path).split(' › ').pop()} · ITTC Admission`;
   }, [path]);
 
-  const onStudents = path === '/students' || path === '/';
+  // The search box filters the list that is open (Leads or Students)
+  const onLeads = path === '/leads';
+  const onStudents = path === '/students' || path === '/' || onLeads;
   const search = (text: string) => {
     setQuery(text);
     if (onStudents) router.setParams({ q: text || undefined });
@@ -168,6 +176,13 @@ export function WebShell({ children }: { children: React.ReactNode }) {
   };
 
   const items: Item[] = [
+    // 📋 Leads: as on the phone (each person sees the leads they may)
+    {
+      label: 'Leads',
+      icon: '📋',
+      href: '/leads',
+      match: (p: string) => p === '/leads' || p.startsWith('/leads/') || p.startsWith('/import'),
+    },
     ...(students
       ? [
           {
@@ -175,7 +190,7 @@ export function WebShell({ children }: { children: React.ReactNode }) {
             icon: '🎓',
             href: '/students',
             // A student's page opens from the list
-            match: (p: string) => p.startsWith('/students') || p.startsWith('/leads/'),
+            match: (p: string) => p.startsWith('/students'),
             badge: officer && waiting ? waiting : undefined,
           },
         ]
@@ -328,7 +343,7 @@ export function WebShell({ children }: { children: React.ReactNode }) {
               value={query}
               onChangeText={search}
               onSubmitEditing={submit}
-              placeholder="Search students: name, phone, College ID, NU ID…"
+              placeholder={onLeads ? 'Search leads: name, phone, WhatsApp…' : 'Search students: name, phone, College ID, NU ID…'}
               placeholderTextColor={colors.textMuted}
               style={styles.searchInput}
               accessibilityLabel="Search students"

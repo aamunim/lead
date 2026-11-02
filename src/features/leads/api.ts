@@ -90,6 +90,8 @@ export type LeadListItem = Pick<
   | 'fee_next_due'
   | 'admitted_at'
   | 'admitted_by'
+  // 🌐 Website Leads table: who added it
+  | 'created_by'
 > & {
   stage: Stage | null;
   source: Named | null;
@@ -273,7 +275,7 @@ function toError(error: { message: string }): Error {
 }
 
 const LIST_SELECT = `
-  id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
+  id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, created_by, assigned_to, stage_id, closed_at, student_ref,
   alt_phone, guardian_name, guardian_phone, email, area,
   approval_status, nu_admission_id, registration_status, admitted_section_id, listed_at,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
