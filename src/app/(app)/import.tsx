@@ -27,6 +27,7 @@ import {
 } from '@/features/import-export/excel';
 import { listAssignableUsers } from '@/features/leads/api';
 import { listItems } from '@/features/settings/api';
+import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
@@ -539,7 +540,13 @@ function Stat({ label, value, color }: { label: string; value: number; color: st
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
+  content: {
+    padding: spacing.lg,
+    gap: spacing.lg,
+    paddingBottom: spacing.xxl,
+    // 🌐 Website: a readable column in the middle
+    ...(isWeb ? { maxWidth: 860, width: '100%', alignSelf: 'center' } : {}),
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.sm },
   flex: { flex: 1 },
   card: {
