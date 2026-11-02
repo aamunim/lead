@@ -421,7 +421,11 @@ function BatchModal({
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetContent}
+              keyboardShouldPersistTaps="handled"
+            >
               <TextField label="Batch name" required value={name} onChangeText={setName} placeholder="e.g. January 2027" />
               <TextField
                 label="Start date"
@@ -564,6 +568,8 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(11,19,40,0.45)', justifyContent: 'flex-end' },
   sheetWrap: { maxHeight: '90%' },
   sheet: {
+    // shrink inside the 90% box so the list below can scroll
+    flexShrink: 1,
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
@@ -578,7 +584,8 @@ const styles = StyleSheet.create({
   },
   sheetTitle: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
   close: { fontSize: fontSize.title, color: colors.textMuted },
-  sheetContent: { padding: spacing.lg, gap: spacing.lg },
+  sheetScroll: { flexShrink: 1 },
+  sheetContent: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl * 2 },
   fieldBlock: { gap: spacing.sm },
   fieldLabel: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
