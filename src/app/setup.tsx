@@ -133,7 +133,7 @@ export default function SetupScreen() {
         >
           <View style={styles.header}>
             <Text style={styles.eyebrow}>FIRST-TIME SETUP</Text>
-            <Text style={styles.title}>Welcome to Lead Management</Text>
+            <Text style={styles.title}>Welcome to ITTC Admission Tracker</Text>
             <Text style={styles.subtitle}>
               Create the first account. You will be the Super Admin and can add your team later.
             </Text>
