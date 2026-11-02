@@ -13,6 +13,24 @@
 | `preview` | `preview` (APK) | testing first |
 | — | `development` | dev client (code from Metro, no updates) |
 
+## Sending an update from the phone (GitHub Actions)
+GitHub app → the repository → **Actions** → **App update** → **Run workflow**:
+- **What changed**: the update message
+- **What to do**: `Database + app update` (default) · `App update only` · `Database only`
+- **Edge Functions**: optional names, e.g. `photo-cutout drive-upload`
+
+It runs `supabase db push`, the named `supabase functions deploy … --use-api`, then
+`eas update --channel production --environment production` on GitHub's machine (the PC can stay off).
+The run's **Summary** lists what was done; a red run shows the failing step's log.
+
+One-time setup, repository secrets (Settings → Secrets and variables → Actions → New repository secret):
+| Secret | Where |
+|---|---|
+| `EXPO_TOKEN` | expo.dev → Account settings → Access tokens (already added for Build Android) |
+| `SUPABASE_ACCESS_TOKEN` | supabase.com → Account (top right) → Access Tokens → Generate new token |
+| `SUPABASE_DB_PASSWORD` | the database password (Project Settings → Database → Reset database password if unknown) |
+| `SUPABASE_PROJECT_REF` | the id in the dashboard address: supabase.com/dashboard/project/**&lt;ref&gt;** |
+
 ## Sending an update (from the PC)
 ```
 git checkout -B main origin/main
