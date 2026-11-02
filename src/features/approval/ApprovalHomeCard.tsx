@@ -35,7 +35,7 @@ export function ApprovalHomeCard() {
       <Text style={styles.icon}>🎓</Text>
       <View style={styles.flex}>
         <Text style={styles.title}>
-          {waiting} {waiting === 1 ? 'admission' : 'admissions'} waiting for approval
+          {waiting} {waiting === 1 ? 'student' : 'students'} waiting for approval (admission / registration)
         </Text>
         <Text style={styles.text}>Check and approve, or send back to fix</Text>
       </View>

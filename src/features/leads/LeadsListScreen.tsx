@@ -140,9 +140,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         // 🎓 Admission approval (Settings → Admission approval)
         ...(approvalOn
           ? [
-              { key: 'approval_waiting' as QuickFilter, label: '⏳ Approval waiting' },
-              { key: 'approved' as QuickFilter, label: '✅ Approved' },
+              { key: 'approval_waiting' as QuickFilter, label: '⏳ Admission waiting' },
+              { key: 'registration_waiting' as QuickFilter, label: '📝 Registration waiting' },
+              { key: 'registered' as QuickFilter, label: '✅ Registered' },
               { key: 'approval_returned' as QuickFilter, label: '↩ Sent back' },
+              { key: 'no_section' as QuickFilter, label: '🏫 No section' },
               { key: 'no_nu_id' as QuickFilter, label: '🆔 No NU ID' },
             ]
           : []),

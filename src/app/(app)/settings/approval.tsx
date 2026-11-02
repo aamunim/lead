@@ -1,6 +1,16 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
 import {
@@ -90,7 +100,7 @@ export default function ApprovalSettingsScreen() {
             <Text style={styles.rowTitle}>🎓 Admission approval</Text>
             <Text style={styles.rowText}>
               {settings.enabled
-                ? 'On. After Mark admitted, a student waits until the Admission Officer approves (or sends it back). The NU Admission ID is typed at approval or later.'
+                ? 'On. After Mark admitted the Admission Officer approves the admission (choosing the section), then the registration. Either can be sent back.'
                 : 'Off. Admitted students need no approval (admins can still use it).'}
             </Text>
           </View>
@@ -109,13 +119,23 @@ export default function ApprovalSettingsScreen() {
                   ['users', 'Some people'],
                 ] as const
               ).map(([m, label]) => (
-                <Chip key={m} text={label} on={settings.who.mode === m} onPress={() => set({ ...settings, who: { ...settings.who, mode: m } })} />
+                <Chip
+                  key={m}
+                  text={label}
+                  on={settings.who.mode === m}
+                  onPress={() => set({ ...settings, who: { ...settings.who, mode: m } })}
+                />
               ))}
             </View>
             {settings.who.mode === 'roles' && (
               <View style={styles.chips}>
                 {roles.map((r) => (
-                  <Chip key={r.key} text={r.name} on={settings.who.roles.includes(r.key)} onPress={() => toggle('roles', r.key)} />
+                  <Chip
+                    key={r.key}
+                    text={r.name}
+                    on={settings.who.roles.includes(r.key)}
+                    onPress={() => toggle('roles', r.key)}
+                  />
                 ))}
               </View>
             )}
@@ -135,6 +155,22 @@ export default function ApprovalSettingsScreen() {
               Admins always may. They get a notification for each new admission; the person who admitted the student is
               told when it is approved or sent back.
             </Text>
+            <View style={styles.divider} />
+            <Text style={styles.label}>MONEY NEEDED (TOTAL PAID)</Text>
+            <MoneyRow
+              title="Admission approval"
+              value={settings.admission_min_paid}
+              onChange={(n) => set({ ...settings, admission_min_paid: n })}
+            />
+            <MoneyRow
+              title="Registration approval"
+              value={settings.registration_min_paid}
+              onChange={(n) => set({ ...settings, registration_min_paid: n })}
+            />
+            <Text style={styles.hint}>
+              Approve stays locked until the student has paid this much in total (refunds taken off). Registration comes
+              after the admission is approved.
+            </Text>
           </>
         )}
       </View>
@@ -145,15 +181,50 @@ export default function ApprovalSettingsScreen() {
   );
 }
 
+function MoneyRow({ title, value, onChange }: { title: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <View style={styles.moneyRow}>
+      <Text style={[styles.rowTitle, styles.flex]}>{title}</Text>
+      <Text style={styles.taka}>৳</Text>
+      <TextInput
+        value={String(value)}
+        onChangeText={(t) => onChange(Number(t.replace(/[^\d]/g, '')) || 0)}
+        keyboardType="number-pad"
+        style={styles.moneyInput}
+        accessibilityLabel={`${title}: taka needed`}
+      />
+    </View>
+  );
+}
+
 function Chip({ text, on, onPress }: { text: string; on: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, on && styles.chipOn]} accessibilityRole="button" accessibilityState={{ selected: on }}>
+    <Pressable
+      onPress={onPress}
+      style={[styles.chip, on && styles.chipOn]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+    >
       <Text style={[styles.chipText, on && styles.chipTextOn]}>{text}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  moneyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  taka: { fontSize: fontSize.body, color: colors.textMuted },
+  moneyInput: {
+    width: 110,
+    height: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.text,
+    backgroundColor: colors.surface,
+    fontSize: fontSize.body,
+    textAlign: 'right',
+  },
   flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   screen: { flex: 1, backgroundColor: colors.background },

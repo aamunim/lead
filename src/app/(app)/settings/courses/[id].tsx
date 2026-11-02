@@ -24,6 +24,7 @@ import {
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
+import { SectionsEditor } from '@/features/approval/SectionsEditor';
 
 type FeeRow = { key: string; id?: string; name: string; amount: string };
 
@@ -478,6 +479,13 @@ function BatchModal({
               )}
 
               <Button title="Save batch" onPress={handleSave} loading={saving} fullWidth />
+
+              {/* 🏫 Sections (saved right away, separate from the batch's Save) */}
+              {initial.id ? (
+                <SectionsEditor batchId={initial.id} />
+              ) : (
+                <Text style={styles.switchHint}>Save the batch first, then add its sections.</Text>
+              )}
             </ScrollView>
           </SafeAreaView>
         </KeyboardAvoidingView>

@@ -15,12 +15,12 @@ import {
 import { LeadDetailView } from '@/app/(app)/leads/[id]';
 import {
   DEFAULT_APPROVAL_SETTINGS,
-  approvalBadge,
+  stageBadge,
   canApprove,
   getApprovalSettings,
   type ApprovalSettings,
 } from '@/features/approval/api';
-import { ApprovalActionSheet } from '@/features/approval/ApprovalCard';
+import { ApprovalActionSheet, admissionChecks } from '@/features/approval/ApprovalCard';
 import { FeeChangeSheet } from '@/features/fees/FeeChangeSheet';
 import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
 import { PapersPopup } from '@/features/web/students/PapersPopup';
@@ -59,15 +59,18 @@ type ColKey =
   | 'papers'
   | 'approval'
   | 'nu'
+  | 'section'
   | 'last'
   | 'admitted'
   | 'admitted_by';
 
-type PopupKind = 'papers' | 'notes' | 'fee' | 'approve' | 'return';
+type PopupKind = 'papers' | 'notes' | 'fee' | 'approve' | 'return' | 'reg_approve' | 'reg_return';
 
 /** What a row's cells can open */
 type Act = {
   officer: boolean;
+  /** ৳ paid in total before each approval opens */
+  mins: { admission: number; registration: number };
   open: (kind: PopupKind, r: LeadListItem) => void;
   /** 📋 copy a value (College ID, NU ID, phone) */
   copy: (value: string, what: string) => void;
@@ -88,10 +91,11 @@ const COLS: Col[] = [
   { key: 'name', label: 'Name', flex: 1.2, sorts: ['name'] },
   { key: 'phone', label: 'Phone', width: 130 },
   { key: 'course', label: 'Course · Batch', flex: 1 },
+  { key: 'section', label: 'Section', width: 96 },
   { key: 'fee', label: 'Fee', width: 150, sorts: ['due_most'] },
   { key: 'next_due', label: 'Next installment', width: 130, sorts: ['next_due'] },
   { key: 'papers', label: 'Papers', width: 120, sorts: ['papers_missing'] },
-  { key: 'approval', label: 'Approval', width: 200 },
+  { key: 'approval', label: 'Approval', width: 230 },
   { key: 'nu', label: 'NU Admission ID', width: 136 },
   { key: 'last', label: 'Last call / note', flex: 1.4 },
   { key: 'admitted', label: 'Admitted', width: 112, sorts: ['admitted_newest', 'admitted_oldest'] },
@@ -108,6 +112,7 @@ const DEFAULT_COLS: ColKey[] = [
   'name',
   'phone',
   'course',
+  'section',
   'fee',
   'papers',
   'approval',
@@ -115,8 +120,8 @@ const DEFAULT_COLS: ColKey[] = [
   'last',
   'admitted',
 ];
-// (v2: Papers shown by default)
-const COLS_KEY = 'web_students_cols_v2';
+// (v3: Section shown by default)
+const COLS_KEY = 'web_students_cols_v3';
 const SORT_KEY = 'web_students_sort';
 const DENSE_KEY = 'web_students_compact';
 const CHECK_W = 40;
@@ -183,9 +188,11 @@ export function WebStudentsScreen() {
     { key: 'papers', label: '📄 Papers missing' },
     ...(approvalOn
       ? [
-          { key: 'approval_waiting' as QuickFilter, label: '⏳ Approval waiting' },
-          { key: 'approved' as QuickFilter, label: '✅ Approved' },
+          { key: 'approval_waiting' as QuickFilter, label: '⏳ Admission waiting' },
+          { key: 'registration_waiting' as QuickFilter, label: '📝 Registration waiting' },
+          { key: 'registered' as QuickFilter, label: '✅ Registered' },
           { key: 'approval_returned' as QuickFilter, label: '↩ Sent back' },
+          { key: 'no_section' as QuickFilter, label: '🏫 No section' },
           { key: 'no_nu_id' as QuickFilter, label: '🆔 No NU ID' },
         ]
       : []),
@@ -394,6 +401,7 @@ export function WebStudentsScreen() {
   const nFilters = countActiveFilters(filters);
   const act: Act = {
     officer,
+    mins: { admission: approval.admission_min_paid, registration: approval.registration_min_paid },
     open: (kind, r) => setPopup({ kind, row: r }),
     copy: (value, what) => {
       navigator.clipboard
@@ -635,7 +643,10 @@ export function WebStudentsScreen() {
       {popup?.kind === 'fee' && (
         <FeeChangeSheet leadId={popup.row.id} name={popup.row.name} onClose={() => setPopup(null)} onDone={popupDone} />
       )}
-      {(popup?.kind === 'approve' || popup?.kind === 'return') && (
+      {(popup?.kind === 'approve' ||
+        popup?.kind === 'return' ||
+        popup?.kind === 'reg_approve' ||
+        popup?.kind === 'reg_return') && (
         <ApprovalActionSheet
           kind={popup.kind}
           lead={approvalLead(popup.row)}
@@ -870,28 +881,58 @@ function Cell({
       );
     }
     case 'approval': {
-      const b = admitted ? approvalBadge(r.approval_status) : null;
+      const b = admitted ? stageBadge(r.approval_status, r.registration_status) : null;
       if (!b) return <Text style={styles.dim}>—</Text>;
-      // ✅ The Admission Officer approves (or sends back) right here
-      if (act.officer && r.approval_status === 'waiting') {
+      const paid = Number(r.fee_paid ?? 0);
+      // ✅ The Admission Officer approves (or sends back) right here:
+      //    the admission first (৳ needed), then the registration (৳ needed in total)
+      const step =
+        r.approval_status === 'waiting'
+          ? { approve: 'approve' as const, back: 'return' as const, label: 'Approve', need: act.mins.admission }
+          : r.approval_status === 'approved' && (r.registration_status ?? 'waiting') === 'waiting'
+            ? {
+                approve: 'reg_approve' as const,
+                back: 'reg_return' as const,
+                label: 'Register',
+                need: act.mins.registration,
+              }
+            : null;
+      if (act.officer && step) {
+        const ready = paid >= step.need;
         return (
-          <View style={styles.approveRow}>
-            <Pressable
-              onPress={() => act.open('approve', r)}
-              style={(state) => [styles.approveBtn, (state as { hovered?: boolean }).hovered && styles.approveHover]}
-              accessibilityRole="button"
-              accessibilityLabel={`Approve ${r.name}`}
-            >
-              <Text style={styles.approveText}>✅ Approve</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => act.open('return', r)}
-              style={(state) => [styles.returnBtn, (state as { hovered?: boolean }).hovered && styles.returnHover]}
-              accessibilityRole="button"
-              accessibilityLabel={`Send ${r.name} back`}
-            >
-              <Text style={styles.returnText}>↩</Text>
-            </Pressable>
+          <View>
+            <View style={styles.approveRow}>
+              <Pressable
+                onPress={ready ? () => act.open(step.approve, r) : undefined}
+                disabled={!ready}
+                style={(state) => [
+                  styles.approveBtn,
+                  !ready && styles.approveOff,
+                  ready && (state as { hovered?: boolean }).hovered && styles.approveHover,
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !ready }}
+                accessibilityLabel={`${step.label} ${r.name}`}
+              >
+                <Text style={[styles.approveText, !ready && styles.approveOffText]}>
+                  {ready ? (step.approve === 'approve' ? '✅ ' : '📝 ') : '🔒 '}
+                  {step.label}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => act.open(step.back, r)}
+                style={(state) => [styles.returnBtn, (state as { hovered?: boolean }).hovered && styles.returnHover]}
+                accessibilityRole="button"
+                accessibilityLabel={`Send ${r.name} back`}
+              >
+                <Text style={styles.returnText}>↩</Text>
+              </Pressable>
+            </View>
+            {!ready && (
+              <Text style={styles.needText} numberOfLines={1}>
+                Needs {money(step.need)} · paid {money(paid)}
+              </Text>
+            )}
           </View>
         );
       }
@@ -904,6 +945,16 @@ function Cell({
         </View>
       );
     }
+    case 'section':
+      return r.admitted_section ? (
+        <Text style={styles.text} numberOfLines={1}>
+          {r.admitted_section.name}
+        </Text>
+      ) : admitted && r.approval_status ? (
+        <Text style={[styles.text, styles.warn]}>⚠ none</Text>
+      ) : (
+        <Text style={styles.dim}>—</Text>
+      );
     case 'nu':
       return (
         <View style={styles.withCopy}>
@@ -959,23 +1010,20 @@ function approvalLead(r: LeadListItem) {
     papers_required: r.papers_required,
     papers_missing: r.papers_missing,
     fee_due: r.fee_due,
+    fee_paid: r.fee_paid,
+    admitted_course_id: r.admitted_course?.id ?? null,
     admitted_batch_id: r.admitted_batch?.id ?? null,
+    admitted_section_id: r.admitted_section_id,
+    registration_status: r.registration_status,
+    registration_by: null,
+    registration_at: null,
+    registration_note: null,
   };
 }
 
 /** What to look at before approving (same as the student's approval card) */
 function approvalChecks(r: LeadListItem): { ok: boolean; text: string }[] {
-  const req = r.papers_required ?? 0;
-  const miss = r.papers_missing ?? 0;
-  const due = Number(r.fee_due ?? 0);
-  return [
-    { ok: !!r.student_ref, text: r.student_ref ? `College ID: ${r.student_ref}` : 'No College ID yet' },
-    ...(req > 0
-      ? [{ ok: miss === 0, text: miss === 0 ? `Papers: all ${req} in` : `Papers: ${miss} of ${req} missing` }]
-      : []),
-    { ok: due <= 0, text: due > 0 ? `Fee: ${money(due)} due` : 'Fee: fully paid' },
-    { ok: !!r.admitted_batch, text: r.admitted_batch ? `Batch: ${r.admitted_batch.name}` : 'No batch yet' },
-  ];
+  return admissionChecks(r);
 }
 
 /** The same values as text, for the Excel file */
@@ -996,7 +1044,9 @@ function cellText(col: ColKey, r: LeadListItem, nameOf: (id: string | null) => s
     case 'papers':
       return r.papers_required ? `${r.papers_missing ?? 0} missing of ${r.papers_required}` : null;
     case 'approval':
-      return approvalBadge(r.approval_status)?.text.replace(/^\S+\s/, '') ?? null;
+      return stageBadge(r.approval_status, r.registration_status)?.text.replace(/^\S+\s/, '') ?? null;
+    case 'section':
+      return r.admitted_section?.name ?? null;
     case 'nu':
       return r.nu_admission_id;
     case 'last':
@@ -1241,6 +1291,9 @@ const styles = StyleSheet.create({
   approveRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   approveBtn: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: radius.sm, backgroundColor: colors.success },
   approveHover: { opacity: 0.85 },
+  approveOff: { backgroundColor: colors.border },
+  approveOffText: { color: colors.textMuted },
+  needText: { marginTop: 2, fontSize: 11, color: colors.warning },
   approveText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: '#fff' },
   returnBtn: {
     paddingVertical: 4,

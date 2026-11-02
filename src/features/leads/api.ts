@@ -68,6 +68,8 @@ export type LeadListItem = Pick<
   // 🎓 Admission approval (admitted students)
   | 'approval_status'
   | 'nu_admission_id'
+  | 'registration_status'
+  | 'admitted_section_id'
   // Papers (counts kept up to date by the database)
   | 'papers_required'
   | 'papers_received'
@@ -96,6 +98,8 @@ export type LeadListItem = Pick<
   /** The course and batch the student is admitted to */
   admitted_course: Named | null;
   admitted_batch: Named | null;
+  /** 🏫 The section in that batch */
+  admitted_section: Named | null;
   /** 📞📝 Last call and last note (kept by the database) */
   last: LeadLast | null;
 };
@@ -160,7 +164,11 @@ export type QuickFilter =
   | 'approval_waiting'
   | 'approved'
   | 'approval_returned'
-  | 'no_nu_id';
+  | 'no_nu_id'
+  // 📝 Registration (after the admission is approved)
+  | 'registration_waiting'
+  | 'registered'
+  | 'no_section';
 
 /**
  * Closed leads (Admitted / Lost / Cancelled) in the list:
@@ -264,12 +272,13 @@ function toError(error: { message: string }): Error {
 const LIST_SELECT = `
   id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, assigned_to, stage_id, closed_at, student_ref,
   alt_phone, guardian_name, guardian_phone, email, area,
-  approval_status, nu_admission_id,
+  approval_status, nu_admission_id, registration_status, admitted_section_id,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
   fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, admitted_at, admitted_by,
   admitted_course:courses!leads_admitted_course_id_fkey(id, name),
   admitted_batch:batches!leads_admitted_batch_id_fkey(id, name),
+  admitted_section:batch_sections(id, name),
   stage:pipeline_stages(id, key, name, color, kind),
   source:lead_sources(id, name),
   assignee:assigned_to(id, full_name),
@@ -369,7 +378,12 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
     if (quick === 'papers') query = query.gt('papers_missing', 0);
     if (quick === 'approval_waiting') query = query.eq('approval_status', 'waiting');
     if (quick === 'approved') query = query.eq('approval_status', 'approved');
-    if (quick === 'approval_returned') query = query.eq('approval_status', 'returned');
+    if (quick === 'approval_returned') {
+      query = query.or('approval_status.eq.returned,registration_status.eq.returned');
+    }
+    if (quick === 'registration_waiting') query = query.eq('registration_status', 'waiting');
+    if (quick === 'registered') query = query.eq('registration_status', 'approved');
+    if (quick === 'no_section') query = query.not('approval_status', 'is', null).is('admitted_section_id', null);
     if (quick === 'no_nu_id') query = query.not('approval_status', 'is', null).is('nu_admission_id', null);
     if (quick === 'new_students') {
       query = query.gte('admitted_at', new Date(today.getFullYear(), today.getMonth(), 1).toISOString());
