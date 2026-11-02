@@ -309,6 +309,8 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
 // Take a payment
 // =====================================================================
 /** 💵 Take a payment (also from the website’s table row) */
+const QUICK_AMOUNTS = [1000, 5000];
+
 export function PaySheet({
   visible,
   leadId,
@@ -388,6 +390,10 @@ export function PaySheet({
         {next != null && next < due && (
           <Chip text={`Installment ${money(next)}`} on={amount === String(Math.round(next))} onPress={() => setAmount(String(Math.round(next)))} />
         )}
+        {/* ⚡ Quick amounts (only when not more than the due) */}
+        {QUICK_AMOUNTS.filter((q) => q < due).map((q) => (
+          <Chip key={q} text={money(q)} on={amount === String(q)} onPress={() => setAmount(String(q))} />
+        ))}
         <Chip text={`All due ${money(due)}`} on={amount === String(Math.round(due))} onPress={() => setAmount(String(Math.round(due)))} />
       </View>
 

@@ -22,7 +22,8 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { openWhatsApp } from '@/features/leads/contact';
 import type { TemplateChannel } from '@/features/templates/api';
 import { TemplateSheet } from '@/features/templates/TemplateSheet';
-import { canUseFees, getFeeSettings } from '@/features/fees/api';
+import { canTakePayments, canUseFees, getFeeSettings, money, recordPayment, type FeeSettings } from '@/features/fees/api';
+import { PaySheet } from '@/features/fees/PaymentsSection';
 import { FeeSheet, type FeeSheetLead } from '@/features/fees/FeeSheet';
 import { useTemplateAccess } from '@/features/templates/useTemplateAccess';
 import { getCallSyncSettings, markCallFromApp } from '@/features/call-sync/api';
@@ -159,10 +160,19 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   // 💰 Fee & discount (one marked lead), when the feature is on for this person
   const [feeOn, setFeeOn] = useState(false);
   const [feeFor, setFeeFor] = useState<FeeSheetLead | null>(null);
+  // 💵 Students list: quick payment from the card
+  const [paySettings, setPaySettings] = useState<FeeSettings | null>(null);
+  const [payFor, setPayFor] = useState<LeadListItem | null>(null);
   useEffect(() => {
     getFeeSettings()
-      .then((s) => setFeeOn(canUseFees(s, profile, isAdmin || hasPermission('discounts.approve'))))
-      .catch(() => setFeeOn(false));
+      .then((s) => {
+        setFeeOn(canUseFees(s, profile, isAdmin || hasPermission('discounts.approve')));
+        setPaySettings(canTakePayments(s, profile, isAdmin) ? s : null);
+      })
+      .catch(() => {
+        setFeeOn(false);
+        setPaySettings(null);
+      });
   }, [profile, isAdmin, hasPermission]);
 
   const actions = ACTIONS.filter(
@@ -1102,6 +1112,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               onWhatsApp={() => whatsapp(item)}
               onSms={() => sms(item)}
               onTemplate={templates.allowed ? (ch) => setTemplateFor({ lead: item, channel: ch }) : undefined}
+              onPay={
+                students && paySettings && item.stage?.kind === 'won' && Number(item.fee_due ?? 0) > 0
+                  ? () => setPayFor(item)
+                  : undefined
+              }
             />
           )}
         />
@@ -1243,6 +1258,25 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         />
       )}
       <VoicePlayer file={playing} onClose={() => setPlaying(null)} />
+
+      {/* 💵 Quick payment from a student's card */}
+      {payFor && paySettings && (
+        <PaySheet
+          visible
+          leadId={payFor.id}
+          due={Number(payFor.fee_due ?? 0)}
+          next={null}
+          settings={paySettings}
+          isAdmin={isAdmin}
+          onClose={() => setPayFor(null)}
+          onSave={async (input) => {
+            const res = await recordPayment({ leadId: payFor.id, ...input });
+            showToast(`💵 ${money(input.amount)} received from ${payFor.name} · ${res.receipt_no}`);
+            setPayFor(null);
+            reloadAll();
+          }}
+        />
+      )}
 
       {sheetField && (
         <LeadQuickSheet
