@@ -71,6 +71,7 @@ function pageTitle(path: string): string {
   if (path.startsWith('/password')) return 'Change password';
   if (path.startsWith('/settings/uploads')) return 'Settings › Upload rules';
   if (path.startsWith('/photo-studio')) return 'Photo Studio';
+  if (path.startsWith('/scorecard')) return 'Weekly scorecard';
   return 'Students';
 }
 
@@ -179,6 +180,12 @@ export function WebShell({ children }: { children: React.ReactNode }) {
           },
         ]
       : []),
+    {
+      label: 'Scorecard',
+      icon: '🏁',
+      href: '/scorecard',
+      match: (p: string) => p.startsWith('/scorecard'),
+    },
     // ⚙️ Admins and the Admission Officer
     ...(isAdmin || officer
       ? [

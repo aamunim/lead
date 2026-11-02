@@ -2316,6 +2316,7 @@ export type Database = {
         Args: { p_lead_ids: string[]; p_note?: string; p_to: string }
         Returns: Json
       }
+      weekly_scorecard: { Args: { p_week?: string }; Returns: Json }
       lead_report: {
         Args: { p_course_id?: string; p_from: string; p_to: string; p_user_id?: string }
         Returns: Json

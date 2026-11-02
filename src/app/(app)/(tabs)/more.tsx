@@ -153,15 +153,22 @@ function PhoneMore() {
         </View>
       </View>
 
-      {/* Reports (Settings → Reports decides who) */}
-      {reportsAllowed && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>REPORTS</Text>
-          <View style={styles.group}>
+      {/* Reports (Settings → Reports decides who); the scorecard everyone sees (at least their own week) */}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>REPORTS</Text>
+        <View style={styles.group}>
+          {reportsAllowed && (
             <Row icon="📊" title="Reports" subtitle="Pipeline, sources, team, best time to call" href="/reports" />
-          </View>
+          )}
+          <Row
+            icon="🏁"
+            title="Weekly scorecard"
+            subtitle="Last week next to the week before"
+            href={'/scorecard' as Href}
+            divider={reportsAllowed}
+          />
         </View>
-      )}
+      </View>
 
       {/* Tools (for anyone who is allowed) */}
       {showTools && (

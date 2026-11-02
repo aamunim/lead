@@ -15,6 +15,13 @@ import {
   type ReportSection,
   type ReportSettings,
 } from '@/features/reports/api';
+import {
+  DEFAULT_SCORECARD,
+  WEEKDAYS,
+  getScorecardSettings,
+  saveScorecardSettings,
+  type ScorecardSettings,
+} from '@/features/scorecard/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
@@ -42,6 +49,15 @@ export default function ReportSettingsScreen() {
   const canManage = hasPermission('settings.manage');
 
   const [settings, setSettings] = useState<ReportSettings>(DEFAULT_REPORTS);
+  // 🏁 The Sunday scorecard notification
+  const [score, setScore] = useState<ScorecardSettings>(DEFAULT_SCORECARD);
+  useEffect(() => {
+    getScorecardSettings().then(setScore);
+  }, []);
+  const setScoreAndSave = (next: ScorecardSettings) => {
+    setScore(next);
+    saveScorecardSettings(next).catch((e) => setError(e instanceof Error ? e.message : 'Could not save.'));
+  };
   const [users, setUsers] = useState<AssignableUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -195,6 +211,54 @@ export default function ReportSettingsScreen() {
       </View>
       <Text style={styles.hint}>The Team part is only shown to Team Leads and admins.</Text>
 
+      <Text style={styles.sectionLabel}>🏁 WEEKLY SCORECARD</Text>
+      <View style={styles.card}>
+        <SwitchRow
+          title="Notify admins every week"
+          text={
+            score.enabled
+              ? `${WEEKDAYS[score.weekday]} at ${score.hour}:00 · last week’s admissions, money, calls and leads`
+              : 'No weekly notification. The scorecard is still in More → Weekly scorecard.'
+          }
+          value={score.enabled}
+          onChange={(v) => setScoreAndSave({ ...score, enabled: v })}
+        />
+        {score.enabled && (
+          <>
+            <View style={styles.divider} />
+            <View style={styles.chips}>
+              {WEEKDAYS.map((d, i) => (
+                <Pressable
+                  key={d}
+                  onPress={() => setScoreAndSave({ ...score, weekday: i })}
+                  style={[styles.chip, score.weekday === i && styles.chipOn]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: score.weekday === i }}
+                >
+                  <Text style={[styles.chipText, score.weekday === i && styles.chipTextOn]}>{d.slice(0, 3)}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.chips}>
+              {[7, 8, 9, 10, 11, 17, 20].map((h) => (
+                <Pressable
+                  key={h}
+                  onPress={() => setScoreAndSave({ ...score, hour: h })}
+                  style={[styles.chip, score.hour === h && styles.chipOn]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: score.hour === h }}
+                >
+                  <Text style={[styles.chipText, score.hour === h && styles.chipTextOn]}>
+                    {h > 12 ? `${h - 12} pm` : `${h} am`}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
+      </View>
+      <Text style={styles.hint}>Everyone can open the scorecard: their own week; Team Leads their team; admins everyone.</Text>
+
       {error && (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
@@ -264,6 +328,17 @@ function CheckRow({ label, sub, on, onPress }: { label: string; sub?: string; on
 }
 
 const styles = StyleSheet.create({
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, padding: spacing.md, paddingTop: 0 },
+  chip: {
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
+  chipTextOn: { color: colors.textOnPrimary },
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },

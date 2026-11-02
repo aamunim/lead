@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-03-b',
+    date: '3 Nov 2026',
+    title: 'Weekly scorecard',
+    items: [
+      '🏁 More → Weekly scorecard: your week (Sat–Fri) next to the week before: leads, calls, admissions, money, first-call time, missed follow-ups',
+      '👥 Team Leads see their team, admins everyone; 🥇🥈🥉 for the top three',
+      '🔔 Admins get the totals every Sunday morning (Settings → Reports to change)',
+    ],
+  },
+  {
     key: '2026-11-03-a',
     date: '3 Nov 2026',
     title: 'Contact the developer',
