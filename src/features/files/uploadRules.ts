@@ -63,11 +63,12 @@ export async function savePaperRule(r: PaperRule): Promise<void> {
   const { error } = await supabase.rpc('set_paper_upload_rule', {
     p_paper: r.id,
     p_accept: r.accept,
-    p_img_width: r.img_width ?? undefined,
-    p_img_height: r.img_height ?? undefined,
-    p_img_max_kb: r.img_max_kb ?? undefined,
-    p_pdf_max_kb: r.pdf_max_kb ?? undefined,
-  });
+    // Empty = null, always sent: the database finds the function by all six names
+    p_img_width: r.img_width ?? null,
+    p_img_height: r.img_height ?? null,
+    p_img_max_kb: r.img_max_kb ?? null,
+    p_pdf_max_kb: r.pdf_max_kb ?? null,
+  } as never);
   if (error) throw toError(error);
 }
 
@@ -131,9 +132,10 @@ export async function updatePdfAccount(
   const { error } = await supabase.rpc('update_ilovepdf_account', {
     p_id: id,
     p_label: patch.label ?? '',
-    p_is_active: patch.is_active ?? undefined,
-    p_sort_order: patch.sort_order ?? undefined,
-  });
+    // Unchanged = null, always sent (the database keeps the old value)
+    p_is_active: patch.is_active ?? null,
+    p_sort_order: patch.sort_order ?? null,
+  } as never);
   if (error) throw toError(error);
 }
 
