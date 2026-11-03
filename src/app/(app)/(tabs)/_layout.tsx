@@ -30,9 +30,15 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        // ✨ Tab change: the whole page slides (springy, like turning pages)
-        sceneStyleInterpolator: pageSlide,
-        transitionSpec: { animation: 'spring', config: { stiffness: 260, damping: 30, mass: 1 } },
+        // ✨ Tab change (phone): the whole page slides (springy, like turning pages).
+        // 🌐 The website changes pages from its side menu at once: a full-width
+        // slide and fade there looked like the screen blinking.
+        ...(isWeb
+          ? {}
+          : {
+              sceneStyleInterpolator: pageSlide,
+              transitionSpec: { animation: 'spring' as const, config: { stiffness: 260, damping: 30, mass: 1 } },
+            }),
         tabBarActiveTintColor: md.onPrimaryC,
         tabBarInactiveTintColor: colors.textMuted,
         // 🌐 Website: the menu on the left replaces the tabs
@@ -74,6 +80,7 @@ export default function TabsLayout() {
         name="leads"
         options={{
           title: 'Leads',
+          lazy: !isWeb,
           tabBarIcon: ({ focused }) => <PillIcon focused={focused} on="people" off="people-outline" />,
         }}
       />
@@ -82,6 +89,8 @@ export default function TabsLayout() {
         options={{
           title: 'Students',
           href: studentsTab ? undefined : null,
+          // 🌐 Ready in the background, so the first click shows the table at once (no blank moment)
+          lazy: !(isWeb && studentsTab),
           tabBarIcon: ({ focused }) => <PillIcon focused={focused} on="school" off="school" />,
         }}
       />
