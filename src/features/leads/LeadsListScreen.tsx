@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams, useNavigation, type Href } from 'expo-router';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -87,6 +87,25 @@ import { getApprovalSettings } from '@/features/approval/api';
 import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
 import { listAssignableUsers } from '@/features/leads/api';
 import { VoicePlayer } from '@/features/voice/VoiceNote';
+import { isWeb } from '@/features/web/api';
+import { countLeads } from '@/features/leads/api';
+import {
+  GROUP_LABEL,
+  loadGroupByTime,
+  saveGroupByTime,
+  saveListDesign,
+  timeGroup,
+  useListDesign,
+  type TimeGroup,
+} from '@/features/leads/design';
+import { ModernLeadCard } from '@/features/leads/ModernLeadCard';
+import { ListMenu, ModernActionSheet, ModernChip, ModernTopBar, type ModernAction } from '@/features/leads/ModernParts';
+
+// ✨ New list: a group heading (Overdue, Today…) or a lead
+type ListRow =
+  | { type: 'head'; key: string; group: TimeGroup; count: number | null }
+  | { type: 'lead'; key: string; lead: LeadListItem };
+import { MIcon, md } from '@/features/home/md';
 import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 
 
@@ -114,13 +133,35 @@ const ACTIONS: {
 // =====================================================================
 export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students' }) {
   const students = mode === 'students';
-  const { profile, hasPermission, assignmentOn, sharedMode, assignment } = useAuth();
+  const { profile, hasPermission, assignmentOn, sharedMode, assignment, refreshProfile } = useAuth();
   // Everyone may give leads to someone (Settings → Lead assignment → Hand over)
   const mayHandOver = canHandOver(assignment, hasPermission);
 
   // Can this user see other people's leads? (by role, or because everyone sees all)
   const seesOthers = sharedMode || hasPermission('leads.view_all') || hasPermission('leads.view_team');
   const isAdmin = hasPermission('settings.manage');
+
+  // 🎨 The new design or the classic one (each person's choice: More → List design)
+  // 🌐 The website keeps the classic look (its own top bar has the name)
+  const designChoice = useListDesign();
+  const modern = designChoice === 'new' && !isWeb;
+  const navigation = useNavigation();
+  // The new design has its own top bar
+  useLayoutEffect(() => {
+    // 🌐 the website hides the tab header anyway
+    if (!isWeb) navigation.setOptions({ headerShown: !modern });
+  }, [navigation, modern]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const switchToClassic = async () => {
+    setMenuOpen(false);
+    if (!profile?.id) return;
+    try {
+      await saveListDesign(profile.id, 'classic');
+      await refreshProfile();
+    } catch (e) {
+      Alert.alert('Could not change', e instanceof Error ? e.message : '');
+    }
+  };
 
   // 🎓 Admission approval chips (Students only, when it is on)
   const [approvalOn, setApprovalOn] = useState(false);
@@ -434,6 +475,60 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     }, [loadFirstPage, loadSavedFilters]),
   );
 
+  // ✨ New design: the chips (Leads get Mine / Hot / Not called / Unassigned back) and how many each has
+  const modernChips = useMemo<{ key: QuickFilter; label: string }[]>(
+    () =>
+      students
+        ? quickFilters
+        : [
+            { key: 'all', label: 'All' },
+            ...(assignmentOn ? [{ key: 'mine' as QuickFilter, label: 'Mine' }] : []),
+            { key: 'hot', label: '🔥 Hot' },
+            { key: 'new', label: '🆕 Not called' },
+            ...(assignmentOn && seesOthers ? [{ key: 'unassigned' as QuickFilter, label: 'Unassigned' }] : []),
+          ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [students, assignmentOn, seesOthers, approvalOn],
+  );
+  const chipKeys = modernChips.map((c) => c.key).join(',');
+  const [chipCounts, setChipCounts] = useState<Map<string, number | null>>(new Map());
+  const countsId = useRef(0);
+  const loadChipCounts = useCallback(() => {
+    if (!modern) return;
+    const mine = ++countsId.current;
+    const base = {
+      search: debouncedSearch,
+      userId: profile?.id,
+      filters: effectiveFilters,
+      closedMode,
+      students,
+      ids: idsFilter,
+      added: addedQ,
+    };
+    Promise.all(modernChips.map((c) => countLeads({ ...base, quick: c.key }).catch(() => null))).then((list) => {
+      if (mine !== countsId.current) return;
+      setChipCounts(new Map(modernChips.map((c, i) => [c.key, list[i]])));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modern, debouncedSearch, profile?.id, effectiveFilters, closedMode, students, idsFilter, addedQ, chipKeys]);
+  useFocusEffect(
+    useCallback(() => {
+      loadChipCounts();
+    }, [loadChipCounts]),
+  );
+
+  // ⏱ Next call sort: Overdue / Today / Tomorrow … groups (a quick button turns them off)
+  const [groupOn, setGroupOn] = useState(true);
+  useEffect(() => {
+    loadGroupByTime().then(setGroupOn);
+  }, []);
+  const toggleGroup = () => {
+    setGroupOn((g) => {
+      saveGroupByTime(!g);
+      return !g;
+    });
+  };
+
   // 🔍 Phone's Back button: first clears the search, then leaves as usual
   useFocusEffect(
     useCallback(() => {
@@ -723,6 +818,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   // After a change from a sheet or the bar: the list and the board show it
   const reloadAll = () => {
     loadFirstPage();
+    loadChipCounts();
     setBoardReload((n) => n + 1);
   };
 
@@ -748,6 +844,620 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     setAdded(NO_ADDED);
     setIdsFilter(null);
   };
+
+  const overlays = (
+    <>
+      <LeadSortSheet
+        visible={sortSheetVisible}
+        value={sort}
+        onClose={() => setSortSheetVisible(false)}
+        onPick={pickSort}
+        students={students}
+      />
+
+      <LeadFilterSheet
+        visible={filterSheetVisible}
+        value={filters}
+        onClose={() => setFilterSheetVisible(false)}
+        onApply={(next) => {
+          setFilterSheetVisible(false);
+          applyFilters(next, null);
+        }}
+        onSavedFilter={(f) => {
+          setSavedFilters((list) => [...list, f]);
+        }}
+        students={students}
+        hiddenFields={students ? ['stage', 'lost_reason', 'visit'] : []}
+      />
+
+      {/* 👁 The last calls and notes of one lead */}
+      {peekLead && (
+        <LeadPeekSheet
+          lead={peekLead}
+          nameOf={nameOf}
+          onClose={() => setPeekLead(null)}
+          onOpen={() => {
+            const id = peekLead.id;
+            setPeekLead(null);
+            router.push(`/leads/${id}` as Href);
+          }}
+          onAddNote={() => {
+            setNoteFor(peekLead);
+            setPeekLead(null);
+          }}
+        />
+      )}
+      {noteFor && (
+        <LeadQuickSheet
+          visible
+          field="note"
+          leads={[noteFor]}
+          onClose={() => setNoteFor(null)}
+          onSaved={(message) => {
+            setNoteFor(null);
+            showToast(message);
+            reloadAll();
+          }}
+        />
+      )}
+      <VoicePlayer file={playing} onClose={() => setPlaying(null)} />
+
+      {/* 💵 Quick payment from a student's card */}
+      {payFor && paySettings && (
+        <PaySheet
+          visible
+          leadId={payFor.id}
+          due={Number(payFor.fee_due ?? 0)}
+          next={null}
+          settings={paySettings}
+          isAdmin={isAdmin}
+          onClose={() => setPayFor(null)}
+          onSave={async (input) => {
+            const res = await recordPayment({ leadId: payFor.id, ...input });
+            showToast(`💵 ${money(input.amount)} received from ${payFor.name} · ${res.receipt_no}`);
+            setPayFor(null);
+            reloadAll();
+          }}
+        />
+      )}
+
+      {sheetField && (
+        <LeadQuickSheet
+          visible={!!sheetField}
+          field={sheetField}
+          leads={markedLeads}
+          onClose={() => setSheetField(null)}
+          onSaved={(message) => {
+            setSheetField(null);
+            setSelected(new Set());
+            setMatchingCache([]);
+            showToast(message);
+            reloadAll();
+          }}
+        />
+      )}
+
+      <LostSheet
+        visible={lostVisible}
+        leads={markedLeads.map((l) => ({ id: l.id, name: l.name }))}
+        onClose={() => setLostVisible(false)}
+        onSaved={(message) => {
+          setLostVisible(false);
+          setSelected(new Set());
+          setMatchingCache([]);
+          showToast(message);
+          reloadAll();
+        }}
+      />
+
+      {/* 💰 Fee & discount for one marked lead */}
+      <FeeSheet
+        lead={feeFor}
+        onClose={() => {
+          setFeeFor(null);
+          setSelected(new Set());
+          setMatchingCache([]);
+        }}
+        onChanged={(message) => {
+          if (message) showToast(message);
+          reloadAll();
+          setBoardReload((n) => n + 1);
+        }}
+      />
+
+      {/* 💬 Templates for WhatsApp / SMS */}
+      <TemplateSheet
+        visible={!!templateFor}
+        lead={templateFor?.lead ?? null}
+        channel={templateFor?.channel ?? 'whatsapp'}
+        settings={templates.settings}
+        onClose={() => setTemplateFor(null)}
+        onPlain={() => {
+          const t = templateFor;
+          if (!t) return;
+          if (t.channel === 'whatsapp') openPlainWhatsApp(t.lead);
+          else if (t.lead.phone) open(`sms:${t.lead.phone}`);
+        }}
+        onSent={(name) => showToast(`Sent with “${name}”`)}
+      />
+
+      {callLead && (
+        <CallResultSheet
+          visible={callSheetVisible}
+          lead={{ id: callLead.id, name: callLead.name, phone: callLead.phone, rating: callLead.rating }}
+          estimatedSec={estimatedSec}
+          channel={callChannel}
+          onClose={() => setCallSheetVisible(false)}
+          onSaved={() => {
+            setCallSheetVisible(false);
+            showToast(callChannel === 'whatsapp' ? 'WhatsApp saved.' : 'Call saved.');
+            reloadAll();
+          }}
+        />
+      )}
+    </>
+  );
+
+  // =====================================================================
+  // ✨ The new design (the classic one is below, as it always was)
+  // =====================================================================
+  const grouped = modern && sort === 'next_call' && groupOn;
+  const rows = useMemo<ListRow[]>(() => {
+    if (!grouped) return leads.map((l) => ({ type: 'lead', key: l.id, lead: l }));
+    const now = new Date();
+    const groups = leads.map((l) => timeGroup(l.next_follow_up_at, now));
+    const sizes = new Map<TimeGroup, number>();
+    groups.forEach((g) => sizes.set(g, (sizes.get(g) ?? 0) + 1));
+    // A group's number is sure once the next group has started (or everything is loaded)
+    const lastGroup = groups[groups.length - 1];
+    const out: ListRow[] = [];
+    let current: TimeGroup | null = null;
+    leads.forEach((l, i) => {
+      const g = groups[i];
+      if (g !== current) {
+        current = g;
+        out.push({ type: 'head', key: `head-${g}`, group: g, count: !hasMore || g !== lastGroup ? (sizes.get(g) ?? 0) : null });
+      }
+      out.push({ type: 'lead', key: l.id, lead: l });
+    });
+    return out;
+  }, [grouped, leads, hasMore]);
+
+  if (modern) {
+    const n = total ?? leads.length;
+    const noun = students ? (n === 1 ? 'student' : 'students') : n === 1 ? 'lead' : 'leads';
+    const modernActions: (ModernAction & { field: FloatAction })[] = [
+      { key: 'note', field: 'note', label: 'Note', icon: 'edit-note' },
+      { key: 'followup', field: 'followup', label: 'Next call', icon: 'alarm' },
+      { key: 'stage', field: 'stage', label: 'Stage', icon: 'flag' },
+      { key: 'assign', field: 'assign', label: 'Give to', icon: 'person-add' },
+      { key: 'tags', field: 'tags', label: 'Tag', icon: 'sell' },
+      { key: 'rating', field: 'rating', label: 'Rating', icon: 'local-fire-department' },
+      { key: 'fee', field: 'fee', label: 'Fee', icon: 'payments' },
+      { key: 'lost', field: 'lost', label: 'Lost', icon: 'block', danger: true },
+    ].filter((a) => a.field === 'rating' || actions.some((x) => x.field === a.field)) as (ModernAction & {
+      field: FloatAction;
+    })[];
+    const runAction = (field: FloatAction) => {
+      if (field === 'lost') return setLostVisible(true);
+      if (field === 'fee') {
+        const one = markedLeads.length === 1 ? markedLeads[0] : null;
+        if (!one) return showToast('Mark just one lead for Fee & discount.');
+        return setFeeFor({
+          id: one.id,
+          name: one.name,
+          stageKind: one.stage?.kind ?? 'open',
+          courseIds: one.lead_courses.map((c) => c.course?.id ?? '').filter(Boolean),
+        });
+      }
+      setSheetField(field);
+    };
+    const openLead = (item: LeadListItem) => {
+      if (selecting) return toggleSelect(item.id);
+      if (debouncedSearch.trim()) rememberSearch(debouncedSearch);
+      router.push(`/leads/${item.id}` as Href);
+    };
+
+    return (
+      <View style={styles.screen}>
+        <ModernTopBar
+          title={students ? 'Students' : 'Leads'}
+          count={loading ? null : n}
+          selecting={selecting}
+          selectedCount={selected.size}
+          onClearSelection={() => {
+            setSelected(new Set());
+            setMatchingCache([]);
+          }}
+          markingAll={markingAll}
+          markAllLabel={allMarked ? 'Unmark all' : `All ${Math.min(totalMatching, MAX_MARK_ALL)}`}
+          onMarkAll={markAllMatching}
+          actions={[
+            ...(boardAllowed
+              ? [
+                  {
+                    icon: showBoard ? ('view-agenda' as const) : ('view-kanban' as const),
+                    label: showBoard ? 'List view' : 'Pipeline board',
+                    onPress: () => switchView(showBoard ? 'list' : 'board'),
+                    on: showBoard,
+                  },
+                ]
+              : []),
+            {
+              icon: 'swap-vert' as const,
+              label: `Sort: ${sortLabel(sort, students)}. Change`,
+              onPress: () => setSortSheetVisible(true),
+              on: sort !== sortDefault,
+            },
+            { icon: 'more-vert' as const, label: 'More options', onPress: () => setMenuOpen(true) },
+          ]}
+        />
+
+        {/* 🎓 Students: totals, tap one to show those */}
+        {students && !selecting && (
+          <StudentsSummary
+            onPick={(q) => {
+              setLoading(true);
+              setQuick(q);
+            }}
+          />
+        )}
+
+        {/* 🔍 Search pill + filters */}
+        <View style={m.search}>
+          <MIcon name="search" size={21} color={colors.textMuted} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            onSubmitEditing={() => search.trim() && rememberSearch(search)}
+            returnKeyType="search"
+            placeholder={students ? 'Search name, phone, student ID…' : 'Search name, phone, area…'}
+            placeholderTextColor={colors.textMuted}
+            style={m.searchInput}
+            autoCorrect={false}
+          />
+          {search.length > 0 && (
+            <Pressable onPress={clearSearch} hitSlop={10} accessibilityRole="button" accessibilityLabel="Clear search">
+              <MIcon name="close" size={20} color={colors.textMuted} />
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => setFilterSheetVisible(true)}
+            style={[m.filterBtn, filterCount > 0 && m.filterBtnOn]}
+            accessibilityRole="button"
+            accessibilityLabel={filterCount > 0 ? `Filters, ${filterCount} on` : 'Filters'}
+          >
+            <MIcon name="tune" size={20} color={filterCount > 0 ? md.onPrimaryC : colors.text} />
+            {filterCount > 0 && (
+              <View style={m.badge}>
+                <Text style={m.badgeText}>{filterCount}</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
+
+        {/* 🔍 Recent searches */}
+        {!selecting && searchFocused && !search && recent.length > 0 && (
+          <ScrollView
+            horizontal
+            keyboardShouldPersistTaps="always"
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={m.chips}
+            style={styles.chipsScroll}
+          >
+            <MIcon name="history" size={18} color={colors.textMuted} />
+            {recent.map((t) => (
+              <ModernChip
+                key={t}
+                label={t}
+                selected={false}
+                onPress={() => runSearch(t)}
+                onLongPress={() => removeRecentSearch(students, t).then(setRecent)}
+              />
+            ))}
+            <Pressable onPress={() => clearRecentSearches(students).then(setRecent)} hitSlop={8} accessibilityRole="button">
+              <Text style={styles.clearFilters}>Clear</Text>
+            </Pressable>
+          </ScrollView>
+        )}
+
+        {/* Chips with how many each has · ➕ added by / when · saved filters */}
+        {!selecting && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={m.chips} style={styles.chipsScroll}>
+            {modernChips.map((f) => {
+              const on = f.key === quick && (f.key !== 'all' || !addedQ);
+              return (
+                <ModernChip
+                  key={f.key}
+                  label={f.label}
+                  count={chipCounts.get(f.key)}
+                  selected={on}
+                  onPress={() => {
+                    setLoading(true);
+                    // a second tap on a chip goes back to All
+                    setQuick(on && f.key !== 'all' ? 'all' : f.key);
+                    if (f.key === 'all') setAdded(NO_ADDED);
+                  }}
+                />
+              );
+            })}
+            {!students && (
+              <AddedChips
+                choice={added}
+                creators={creators}
+                myId={profile?.id ?? null}
+                onChange={(next) => {
+                  setLoading(true);
+                  setAdded(next);
+                }}
+              />
+            )}
+            {savedFilters.map((f) => (
+              <ModernChip
+                key={f.id}
+                label={f.name}
+                icon={f.is_shared ? 'groups' : 'bookmark'}
+                selected={activeSavedId === f.id}
+                onPress={() => pressSavedFilter(f)}
+                onLongPress={() => longPressSavedFilter(f)}
+              />
+            ))}
+          </ScrollView>
+        )}
+
+        {/* 248 leads · 2 filters        ⏱ Groups   Next call */}
+        {!selecting && (
+          <View style={m.meta}>
+            <Text style={m.metaText} numberOfLines={1}>
+              {loading ? ' ' : (
+                <>
+                  <Text style={m.metaStrong}>{n.toLocaleString('en-IN')}</Text> {noun}
+                  {idsFilter ? ' from a notification' : ''}
+                  {filterCount > 0 ? ` · ${filterCount} filter${filterCount === 1 ? '' : 's'}` : ''}
+                </>
+              )}
+            </Text>
+            {idsFilter && (
+              <Pressable
+                onPress={() => {
+                  setLoading(true);
+                  setIdsFilter(null);
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+              >
+                <Text style={styles.clearFilters}>Show all</Text>
+              </Pressable>
+            )}
+            {filterCount > 0 && (
+              <Pressable onPress={() => applyFilters({}, null)} hitSlop={8} accessibilityRole="button">
+                <Text style={styles.clearFilters}>Clear</Text>
+              </Pressable>
+            )}
+            {sort === 'next_call' && !showBoard && (
+              <Pressable
+                onPress={toggleGroup}
+                hitSlop={6}
+                style={[m.groupBtn, groupOn && m.groupBtnOn]}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: groupOn }}
+                accessibilityLabel="Group by time: Overdue, Today, Tomorrow"
+              >
+                <MIcon name="view-agenda" size={14} color={groupOn ? md.onPrimaryC : colors.textMuted} />
+                <Text style={[m.groupText, groupOn && m.groupTextOn]}>Groups</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={() => setSortSheetVisible(true)} hitSlop={8} style={m.sortBtn} accessibilityRole="button">
+              <MIcon name="schedule" size={15} color={colors.primary} />
+              <Text style={m.sortText} numberOfLines={1}>
+                {sortLabel(sort, students)}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* ➕ How many each person added in the chosen period */}
+        {!selecting && !students && addedCounts.length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll} contentContainerStyle={styles.addedCounts}>
+            {addedCounts.map((c) => (
+              <Pressable
+                key={c.user_id}
+                onPress={() => {
+                  setLoading(true);
+                  setAdded((a) => ({ ...a, userId: c.user_id }));
+                }}
+                hitSlop={6}
+                accessibilityRole="button"
+              >
+                <Text style={styles.addedCount}>
+                  {c.user_id === profile?.id ? 'Me' : (c.name ?? 'No name')} <Text style={styles.addedCountNum}>{c.total}</Text>
+                  {c.imported > 0 ? ` (${c.imported} imported)` : ''}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+
+        {showBoard ? (
+          <LeadBoard
+            query={{ search: debouncedSearch, quick, userId: profile?.id, filters: effectiveFilters, closedMode, sort, ids: idsFilter, added: addedQ }}
+            closedColumns={boardSettings.closed_columns}
+            showAssignee={showAssignee}
+            reloadKey={boardReload}
+            onCall={call}
+            onWhatsApp={whatsapp}
+            onSms={sms}
+            onTemplate={templates.allowed ? (lead, ch) => setTemplateFor({ lead, channel: ch }) : undefined}
+            onChanged={(message) => showToast(message)}
+            search={debouncedSearch}
+            detailed={detailed}
+            staleDays={staleDays}
+            nameOf={nameOf}
+            onPeek={setPeekLead}
+            onPlayVoice={(lead, fileId, seconds) => setPlaying({ id: fileId, name: `Voice note · ${lead.name}`, duration_sec: seconds })}
+            selected={selected}
+            onToggle={(lead) => {
+              setBoardPicked((mp) => new Map(mp).set(lead.id, lead));
+              toggleSelect(lead.id);
+            }}
+          />
+        ) : loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : (
+          <FlatList
+            data={rows}
+            keyExtractor={(r) => r.key}
+            extraData={selected}
+            contentContainerStyle={[m.list, { paddingBottom: selecting ? 230 : 100 }]}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.4}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => {
+                  setRefreshing(true);
+                  loadFirstPage();
+                  loadChipCounts();
+                }}
+              />
+            }
+            ListHeaderComponent={
+              error ? (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : undefined
+            }
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <MIcon name={students ? 'school' : 'groups'} size={40} color={md.outline} />
+                <Text style={styles.emptyTitle}>{listIsFiltered ? `No matching ${students ? 'students' : 'leads'}` : 'No leads yet'}</Text>
+                <Text style={styles.emptyText}>
+                  {listIsFiltered ? 'Try another search or change the filters.' : 'Tap “Add lead” to add your first lead.'}
+                </Text>
+                {!!debouncedSearch && narrowed && (
+                  <Pressable onPress={searchEverywhere} style={styles.searchAllBtn} accessibilityRole="button">
+                    <Text style={styles.searchAllText}>
+                      🔍 Search all {students ? 'students' : 'leads'} for “{debouncedSearch}”
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            }
+            ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.footer} color={colors.primary} /> : undefined}
+            renderItem={({ item: row }) =>
+              row.type === 'head' ? (
+                <Text style={[m.group, row.group === 'late' && m.groupLate]}>
+                  {GROUP_LABEL[row.group]}
+                  {row.count != null ? ` · ${row.count}` : ''}
+                </Text>
+              ) : (
+                <View style={m.cardGap}>
+                  <ModernLeadCard
+                    lead={row.lead}
+                    search={debouncedSearch}
+                    detailed={detailed}
+                    staleDays={staleDays}
+                    nameOf={nameOf}
+                    onPeek={() => setPeekLead(row.lead)}
+                    onPlayVoice={(fileId, seconds) =>
+                      setPlaying({ id: fileId, name: `Voice note · ${row.lead.name}`, duration_sec: seconds })
+                    }
+                    student={students}
+                    showAssignee={showAssignee}
+                    selecting={selecting}
+                    selected={selected.has(row.lead.id)}
+                    onPress={() => openLead(row.lead)}
+                    onLongPress={() => toggleSelect(row.lead.id)}
+                    onCall={() => call(row.lead)}
+                    onWhatsApp={() => whatsapp(row.lead)}
+                    onSms={() => sms(row.lead)}
+                    onTemplate={templates.allowed ? (ch) => setTemplateFor({ lead: row.lead, channel: ch }) : undefined}
+                    onPay={
+                      students && paySettings && row.lead.stage?.kind === 'won' && Number(row.lead.fee_due ?? 0) > 0
+                        ? () => setPayFor(row.lead)
+                        : undefined
+                    }
+                  />
+                </View>
+              )
+            }
+          />
+        )}
+
+        {/* Marked: what to do with them */}
+        {selecting && (
+          <ModernActionSheet
+            title={`${selected.size} ${students ? (selected.size === 1 ? 'student' : 'students') : selected.size === 1 ? 'lead' : 'leads'} · what to do?`}
+            actions={modernActions}
+            disabled={markingAll}
+            onPick={(key) => runAction(modernActions.find((a) => a.key === key)!.field)}
+          />
+        )}
+
+        {toast && (
+          <View style={[styles.toast, selecting && { bottom: 210 }]} pointerEvents="none">
+            <Text style={styles.toastText}>{toast}</Text>
+          </View>
+        )}
+
+        {/* Add lead (extended FAB) */}
+        {!selecting && !students && (
+          <Pressable
+            onPress={() => router.push('/leads/edit/new' as Href)}
+            android_ripple={{ color: md.ripple, foreground: true }}
+            style={({ pressed }) => [m.fab, pressed && styles.fabPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Add lead"
+          >
+            <MIcon name="person-add-alt-1" size={22} color={md.onPrimaryC} />
+            <Text style={m.fabText}>Add lead</Text>
+          </Pressable>
+        )}
+
+        <ListMenu
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          items={[
+            {
+              icon: 'notes',
+              label: 'Show the latest on cards',
+              hint: 'Last note or call under each name',
+              on: detailed,
+              onPress: () =>
+                setDetailed((d) => {
+                  saveDetailed(!d);
+                  return !d;
+                }),
+            },
+            ...(sort === 'next_call'
+              ? [
+                  {
+                    icon: 'view-agenda' as const,
+                    label: 'Group by time',
+                    hint: 'Overdue · Today · Tomorrow …',
+                    on: groupOn,
+                    onPress: toggleGroup,
+                  },
+                ]
+              : []),
+            {
+              icon: 'history' as const,
+              label: 'Switch to the classic design',
+              hint: 'Come back any time: More → List design',
+              onPress: switchToClassic,
+            },
+          ]}
+        />
+
+        {overlays}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -1204,154 +1914,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         </Pressable>
       )}
 
-      <LeadSortSheet
-        visible={sortSheetVisible}
-        value={sort}
-        onClose={() => setSortSheetVisible(false)}
-        onPick={pickSort}
-        students={students}
-      />
-
-      <LeadFilterSheet
-        visible={filterSheetVisible}
-        value={filters}
-        onClose={() => setFilterSheetVisible(false)}
-        onApply={(next) => {
-          setFilterSheetVisible(false);
-          applyFilters(next, null);
-        }}
-        onSavedFilter={(f) => {
-          setSavedFilters((list) => [...list, f]);
-        }}
-        students={students}
-        hiddenFields={students ? ['stage', 'lost_reason', 'visit'] : []}
-      />
-
-      {/* 👁 The last calls and notes of one lead */}
-      {peekLead && (
-        <LeadPeekSheet
-          lead={peekLead}
-          nameOf={nameOf}
-          onClose={() => setPeekLead(null)}
-          onOpen={() => {
-            const id = peekLead.id;
-            setPeekLead(null);
-            router.push(`/leads/${id}` as Href);
-          }}
-          onAddNote={() => {
-            setNoteFor(peekLead);
-            setPeekLead(null);
-          }}
-        />
-      )}
-      {noteFor && (
-        <LeadQuickSheet
-          visible
-          field="note"
-          leads={[noteFor]}
-          onClose={() => setNoteFor(null)}
-          onSaved={(message) => {
-            setNoteFor(null);
-            showToast(message);
-            reloadAll();
-          }}
-        />
-      )}
-      <VoicePlayer file={playing} onClose={() => setPlaying(null)} />
-
-      {/* 💵 Quick payment from a student's card */}
-      {payFor && paySettings && (
-        <PaySheet
-          visible
-          leadId={payFor.id}
-          due={Number(payFor.fee_due ?? 0)}
-          next={null}
-          settings={paySettings}
-          isAdmin={isAdmin}
-          onClose={() => setPayFor(null)}
-          onSave={async (input) => {
-            const res = await recordPayment({ leadId: payFor.id, ...input });
-            showToast(`💵 ${money(input.amount)} received from ${payFor.name} · ${res.receipt_no}`);
-            setPayFor(null);
-            reloadAll();
-          }}
-        />
-      )}
-
-      {sheetField && (
-        <LeadQuickSheet
-          visible={!!sheetField}
-          field={sheetField}
-          leads={markedLeads}
-          onClose={() => setSheetField(null)}
-          onSaved={(message) => {
-            setSheetField(null);
-            setSelected(new Set());
-            setMatchingCache([]);
-            showToast(message);
-            reloadAll();
-          }}
-        />
-      )}
-
-      <LostSheet
-        visible={lostVisible}
-        leads={markedLeads.map((l) => ({ id: l.id, name: l.name }))}
-        onClose={() => setLostVisible(false)}
-        onSaved={(message) => {
-          setLostVisible(false);
-          setSelected(new Set());
-          setMatchingCache([]);
-          showToast(message);
-          reloadAll();
-        }}
-      />
-
-      {/* 💰 Fee & discount for one marked lead */}
-      <FeeSheet
-        lead={feeFor}
-        onClose={() => {
-          setFeeFor(null);
-          setSelected(new Set());
-          setMatchingCache([]);
-        }}
-        onChanged={(message) => {
-          if (message) showToast(message);
-          reloadAll();
-          setBoardReload((n) => n + 1);
-        }}
-      />
-
-      {/* 💬 Templates for WhatsApp / SMS */}
-      <TemplateSheet
-        visible={!!templateFor}
-        lead={templateFor?.lead ?? null}
-        channel={templateFor?.channel ?? 'whatsapp'}
-        settings={templates.settings}
-        onClose={() => setTemplateFor(null)}
-        onPlain={() => {
-          const t = templateFor;
-          if (!t) return;
-          if (t.channel === 'whatsapp') openPlainWhatsApp(t.lead);
-          else if (t.lead.phone) open(`sms:${t.lead.phone}`);
-        }}
-        onSent={(name) => showToast(`Sent with “${name}”`)}
-      />
-
-      {callLead && (
-        <CallResultSheet
-          visible={callSheetVisible}
-          lead={{ id: callLead.id, name: callLead.name, phone: callLead.phone, rating: callLead.rating }}
-          estimatedSec={estimatedSec}
-          channel={callChannel}
-          onClose={() => setCallSheetVisible(false)}
-          onSaved={() => {
-            setCallSheetVisible(false);
-            showToast(callChannel === 'whatsapp' ? 'WhatsApp saved.' : 'Call saved.');
-            reloadAll();
-          }}
-        />
-      )}
+      {overlays}
     </View>
   );
 }
@@ -1628,4 +2191,93 @@ const styles = StyleSheet.create({
   },
   fabPressed: { opacity: 0.85 },
   fabText: { fontSize: 30, color: colors.textOnPrimary, marginTop: -2 },
+});
+// ✨ The new design
+const m = StyleSheet.create({
+  search: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 48,
+    marginHorizontal: 16,
+    marginTop: 2,
+    paddingLeft: 16,
+    paddingRight: 6,
+    borderRadius: 24,
+    backgroundColor: md.surface2,
+  },
+  searchInput: { flex: 1, fontSize: 15, color: colors.text, paddingVertical: 0 },
+  filterBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBtnOn: { backgroundColor: md.primaryC },
+  badge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { fontSize: 9.5, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
+  chips: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 16, paddingRight: 24, paddingTop: 10, paddingBottom: 4 },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 2, minHeight: 30 },
+  metaText: { flex: 1, fontSize: 12.5, color: colors.textMuted },
+  metaStrong: { fontWeight: fontWeight.semibold, color: colors.text },
+  groupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: md.outline,
+  },
+  groupBtnOn: { backgroundColor: md.primaryC, borderColor: md.primaryC },
+  groupText: { fontSize: 11.5, fontWeight: fontWeight.semibold, color: colors.textMuted },
+  groupTextOn: { color: md.onPrimaryC },
+  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, maxWidth: '45%' },
+  sortText: { fontSize: 12.5, fontWeight: fontWeight.semibold, color: colors.primary, flexShrink: 1 },
+  list: { paddingHorizontal: 12, flexGrow: 1 },
+  cardGap: { marginBottom: 6 },
+  group: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 0.8,
+    color: colors.textMuted,
+    paddingTop: 12,
+    paddingBottom: 6,
+    paddingHorizontal: 6,
+  },
+  groupLate: { color: md.onErrorC },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 16,
+    paddingRight: 20,
+    borderRadius: 16,
+    backgroundColor: md.primaryC,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  fabText: { fontSize: 14.5, fontWeight: fontWeight.semibold, color: md.onPrimaryC },
 });

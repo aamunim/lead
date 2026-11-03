@@ -8,6 +8,19 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-05-a',
+    date: '5 Nov 2026',
+    title: 'A new look for Leads and Students',
+    items: [
+      '✨ New lists: a clean top bar, a round search box, and chips that show how many (Mine, 🔥 Hot, 🆕 Not called…)',
+      '⏱ Sorted by next call: leads come in Overdue · Today · Tomorrow groups (the “Groups” button turns them off)',
+      '🗂 Smaller cards: rating ring, stage, course · source · owner, the latest note or call, the next-call time',
+      '✅ Press and hold to mark: “N selected” on top, and Note / Next call / Stage / Give to / Tag / Rating / Fee / Lost below',
+      '📋 Pipeline board: the board icon at the top · 📞 hold the Call button for SMS',
+      '↩ Like the old look better? More → List design → Classic (or ⋮ on the list)',
+    ],
+  },
+  {
     key: '2026-11-04-a',
     date: '4 Nov 2026',
     title: 'Fixed: tabs under the phone’s buttons',

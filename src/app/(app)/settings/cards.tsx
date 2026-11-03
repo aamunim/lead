@@ -5,6 +5,8 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import { DEFAULT_CARD_SETTINGS, getCardSettings, saveCardSettings, type CardSettings } from '@/features/leads/lastActivity';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { DESIGN_LABEL, saveListDesignForAll, type ListDesign } from '@/features/leads/design';
 
 // =====================================================================
 // ⚙️ Settings → Lead cards: after how many days without contact an open
@@ -18,6 +20,30 @@ export default function CardSettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const { refreshProfile } = useAuth();
+
+  // 🎨 Everyone's list design at once (each person can change theirs later: More → List design)
+  const setEveryone = (design: ListDesign) => {
+    Alert.alert(
+      `${DESIGN_LABEL[design]} design for everyone?`,
+      'Every user’s Leads and Students lists change to it. Anyone can switch back for themselves in More → List design.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Change for everyone',
+          onPress: async () => {
+            try {
+              const n = await saveListDesignForAll(design);
+              await refreshProfile();
+              Alert.alert('Done', `${n} ${n === 1 ? 'user' : 'users'} changed.`);
+            } catch (e) {
+              Alert.alert('Could not change', e instanceof Error ? e.message : '');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   useEffect(() => {
     getCardSettings()
@@ -76,11 +102,27 @@ export default function CardSettingsScreen() {
           })}
         </View>
         <Text style={styles.hint}>
-          Everyone can switch their own list between Compact and Detailed (last call and last note) with the 📄 button
-          next to the sort.
+          Everyone can switch their own list between Compact and Detailed (last call and last note): the 📄 button
+          next to the sort (classic design) or ⋮ → Show the latest on cards (new design).
         </Text>
       </View>
       <Button title="Save" onPress={save} loading={saving} disabled={!dirty} fullWidth />
+
+      {/* 🎨 List design for everyone */}
+      <View style={styles.card}>
+        <Text style={styles.title}>🎨 List design</Text>
+        <Text style={styles.text}>
+          The new design is on for everyone unless they chose Classic. Each person can switch in More → List design;
+          you can set one person’s on their page in Users, or everyone’s here.
+        </Text>
+        <View style={styles.chips}>
+          {(['new', 'classic'] as ListDesign[]).map((d) => (
+            <Pressable key={d} onPress={() => setEveryone(d)} style={styles.chip} accessibilityRole="button">
+              <Text style={styles.chipText}>{DESIGN_LABEL[d]} for everyone</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
     </ScrollView>
   );
 }
