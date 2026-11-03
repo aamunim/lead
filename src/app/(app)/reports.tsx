@@ -3,7 +3,6 @@ import { Stack, router, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { listAssignableUsers } from '@/features/leads/api';

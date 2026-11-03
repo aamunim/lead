@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';

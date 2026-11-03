@@ -1,16 +1,16 @@
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 

@@ -2,7 +2,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -546,7 +546,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
         )}
 
         {/* Footer: stays above the phone's navigation bar */}
-        <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
+        <View style={[styles.footer, { paddingBottom: spacing.lg }]}>
           <Pressable
             onPress={() => onApply(cleanFilters(visibleDraft()))}
             style={({ pressed }) => [styles.apply, pressed && styles.pressed]}

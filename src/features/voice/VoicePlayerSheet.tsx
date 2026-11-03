@@ -1,6 +1,7 @@
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import { downloadLeadFile } from '@/features/files/api';
 import { clock } from '@/features/voice/format';

@@ -8,6 +8,14 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-07-a',
+    date: '7 Nov 2026',
+    title: 'Fixed: popups under the phone’s buttons',
+    items: [
+      '🔧 Every popup and sheet (last note, call result, filters, sort, fee, payment, stage, papers, voice note…) now sits above the ◁ ○ □ buttons',
+    ],
+  },
+  {
     key: '2026-11-06-a',
     date: '6 Nov 2026',
     title: 'A new look for More',

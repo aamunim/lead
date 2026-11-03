@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import { getStudentFee, money, setFinalFee } from '@/features/fees/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';

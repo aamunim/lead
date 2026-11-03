@@ -2,18 +2,17 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    Linking,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal } from '@/shared/ui/Modal';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
@@ -422,7 +421,6 @@ function SaveSheet({
   onClose: () => void;
   onSaved: (r: SaveContactResult) => void;
 }) {
-  const insets = useSafeAreaInsets();
   const { profile, hasPermission, canAssign } = useAuth();
   const seesAll = hasPermission('leads.view_all');
 
@@ -501,7 +499,7 @@ function SaveSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
+        <View style={styles.sheet}>
           <View style={styles.handle} />
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Save {rows.length} as leads</Text>
