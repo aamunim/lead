@@ -142,7 +142,7 @@ export function usePaperUpload(leadId: string, onUploaded: (message: string) => 
     if (!perm.granted) {
       Alert.alert(
         'Camera not allowed',
-        'Allow it in the phone’s Settings → Apps → Lead Management → Permissions → Camera.',
+        'Allow it in the phone’s Settings → Apps → ITTC Admission → Permissions → Camera.',
       );
       return;
     }

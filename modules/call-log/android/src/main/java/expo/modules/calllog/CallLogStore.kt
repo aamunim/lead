@@ -406,6 +406,57 @@ object CallLogStore {
     )
   }
 
+  // -------------------------------------------------------------------
+  // 🕘 New lead from a recent call: the latest calls, newest first, one
+  //   line per number (the name the phone shows for it, if saved)
+  // -------------------------------------------------------------------
+  fun recentCalls(context: Context, limit: Int): List<Map<String, Any?>> {
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) !=
+      PackageManager.PERMISSION_GRANTED
+    ) return emptyList()
+    val max = limit.coerceIn(1, 200)
+    val out = mutableListOf<Map<String, Any?>>()
+    val seen = HashSet<String>()
+    val projection = arrayOf(
+      CallLog.Calls.NUMBER,
+      CallLog.Calls.CACHED_NAME,
+      CallLog.Calls.TYPE,
+      CallLog.Calls.DATE,
+      CallLog.Calls.DURATION,
+    )
+    try {
+      context.contentResolver.query(
+        CallLog.Calls.CONTENT_URI,
+        projection,
+        null,
+        null,
+        "${CallLog.Calls.DATE} DESC",
+      )?.use { c ->
+        val iNum = c.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
+        val iName = c.getColumnIndex(CallLog.Calls.CACHED_NAME)
+        val iType = c.getColumnIndexOrThrow(CallLog.Calls.TYPE)
+        val iDate = c.getColumnIndexOrThrow(CallLog.Calls.DATE)
+        val iDur = c.getColumnIndexOrThrow(CallLog.Calls.DURATION)
+        var scanned = 0
+        while (c.moveToNext() && out.size < max && scanned < 2000) {
+          scanned++
+          val number = normalizeBd(c.getString(iNum)) ?: continue
+          if (!seen.add(number)) continue
+          out += mapOf(
+            "number" to number,
+            "name" to (if (iName >= 0) c.getString(iName)?.takeIf { it.isNotBlank() } else null),
+            "direction" to (directionOf(c.getInt(iType)) ?: "other"),
+            "durationSec" to c.getLong(iDur),
+            "calledAt" to isoUtc(c.getLong(iDate)),
+          )
+        }
+      }
+    } catch (_: Exception) {
+      // no access to the call log: an empty list
+    }
+    return out
+  }
+
   /** One call by its call-log id (for the note popup opened from a notification) */
   fun callById(context: Context, id: String): Map<String, Any?>? {
     val call = readCalls(context, System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000)

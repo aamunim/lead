@@ -8,6 +8,19 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-09-build-2-7',
+    date: '9 Nov 2026',
+    title: 'Caller card · version 2.7',
+    items: [
+      '📲 When a lead calls, a card shows over the call screen: name, stage, money due, last note, next call',
+      '➕ An unknown number calling: “Add as lead” in one tap',
+      '⚙️ Turn it on once: More → Call log sync → Caller card → Allow display over other apps (then “Try it”)',
+      '📇 New lead: pick the number from your contacts (the app’s list or the phone’s own picker)',
+      '🕘 New lead: or from your recent calls (✓ shows numbers that are already leads)',
+      '🏷 The app is now called “ITTC Admission” on your phone',
+    ],
+  },
+  {
     key: '2026-11-08-a',
     date: '8 Nov 2026',
     title: 'A new look for the lead page',

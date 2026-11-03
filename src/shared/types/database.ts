@@ -2391,6 +2391,10 @@ export type Database = {
           name: string
           rating: string
           stage: string
+          student_ref: string | null
+          fee_due: number | null
+          next_call: string | null
+          owner: string | null
         }[]
       }
       my_open_nudge: {

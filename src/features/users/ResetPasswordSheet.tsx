@@ -49,7 +49,7 @@ export function ResetPasswordSheet({ user, onClose, onDone }: Props) {
   };
 
   const message = (password: string) =>
-    `Your Lead Management password was reset.\nNew password: ${password}${
+    `Your ITTC Admission password was reset.\nNew password: ${password}${
       mustChange ? '\nYou will be asked to set your own password after signing in.' : ''
     }`;
 

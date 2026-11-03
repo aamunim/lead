@@ -1,7 +1,7 @@
 # 🔄 EAS Update: sending app changes without a new build
 
 ## How it works
-- Builds (preview APK / production AAB) carry **runtime version `"1"`** (`app.json → runtimeVersion`).
+- Builds (preview APK / production AAB) carry **runtime version `"2"`** (from 2.7.0, the caller card; `"1"` before) (`app.json → runtimeVersion`).
 - `eas update` sends the JavaScript part of the app to every installed build with the **same runtime** on that channel.
 - The phone looks for an update when the app opens, and again when it comes back to the front (at most every 30 minutes).
 - A downloaded update starts after a restart: the app shows **"A new version is ready · Restart"**, or it starts by itself the next time the app is opened.

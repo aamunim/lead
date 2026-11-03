@@ -184,7 +184,7 @@ export function VoiceRecorderSheet({ leadId, context, onClose, onSaved }: Props)
           {phase === 'denied' && (
             <>
               <Text style={styles.hint}>
-                The app may not use the microphone. Allow it in the phone’s Settings → Apps → Lead Management → Permissions → Microphone.
+                The app may not use the microphone. Allow it in the phone’s Settings → Apps → ITTC Admission → Permissions → Microphone.
               </Text>
               <Button title="Close" variant="secondary" onPress={onClose} fullWidth />
             </>

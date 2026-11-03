@@ -158,7 +158,7 @@ export function SyncSetupSheet({ visible, nudge, onLater, onDone }: Props) {
               <>
                 <Header icon="phone-portrait-outline" title={nudgeTitle(nudge.reason)} />
                 <Text style={styles.text}>
-                  Call log sync only works in the Android app. Please open the Lead Management app on your Android
+                  Call log sync only works in the Android app. Please open the ITTC Admission app on your Android
                   phone and set it up there.
                 </Text>
                 <Button title="OK" variant="secondary" onPress={onLater} fullWidth />

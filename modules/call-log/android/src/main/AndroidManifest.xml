@@ -6,6 +6,8 @@
   <uses-permission android:name="android.permission.READ_PHONE_STATE" />
   <!-- "Add a note" and "Lead is calling" notifications (asked on Android 13+) -->
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!-- 📲 The caller card over the call screen ("Display over other apps", asked in Call log sync) -->
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
   <application>
     <!-- Wakes the app for a few seconds when a call rings or ends -->
@@ -21,7 +23,7 @@
          user allows "Notification access" and turns WhatsApp sync on). Message text is never read. -->
     <service
       android:name="expo.modules.calllog.WhatsAppListener"
-      android:label="Lead Management · WhatsApp calls"
+      android:label="ITTC Admission · WhatsApp calls"
       android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
       android:exported="true">
       <intent-filter>

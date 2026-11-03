@@ -44,7 +44,18 @@ import {
 } from '@/features/call-sync/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
-import { getSimFilter, getSims, setSimFilter, type Sim } from '../../../modules/call-log';
+import {
+  getCallerCard,
+  getSimFilter,
+  getSims,
+  hasCallerCard,
+  openOverlaySettings,
+  previewCallerCard,
+  setCallerCard,
+  setSimFilter,
+  type CallerCardSettings,
+  type Sim,
+} from '../../../modules/call-log';
 
 const ALL_SIMS = '__all__';
 
@@ -73,6 +84,12 @@ export default function CallSyncScreen() {
   // Notifications ("add a note" after a call, "lead is calling")
   const [notifyPermission, setNotifyPermission] = useState<CallPermissionState>(notificationPermissionState());
   const [notify, setNotify] = useState<NotifySettings>(getCallNotifySettings());
+  // 📲 The caller card over the call screen (newer builds)
+  const [card, setCard] = useState<CallerCardSettings | null>(getCallerCard());
+  const changeCard = (patch: Partial<Pick<CallerCardSettings, 'enabled' | 'unknown'>>) => {
+    setCallerCard(patch);
+    setCard(getCallerCard());
+  };
   const [savedLeads, setSavedLeads] = useState(0);
 
   // 💬 WhatsApp (read from WhatsApp's notifications)
@@ -101,7 +118,11 @@ export default function CallSyncScreen() {
   // Coming back from the phone's settings: show the new permissions
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') refreshStatus();
+      if (state === 'active') {
+        refreshStatus();
+        // back from "Display over other apps"
+        setCard(getCallerCard());
+      }
     });
     return () => sub.remove();
   }, [refreshStatus]);
@@ -309,6 +330,59 @@ export default function CallSyncScreen() {
                   </>
                 )}
               </View>
+
+              {/* 📲 Caller card over the call screen */}
+              {hasCallerCard && card && (
+                <>
+                  <Text style={styles.sectionLabel}>📲 CALLER CARD</Text>
+                  <View style={styles.card}>
+                    <Text style={styles.rowText}>
+                      While a lead calls, a small card shows over the call screen: name, stage, money due, the
+                      last note and the next call. Drag it up or down; it shrinks when you answer.
+                    </Text>
+                    {!card.allowed ? (
+                      <>
+                        <Text style={[styles.rowText, styles.warnText]}>
+                          ⚠ Allow “Display over other apps” for ITTC Admission. Until then the notification is used.
+                        </Text>
+                        <Button title="Allow display over other apps" onPress={() => openOverlaySettings()} fullWidth />
+                        <Text style={styles.hint}>
+                          Xiaomi / Redmi / POCO: also turn on Other permissions → “Display pop-up windows while running
+                          in the background”. Oppo / Realme / Vivo: Floating windows.
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.row}>
+                          <View style={styles.flex}>
+                            <Text style={styles.rowTitle}>Show the caller card</Text>
+                            <Text style={styles.rowText}>Instead of the “Incoming” notification.</Text>
+                          </View>
+                          <Switch value={card.enabled} onValueChange={(v) => changeCard({ enabled: v })} />
+                        </View>
+                        <View style={styles.divider} />
+                        <View style={styles.row}>
+                          <View style={styles.flex}>
+                            <Text style={styles.rowTitle}>Numbers that are not leads</Text>
+                            <Text style={styles.rowText}>“Not a lead · ➕ Add as lead” for unknown callers.</Text>
+                          </View>
+                          <Switch
+                            value={card.unknown}
+                            onValueChange={(v) => changeCard({ unknown: v })}
+                            disabled={!card.enabled}
+                          />
+                        </View>
+                        <Button
+                          title="👀 Try it (a sample card for 8 seconds)"
+                          variant="secondary"
+                          onPress={() => previewCallerCard()}
+                          fullWidth
+                        />
+                      </>
+                    )}
+                  </View>
+                </>
+              )}
             </>
           )}
 
@@ -343,7 +417,7 @@ export default function CallSyncScreen() {
                         <Button title="Open app info" variant="ghost" onPress={openAppDetails} fullWidth />
                       </>
                     )}
-                    <Text style={styles.helpText}>Find “Lead Management” in the list and turn it on.</Text>
+                    <Text style={styles.helpText}>Find “ITTC Admission” in the list and turn it on.</Text>
                     <Button title="Notification access" onPress={openNotificationAccess} fullWidth />
                   </>
                 )}

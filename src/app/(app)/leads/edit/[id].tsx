@@ -34,6 +34,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
 import { VoiceNoteButton } from '@/features/voice/VoiceNote';
+import { PickNumberButtons } from '@/features/leads/PickNumber';
 
 type Option = { value: string; label: string; color?: string };
 
@@ -98,7 +99,8 @@ const toOptions = (items: ListItem[]): Option[] =>
   items.map((i) => ({ value: i.id, label: i.name, color: typeof i.color === 'string' ? i.color : undefined }));
 
 export default function LeadFormScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // phone = from the caller card's "➕ Add as lead" (an unknown number calling)
+  const { id, phone: phoneParam } = useLocalSearchParams<{ id: string; phone?: string }>();
   const isNew = id === 'new';
   const { profile, hasPermission, assignment, assignmentOn, canAssign } = useAuth();
 
@@ -106,7 +108,9 @@ export default function LeadFormScreen() {
   const seesAllLeads = hasPermission('leads.view_all');
   const myRole = (profile as { role_key?: string | null } | null)?.role_key ?? null;
 
-  const [form, setForm] = useState<Form>(EMPTY);
+  const [form, setForm] = useState<Form>(() =>
+    isNew && typeof phoneParam === 'string' && phoneParam ? { ...EMPTY, phone: phoneParam } : EMPTY,
+  );
   const [originalSourceId, setOriginalSourceId] = useState<string | null>(null);
   const [originalAssignee, setOriginalAssignee] = useState<string | null>(null);
   const [showMore, setShowMore] = useState(!isNew);
@@ -371,6 +375,13 @@ export default function LeadFormScreen() {
             error={errors.phone}
             keyboardType="phone-pad"
             placeholder="01711234567"
+          />
+          {/* 📇🕘 Or take it from the contacts / recent calls (the name too, if still empty) */}
+          <PickNumberButtons
+            onPick={({ number, name }) => {
+              set('phone', number);
+              if (name && !form.name.trim()) set('name', name);
+            }}
           />
 
           {/* WhatsApp: for leads with no phone, or a different WhatsApp number */}
