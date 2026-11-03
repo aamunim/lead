@@ -8,6 +8,12 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-07-b',
+    date: '7 Nov 2026',
+    title: 'Last note: Add note first',
+    items: ['📝 In the last-note sheet (tap the note on a lead card), “Add note” is now the blue button and “Open lead” the white one'],
+  },
+  {
     key: '2026-11-07-a',
     date: '7 Nov 2026',
     title: 'Fixed: popups under the phone’s buttons',
