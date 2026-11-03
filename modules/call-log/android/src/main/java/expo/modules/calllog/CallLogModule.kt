@@ -127,6 +127,44 @@ class CallLogModule : Module() {
     // ---------------------------------------------------------------
     // 💬 WhatsApp (read from WhatsApp's notifications)
     // ---------------------------------------------------------------
+    // 📲 Caller card over the call screen
+    Function("getCallerCard") {
+      mapOf(
+        "allowed" to CallerCard.allowed(context),
+        "enabled" to CallerCard.enabled(context),
+        "unknown" to CallerCard.unknownEnabled(context),
+      )
+    }
+
+    Function("setCallerCard") { enabled: Boolean?, unknown: Boolean? ->
+      CallerCard.setSettings(context, enabled, unknown)
+    }
+
+    Function("openOverlaySettings") {
+      CallerCard.openPermission(context)
+    }
+
+    /** Shows a sample card for a few seconds (Call log sync → Try it) */
+    Function("previewCallerCard") {
+      CallerCard.show(
+        context,
+        LeadDirectory.Entry(
+          leadId = "preview",
+          name = "Nusrat Akter (sample)",
+          rating = "hot",
+          stage = "Interested",
+          course = "B.Ed",
+          lastNote = "Fee installment-e dibe, babar sathe kotha bolbe",
+          studentRef = null,
+          feeDue = null,
+          nextCall = null,
+          owner = "Rahim",
+        ),
+        "01711000000",
+        autoHideMs = 8000,
+      )
+    }
+
     Function("getWhatsAppStatus") {
       mapOf(
         "enabled" to WhatsAppStore.isEnabled(context),

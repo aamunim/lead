@@ -19,6 +19,11 @@ object LeadDirectory {
     val stage: String?,
     val course: String?,
     val lastNote: String?,
+    // 📲 For the caller card (newer lists; null on older ones)
+    val studentRef: String? = null,
+    val feeDue: Double? = null,
+    val nextCall: String? = null,
+    val owner: String? = null,
   )
 
   @Volatile private var cache: Map<String, Entry>? = null
@@ -84,6 +89,10 @@ object LeadDirectory {
           stage = o.optString("stage").takeIf { it.isNotBlank() && it != "null" },
           course = o.optString("course").takeIf { it.isNotBlank() && it != "null" },
           lastNote = o.optString("last_note").takeIf { it.isNotBlank() && it != "null" },
+          studentRef = o.optString("student_ref").takeIf { it.isNotBlank() && it != "null" },
+          feeDue = if (o.isNull("fee_due") || !o.has("fee_due")) null else o.optDouble("fee_due").takeIf { !it.isNaN() && it > 0 },
+          nextCall = o.optString("next_call").takeIf { it.isNotBlank() && it != "null" },
+          owner = o.optString("owner").takeIf { it.isNotBlank() && it != "null" },
         )
       }
       map

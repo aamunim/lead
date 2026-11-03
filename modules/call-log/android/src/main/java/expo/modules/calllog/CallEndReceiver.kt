@@ -22,7 +22,10 @@ class CallEndReceiver : BroadcastReceiver() {
 
     when (intent.getStringExtra(TelephonyManager.EXTRA_STATE)) {
       TelephonyManager.EXTRA_STATE_RINGING -> onRinging(context, intent)
+      // 📲 answered: the caller card keeps only the name line
+      TelephonyManager.EXTRA_STATE_OFFHOOK -> CallerCard.shrink()
       TelephonyManager.EXTRA_STATE_IDLE -> {
+        CallerCard.hide(context)
         CallNotifier.clearIncoming(context)
         CaptureCallsWorker.runSoon(context)
       }
@@ -32,14 +35,27 @@ class CallEndReceiver : BroadcastReceiver() {
 
   @Suppress("DEPRECATION")
   private fun onRinging(context: Context, intent: Intent) {
-    if (!CallLogStore.notifyIncoming(context)) return
-
     // Android sends this broadcast twice on newer phones: once without the number, once with it.
     // The number only comes when we have both READ_PHONE_STATE and READ_CALL_LOG.
     val number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER) ?: return
 
     try {
-      val lead = LeadDirectory.findByNumber(context, number) ?: return
+      val lead = LeadDirectory.findByNumber(context, number)
+
+      // 📲 The caller card over the call screen (when "Display over other apps" is allowed)
+      if (CallerCard.enabled(context) && CallerCard.allowed(context)) {
+        if (lead != null) {
+          CallerCard.show(context, lead, number)
+          return
+        }
+        if (CallerCard.unknownEnabled(context) && LeadDirectory.size(context) > 0) {
+          CallerCard.show(context, null, number)
+        }
+        return
+      }
+
+      // Otherwise the "Incoming: <name>" notification, as before
+      if (lead == null || !CallLogStore.notifyIncoming(context)) return
       CallNotifier.incoming(context, lead)
     } catch (_: Throwable) {
       // never crash while the phone is ringing

@@ -43,7 +43,15 @@ export type DirectoryEntry = {
   stage: string | null;
   course: string | null;
   last_note: string | null;
+  // 📲 Caller card (newer databases)
+  student_ref?: string | null;
+  fee_due?: number | null;
+  next_call?: string | null;
+  owner?: string | null;
 };
+
+/** 📲 The caller card over the call screen */
+export type CallerCardSettings = { allowed: boolean; enabled: boolean; unknown: boolean };
 
 export type NotifySettings = { afterCall: boolean; incoming: boolean };
 
@@ -96,6 +104,10 @@ type NativeCallLog = {
   clearLeadDirectory(): void;
   getLeadDirectorySize(): number;
   getNotifySettings(): NotifySettings;
+  getCallerCard(): CallerCardSettings;
+  setCallerCard(enabled: boolean | null, unknown: boolean | null): void;
+  openOverlaySettings(): void;
+  previewCallerCard(): void;
   setNotifySettings(afterCall: boolean | null, incoming: boolean | null): void;
   getWhatsAppStatus(): WhatsAppStatus;
   setWhatsAppEnabled(enabled: boolean): void;
@@ -236,6 +248,27 @@ export function getNotifySettings(): NotifySettings {
 
 export function setNotifySettings(s: Partial<NotifySettings>): void {
   if (has('setNotifySettings')) native!.setNotifySettings(s.afterCall ?? null, s.incoming ?? null);
+}
+
+// ---------------------------------------------------------------------
+// 📲 Caller card (newer builds only: null when this build has none)
+// ---------------------------------------------------------------------
+export const hasCallerCard = has('getCallerCard');
+
+export function getCallerCard(): CallerCardSettings | null {
+  return hasCallerCard ? native!.getCallerCard() : null;
+}
+
+export function setCallerCard(s: Partial<Pick<CallerCardSettings, 'enabled' | 'unknown'>>): void {
+  if (hasCallerCard) native!.setCallerCard(s.enabled ?? null, s.unknown ?? null);
+}
+
+export function openOverlaySettings(): void {
+  if (hasCallerCard) native!.openOverlaySettings();
+}
+
+export function previewCallerCard(): void {
+  if (hasCallerCard) native!.previewCallerCard();
 }
 // ---------------------------------------------------------------------
 // 💬 WhatsApp (read from WhatsApp's notifications; newer builds only)
