@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-06-a',
+    date: '6 Nov 2026',
+    title: 'A new look for More',
+    items: [
+      '👤 Your profile on top (🔑 changes the password)',
+      '⚡ Quick tiles: Alerts, WhatsApp, Team activity (or Templates), Discounts, with how many are waiting',
+      '🗂 Every page in neat groups, with what needs you on the right (ON, waiting, problems)',
+      '📱 List design, What’s new and the update check together under APP',
+    ],
+  },
+  {
     key: '2026-11-05-a',
     date: '5 Nov 2026',
     title: 'A new look for Leads and Students',

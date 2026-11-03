@@ -89,6 +89,8 @@ export default function TabsLayout() {
         name="more"
         options={{
           title: 'More',
+          // its own Material top bar (🔔 ⚙️)
+          headerShown: false,
           tabBarIcon: ({ focused }) => <PillIcon focused={focused} on="menu" off="menu" />,
         }}
       />
