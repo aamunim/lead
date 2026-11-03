@@ -29,6 +29,7 @@ import {
 } from '@/features/leads/api';
 import { listCourses, listItems, type ListItem } from '@/features/settings/api';
 import { autoAssignee } from '@/features/settings/assignment';
+import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
@@ -645,7 +646,13 @@ function Chips({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
+  content: {
+    padding: spacing.lg,
+    gap: spacing.lg,
+    paddingBottom: spacing.xxl,
+    // 🌐 Website: a readable column in the middle
+    ...(isWeb ? { maxWidth: 860, width: '100%', alignSelf: 'center' } : {}),
+  },
   flex: { flex: 1 },
   card: {
     gap: spacing.lg,

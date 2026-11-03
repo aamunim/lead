@@ -124,6 +124,84 @@ export function RowMenu({
   );
 }
 
+// ---------------------------------------------------------------------
+// 📋 Leads: ⋯ on a row (the phone's lead actions, without opening it)
+// ---------------------------------------------------------------------
+export type LeadRowAction =
+  | 'note'
+  | 'followup'
+  | 'stage'
+  | 'rating'
+  | 'tags'
+  | 'assign'
+  | 'whatsapp'
+  | 'upload'
+  | 'lost'
+  | 'admit'
+  | 'notes'
+  | 'open';
+
+/** What can be done to many ticked leads at once */
+export const LEAD_BULK: {
+  field: 'note' | 'stage' | 'tags' | 'assign' | 'followup' | 'rating' | 'lost';
+  label: string;
+}[] = [
+  { field: 'note', label: '📝 Note' },
+  { field: 'followup', label: '⏰ Next call' },
+  { field: 'stage', label: '🚩 Stage' },
+  { field: 'rating', label: '🔥 Rating' },
+  { field: 'tags', label: '🏷 Tag' },
+  { field: 'assign', label: '👤 Give to' },
+  { field: 'lost', label: '✕ Lost' },
+];
+
+export function LeadRowMenu({
+  row: r,
+  mayHandOver,
+  onPick,
+  onClose,
+}: {
+  row: LeadListItem;
+  mayHandOver: boolean;
+  onPick: (a: LeadRowAction) => void;
+  onClose: () => void;
+}) {
+  const open = !r.stage || (r.stage.kind !== 'won' && r.stage.kind !== 'lost' && r.stage.kind !== 'cancelled');
+  const items: { a: LeadRowAction; label: string; hint?: string }[] = [
+    { a: 'note', label: '📝 Add note' },
+    { a: 'followup', label: '⏰ Next call', hint: r.next_follow_up_at ? 'change' : undefined },
+    ...(open ? [{ a: 'stage' as const, label: '🚩 Move to a stage' }] : []),
+    { a: 'rating', label: '🔥 Hot / warm / cold' },
+    { a: 'tags', label: '🏷 Tags' },
+    ...(mayHandOver ? [{ a: 'assign' as const, label: '👤 Give to someone' }] : []),
+    { a: 'whatsapp', label: '💬 WhatsApp' },
+    { a: 'upload', label: '📎 Upload a paper' },
+    ...(open
+      ? [
+          { a: 'admit' as const, label: '🎓 Admit…', hint: 'on the lead page' },
+          { a: 'lost' as const, label: '✕ Mark as lost' },
+        ]
+      : []),
+    { a: 'notes', label: '🕘 All calls & notes' },
+    { a: 'open', label: '↗ Open the lead' },
+  ];
+  return (
+    <Dialog onClose={onClose} title={r.name} sub={[r.stage?.name, r.assignee?.full_name].filter(Boolean).join(' · ')}>
+      {items.map((it) => (
+        <Pressable
+          key={it.a}
+          onPress={() => onPick(it.a)}
+          style={(s) => [styles.item, (s as { hovered?: boolean }).hovered && styles.itemHover]}
+          accessibilityRole="menuitem"
+        >
+          <Text style={styles.itemText}>{it.label}</Text>
+          {!!it.hint && <Text style={styles.itemHint}>{it.hint}</Text>}
+        </Pressable>
+      ))}
+    </Dialog>
+  );
+}
+
 /** 💵 The payment form, from the row */
 export function RowPay({
   row: r,

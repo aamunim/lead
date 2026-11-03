@@ -39,6 +39,7 @@ import {
 import { BarList, Heatmap, PipelineBars, StatTile } from '@/features/reports/charts';
 import { getLeadsAdded, type LeadsAddedRow } from '@/features/leads/added';
 import { listCourses } from '@/features/settings/api';
+import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 type Option = { id: string; name: string };
@@ -133,7 +134,7 @@ export default function ReportsScreen() {
   if (!ready) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Reports' }} />
+        <Stack.Screen options={{ title: 'Reports', headerShown: !isWeb }} />
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -141,7 +142,7 @@ export default function ReportsScreen() {
   if (!canSeeReports(settings, profile, isAdmin)) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Reports' }} />
+        <Stack.Screen options={{ title: 'Reports', headerShown: !isWeb }} />
         <Text style={styles.muted}>Reports are not turned on for you. (Settings → Reports)</Text>
       </View>
     );
@@ -152,7 +153,7 @@ export default function ReportsScreen() {
 
   return (
     <View style={styles.screen}>
-      <Stack.Screen options={{ title: 'Reports' }} />
+      <Stack.Screen options={{ title: 'Reports', headerShown: !isWeb }} />
 
       {/* Period */}
       <ScrollView
@@ -219,7 +220,7 @@ export default function ReportsScreen() {
 
             {/* ① Summary */}
             {show.summary && s && (
-              <Card title="Summary">
+              <Card title="Summary" wide>
                 <View style={styles.tiles}>
                   <StatTile label="New leads" value={String(s.new_leads)} />
                   <StatTile label="Contacted" value={pct(s.contacted, s.new_leads)} hint={`${s.contacted} of ${s.new_leads}`} />
@@ -437,7 +438,7 @@ export default function ReportsScreen() {
 
             {/* 💵 Collection */}
             {show.collection && money && (
-              <Card title="💵 Collection" subtitle="Money taken in this period; due and late are as of now">
+              <Card title="💵 Collection" subtitle="Money taken in this period; due and late are as of now" wide>
                 <View style={styles.tiles}>
                   <StatTile
                     label="Collected"
@@ -647,9 +648,20 @@ export default function ReportsScreen() {
 // =====================================================================
 // Small pieces
 // =====================================================================
-function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function Card({
+  title,
+  subtitle,
+  wide,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  /** 🌐 the whole width on the website's dashboard */
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isWeb && (wide ? styles.cardWide : styles.cardWeb)]}>
       <View>
         <Text style={styles.cardTitle}>{title}</Text>
         {subtitle && <Text style={styles.cardSubtitle}>{subtitle}</Text>}
@@ -738,8 +750,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.background },
   muted: { fontSize: fontSize.small, color: colors.textMuted, textAlign: 'center' },
   pressed: { opacity: 0.7 },
-  loader: { paddingVertical: spacing.xxl },
-  error: { fontSize: fontSize.small, color: colors.danger, textAlign: 'center' },
+  loader: { paddingVertical: spacing.xxl, width: '100%' },
+  error: { fontSize: fontSize.small, color: colors.danger, textAlign: 'center', width: '100%' },
   empty: { fontSize: fontSize.small, color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.md },
   hint: { fontSize: fontSize.caption, lineHeight: 18, color: colors.textMuted },
 
@@ -775,8 +787,18 @@ const styles = StyleSheet.create({
   pickText: { flex: 1, fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.textMuted },
   pickTextOn: { color: colors.primary },
 
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  rangeText: { fontSize: fontSize.caption, color: colors.textMuted },
+  content: {
+    padding: spacing.lg,
+    gap: spacing.md,
+    paddingBottom: spacing.xxl,
+    // 🌐 Website: a dashboard (cards side by side)
+    ...(isWeb
+      ? { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', maxWidth: 1500, width: '100%', alignSelf: 'center' }
+      : {}),
+  },
+  rangeText: { fontSize: fontSize.caption, color: colors.textMuted, width: '100%' },
+  cardWeb: { flexBasis: 480, flexGrow: 1, minWidth: 420 },
+  cardWide: { width: '100%' },
   addedLink: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary, marginTop: spacing.sm },
 
   card: {

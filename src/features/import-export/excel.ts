@@ -126,7 +126,9 @@ function cellToText(value: unknown): string {
 }
 
 export async function readSpreadsheet(uri: string): Promise<Spreadsheet> {
-  const bytes = await new File(uri).bytes();
+  // 🌐 Website: the picked file is a blob: address (the File API is for the phone)
+  const bytes =
+    Platform.OS === 'web' ? new Uint8Array(await (await fetch(uri)).arrayBuffer()) : await new File(uri).bytes();
   const workbook = XLSX.read(bytes, { type: 'array' });
 
   const firstSheetName = workbook.SheetNames[0];

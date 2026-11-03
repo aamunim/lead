@@ -1,6 +1,7 @@
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Platform,
   ActivityIndicator,
   FlatList,
   StyleSheet,
@@ -83,13 +84,15 @@ export function LeadBoard({
   selected,
   onToggle,
 }: Props) {
-  const { width } = useWindowDimensions();
+  const { width, height: winH } = useWindowDimensions();
   const colWidth = Math.min(320, Math.round(width - spacing.lg * 2 - 36)); // the next column peeks in
 
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [stagesError, setStagesError] = useState<string | null>(null);
   const [cols, setCols] = useState<Record<string, Column>>({});
-  const [height, setHeight] = useState(0);
+  const [measured, setHeight] = useState(0);
+  // 🌐 The website may not report a size here: use the window's
+  const height = measured || (Platform.OS === 'web' ? Math.max(400, winH - 240) : 0);
   const selecting = selected.size > 0;
 
   useEffect(() => {

@@ -21,7 +21,20 @@ import {
   type ApprovalSettings,
 } from '@/features/approval/api';
 import { ApprovalActionSheet, admissionChecks, type ApprovalSheetKind } from '@/features/approval/ApprovalCard';
-import { RowMenu, RowNote, RowPay, RowUpload, type RowAction } from '@/features/web/students/RowActions';
+import {
+  LEAD_BULK,
+  LeadRowMenu,
+  RowMenu,
+  RowNote,
+  RowPay,
+  RowUpload,
+  type RowAction,
+} from '@/features/web/students/RowActions';
+import { LeadBoard } from '@/features/board/LeadBoard';
+import { openWhatsApp } from '@/features/leads/contact';
+import { LeadQuickSheet, type QuickField } from '@/features/leads/LeadQuickSheet';
+import { LostSheet } from '@/features/pipeline/LostSheet';
+import { canHandOver } from '@/features/settings/assignment';
 import { canTakePayments, getFeeSettings, type FeeSettings } from '@/features/fees/api';
 import { FeeChangeSheet } from '@/features/fees/FeeChangeSheet';
 import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
@@ -64,7 +77,16 @@ type ColKey =
   | 'section'
   | 'last'
   | 'admitted'
-  | 'admitted_by';
+  | 'admitted_by'
+  // 📋 Leads
+  | 'stage'
+  | 'rating'
+  | 'interest'
+  | 'source'
+  | 'assignee'
+  | 'follow'
+  | 'created'
+  | 'added_by';
 
 type PopupKind = 'menu' | RowAction;
 
@@ -115,30 +137,67 @@ const COLS: Col[] = [
   { key: 'last', label: 'Last call / note', flex: 1.4 },
   { key: 'admitted', label: 'Admitted', width: 112, sorts: ['admitted_newest', 'admitted_oldest'] },
   { key: 'admitted_by', label: 'Admitted by', width: 130 },
+  // 📋 Leads
+  { key: 'stage', label: 'Stage', width: 150 },
+  { key: 'rating', label: 'Rating', width: 86 },
+  { key: 'interest', label: 'Interested in', flex: 1 },
+  { key: 'source', label: 'Source', width: 130 },
+  { key: 'assignee', label: 'With', width: 130 },
+  { key: 'follow', label: 'Next call', width: 140, sorts: ['next_call'] },
+  { key: 'created', label: 'Added', width: 112, sorts: ['newest', 'oldest'] },
+  { key: 'added_by', label: 'Added by', width: 130 },
 ];
 
-/** With the panel open next to the table: only the main ones */
-const PANEL_COLS: ColKey[] = ['ref', 'name', 'fee', 'papers', 'approval'];
+/** The columns each list can show */
+const MODE_COLS: Record<Mode, ColKey[]> = {
+  students: [
+    'ref',
+    'name',
+    'phone',
+    'course',
+    'section',
+    'fee',
+    'next_due',
+    'papers',
+    'approval',
+    'nu',
+    'last',
+    'admitted',
+    'admitted_by',
+  ],
+  leads: [
+    'name',
+    'phone',
+    'stage',
+    'rating',
+    'interest',
+    'source',
+    'assignee',
+    'follow',
+    'last',
+    'created',
+    'added_by',
+  ],
+};
+const MODE_DEFAULT: Record<Mode, ColKey[]> = {
+  // (v3: Section shown by default)
+  students: ['ref', 'name', 'phone', 'course', 'section', 'fee', 'papers', 'approval', 'nu', 'last', 'admitted'],
+  leads: ['name', 'phone', 'stage', 'rating', 'interest', 'assignee', 'follow', 'last', 'created'],
+};
+const MODE_PANEL: Record<Mode, ColKey[]> = {
+  students: ['ref', 'name', 'fee', 'papers', 'approval'],
+  leads: ['name', 'stage', 'follow'],
+};
+const MODE_KEYS: Record<Mode, { cols: string; sort: string; dense: string; view: string }> = {
+  students: { cols: 'web_students_cols_v3', sort: 'web_students_sort', dense: 'web_students_compact', view: '' },
+  leads: { cols: 'web_leads_cols_v1', sort: 'web_leads_sort', dense: 'web_leads_compact', view: 'web_leads_view' },
+};
+
+export type Mode = 'students' | 'leads';
+
 /** Narrowest a growing column gets (then the table scrolls sideways) */
 const FLEX_MIN = 150;
 
-const DEFAULT_COLS: ColKey[] = [
-  'ref',
-  'name',
-  'phone',
-  'course',
-  'section',
-  'fee',
-  'papers',
-  'approval',
-  'nu',
-  'last',
-  'admitted',
-];
-// (v3: Section shown by default)
-const COLS_KEY = 'web_students_cols_v3';
-const SORT_KEY = 'web_students_sort';
-const DENSE_KEY = 'web_students_compact';
 const CHECK_W = 40;
 /** ⋯ the row's menu */
 const MENU_W = 36;
@@ -173,11 +232,16 @@ const T = isDark
 const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
-export function WebStudentsScreen() {
-  const { profile, hasPermission, assignmentOn, sharedMode } = useAuth();
+export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
+  const leadsMode = mode === 'leads';
+  const KEYS = MODE_KEYS[mode];
+  const DEFAULT_COLS = MODE_DEFAULT[mode];
+  const PANEL_COLS = MODE_PANEL[mode];
+  const MODE_COLSET = MODE_COLS[mode];
+  const { profile, hasPermission, assignmentOn, sharedMode, assignment } = useAuth();
   const params = useLocalSearchParams<{ q?: string; quick?: string; open?: string }>();
   const search = typeof params.q === 'string' ? params.q : '';
-  const { width } = useWindowDimensions();
+  const { width, height: winH } = useWindowDimensions();
   // Wide: the panel sits next to the table · else it covers part of it
   const sideBySide = width >= 1360;
   const seesOthers = sharedMode || hasPermission('leads.view_all') || hasPermission('leads.view_team');
@@ -203,26 +267,45 @@ export function WebStudentsScreen() {
   }, []);
   const canPay = !!feeSettings && canTakePayments(feeSettings, profile, hasPermission('settings.manage'));
 
-  const quickFilters: { key: QuickFilter; label: string }[] = [
-    { key: 'all', label: 'All' },
+  // 📋 Leads: hand over (Settings → Lead assignment), board or table
+  const mayHandOver = canHandOver(assignment, hasPermission);
+  const [view, setView] = useState<'table' | 'board'>(() =>
+    leadsMode ? loadPref<'table' | 'board'>(KEYS.view, 'table') : 'table',
+  );
+  const [boardKey, setBoardKey] = useState(0);
+  const [bulk, setBulk] = useState<QuickField | 'lost' | null>(null);
+  const [oneBulk, setOneBulk] = useState<{ field: QuickField | 'lost'; row: LeadListItem } | null>(null);
+
+  const leadQuick: { key: QuickFilter; label: string }[] = [
+    { key: 'all', label: 'All open' },
     ...(assignmentOn && seesOthers ? [{ key: 'mine' as QuickFilter, label: 'Mine' }] : []),
-    { key: 'new_students', label: 'New this month' },
-    { key: 'due', label: '💵 Due' },
-    { key: 'overdue', label: '⚠ Overdue' },
-    { key: 'paid', label: '✓ Paid' },
-    { key: 'papers', label: '📄 Papers missing' },
-    ...(approvalOn
-      ? [
-          { key: 'approval_waiting' as QuickFilter, label: '⏳ Admission waiting' },
-          { key: 'listed' as QuickFilter, label: '📋 Listed' },
-          { key: 'registration_waiting' as QuickFilter, label: '📝 Registration waiting' },
-          { key: 'registered' as QuickFilter, label: '✅ Registered' },
-          { key: 'approval_returned' as QuickFilter, label: '↩ Sent back' },
-          { key: 'no_section' as QuickFilter, label: '🏫 No section' },
-          { key: 'no_nu_id' as QuickFilter, label: '🆔 No NU ID' },
-        ]
-      : []),
+    { key: 'new', label: '🆕 New' },
+    { key: 'hot', label: '🔥 Hot' },
+    ...(assignmentOn && seesOthers ? [{ key: 'unassigned' as QuickFilter, label: 'Unassigned' }] : []),
+    { key: 'closed', label: 'Closed' },
   ];
+  const quickFilters: { key: QuickFilter; label: string }[] = leadsMode
+    ? leadQuick
+    : [
+        { key: 'all', label: 'All' },
+        ...(assignmentOn && seesOthers ? [{ key: 'mine' as QuickFilter, label: 'Mine' }] : []),
+        { key: 'new_students', label: 'New this month' },
+        { key: 'due', label: '💵 Due' },
+        { key: 'overdue', label: '⚠ Overdue' },
+        { key: 'paid', label: '✓ Paid' },
+        { key: 'papers', label: '📄 Papers missing' },
+        ...(approvalOn
+          ? [
+              { key: 'approval_waiting' as QuickFilter, label: '⏳ Admission waiting' },
+              { key: 'listed' as QuickFilter, label: '📋 Listed' },
+              { key: 'registration_waiting' as QuickFilter, label: '📝 Registration waiting' },
+              { key: 'registered' as QuickFilter, label: '✅ Registered' },
+              { key: 'approval_returned' as QuickFilter, label: '↩ Sent back' },
+              { key: 'no_section' as QuickFilter, label: '🏫 No section' },
+              { key: 'no_nu_id' as QuickFilter, label: '🆔 No NU ID' },
+            ]
+          : []),
+      ];
 
   const [quick, setQuick] = useState<QuickFilter>((params.quick as QuickFilter) || 'all');
   useEffect(() => {
@@ -230,11 +313,15 @@ export function WebStudentsScreen() {
   }, [params.quick]);
   const [filters, setFilters] = useState<LeadFilters>({});
   const [filterOpen, setFilterOpen] = useState(false);
-  const [sort, setSort] = useState<LeadSort>(() => loadPref<LeadSort>(SORT_KEY, 'admitted_newest'));
-  const [cols, setCols] = useState<ColKey[]>(() => loadPref<ColKey[]>(COLS_KEY, DEFAULT_COLS));
+  const [sort, setSort] = useState<LeadSort>(() =>
+    loadPref<LeadSort>(KEYS.sort, leadsMode ? 'next_call' : 'admitted_newest'),
+  );
+  const [cols, setCols] = useState<ColKey[]>(() =>
+    loadPref<ColKey[]>(KEYS.cols, DEFAULT_COLS).filter((k) => MODE_COLSET.includes(k)),
+  );
   const [colsOpen, setColsOpen] = useState(false);
   // Row height: comfortable or compact (more students on one screen)
-  const [dense, setDense] = useState(() => loadPref(DENSE_KEY, false));
+  const [dense, setDense] = useState(() => loadPref(KEYS.dense, false));
 
   // Search waits a moment while typing
   const [debounced, setDebounced] = useState(search);
@@ -277,11 +364,11 @@ export function WebStudentsScreen() {
       quick,
       filters,
       sort,
-      students: true,
+      students: !leadsMode,
       userId: profile?.id,
-      closedMode: 'show' as const,
+      closedMode: leadsMode ? ('hide' as const) : ('show' as const),
     }),
-    [debounced, quick, filters, sort, profile?.id],
+    [debounced, quick, filters, sort, profile?.id, leadsMode],
   );
 
   // Latest request wins (typing fast sends many)
@@ -299,7 +386,7 @@ export function WebStudentsScreen() {
         setHasMore(r.hasMore);
         setPage(0);
       } catch (e) {
-        if (no === reqNo.current) setError(e instanceof Error ? e.message : 'Could not load the students.');
+        if (no === reqNo.current) setError(e instanceof Error ? e.message : `Could not load the ${mode}.`);
       } finally {
         if (no === reqNo.current) setLoading(false);
       }
@@ -357,7 +444,7 @@ export function WebStudentsScreen() {
     const i = c.sorts.indexOf(sort);
     const next = c.sorts[(i + 1) % c.sorts.length];
     setSort(next);
-    savePref(SORT_KEY, next);
+    savePref(KEYS.sort, next);
   };
 
   const toggleTick = (id: string) =>
@@ -399,7 +486,9 @@ export function WebStudentsScreen() {
     [],
   );
 
-  const chosen = COLS.filter((c) => cols.includes(c.key));
+  // In this list's own order (Leads and Students differ)
+  const modeCols = MODE_COLSET.map((k) => COLS.find((c) => c.key === k)!);
+  const chosen = modeCols.filter((c) => cols.includes(c.key));
   const compact = !!openId && sideBySide;
   const shown = compact ? chosen.filter((c) => PANEL_COLS.includes(c.key)) : chosen;
   // Too many columns for the screen: the table scrolls sideways
@@ -411,12 +500,12 @@ export function WebStudentsScreen() {
     setExporting(true);
     try {
       const list = ticked.size > 0 ? rows.filter((r) => ticked.has(r.id)) : await listAllMatchingLeads(query);
-      if (list.length === 0) throw new Error('No students to export.');
+      if (list.length === 0) throw new Error(`No ${mode} to export.`);
       const headers = chosen.map((c) => c.label);
       const data = list.map((r) => chosen.map((c) => cellText(c.key, r, nameOf)));
       const stamp = new Date().toISOString().slice(0, 10);
-      await writeAndShareSpreadsheet(`students-${stamp}.xlsx`, headers, data, 'Students');
-      showToast(`⬇ ${list.length} student${list.length > 1 ? 's' : ''} exported.`);
+      await writeAndShareSpreadsheet(`${mode}-${stamp}.xlsx`, headers, data, leadsMode ? 'Leads' : 'Students');
+      showToast(`⬇ ${list.length} ${leadsMode ? 'lead' : 'student'}${list.length > 1 ? 's' : ''} exported.`);
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Could not export.');
     } finally {
@@ -475,7 +564,12 @@ export function WebStudentsScreen() {
                 <Text style={[styles.headText, on && styles.headTextOn]} numberOfLines={1}>
                   {c.label}
                   {on
-                    ? sort === 'admitted_oldest' || sort === 'student_id' || sort === 'name' || sort === 'next_due'
+                    ? sort === 'admitted_oldest' ||
+                      sort === 'student_id' ||
+                      sort === 'name' ||
+                      sort === 'next_due' ||
+                      sort === 'next_call' ||
+                      sort === 'oldest'
                       ? ' ▲'
                       : ' ▼'
                     : ''}
@@ -505,9 +599,9 @@ export function WebStudentsScreen() {
             onEndReachedThreshold={0.5}
             ListEmptyComponent={
               <View style={styles.center}>
-                <Text style={styles.bigIcon}>🎓</Text>
+                <Text style={styles.bigIcon}>{leadsMode ? '📋' : '🎓'}</Text>
                 <Text style={styles.emptyTitle}>
-                  {search || quick !== 'all' || nFilters ? 'No students match' : 'No students yet'}
+                  {search || quick !== 'all' || nFilters ? `No ${mode} match` : `No ${mode} yet`}
                 </Text>
               </View>
             }
@@ -540,7 +634,7 @@ export function WebStudentsScreen() {
         <View style={styles.listSide}>
           {/* Title row */}
           <View style={styles.titleRow}>
-            <Text style={styles.h1}>Students</Text>
+            <Text style={styles.h1}>{leadsMode ? 'Leads' : 'Students'}</Text>
             {total != null && (
               <View style={styles.count}>
                 <Text style={styles.countText}>{total.toLocaleString('en-IN')}</Text>
@@ -548,29 +642,60 @@ export function WebStudentsScreen() {
             )}
             {!!search && <Text style={styles.muted}>matching “{search}”</Text>}
             <View style={styles.flex} />
+            {leadsMode && (
+              <>
+                <ToolButton label="➕ Add lead" on onPress={() => router.push('/leads/edit/new' as Href)} />
+                <ToolButton label="📥 Import" onPress={() => router.push('/import' as Href)} />
+                <View style={styles.seg}>
+                  {(['table', 'board'] as const).map((v) => (
+                    <Pressable
+                      key={v}
+                      onPress={() => {
+                        setView(v);
+                        savePref(KEYS.view, v);
+                      }}
+                      style={[styles.segBtn, view === v && styles.segOn]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: view === v }}
+                    >
+                      <Text style={[styles.segText, view === v && styles.segTextOn]}>
+                        {v === 'table' ? '☰ Table' : '▥ Board'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            )}
             <ToolButton
               label={nFilters ? `⚙ Filters · ${nFilters}` : '⚙ Filters'}
               on={nFilters > 0}
               onPress={() => setFilterOpen(true)}
             />
-            <ToolButton label="▦ Columns" onPress={() => setColsOpen(true)} />
+            {view === 'table' && <ToolButton label="▦ Columns" onPress={() => setColsOpen(true)} />}
             <ToolButton
               label={dense ? '☰ Compact' : '☰ Comfortable'}
               a11y="Row height"
               onPress={() => {
                 setDense(!dense);
-                savePref(DENSE_KEY, !dense);
+                savePref(KEYS.dense, !dense);
               }}
             />
             <ToolButton
               label={exporting ? 'Exporting…' : ticked.size ? `⬇ Export ${ticked.size}` : '⬇ Export'}
               onPress={exporting ? undefined : doExport}
             />
-            <ToolButton label="↻" onPress={() => load()} a11y="Refresh" />
+            <ToolButton
+              label="↻"
+              onPress={() => {
+                load();
+                setBoardKey((n) => n + 1);
+              }}
+              a11y="Refresh"
+            />
           </View>
 
           {/* Totals: a tap picks that group */}
-          <StudentsSummary onPick={(q) => setQuick(q)} />
+          {!leadsMode && <StudentsSummary onPick={(q) => setQuick(q)} />}
 
           {/* Quick filters */}
           <View style={styles.chips}>
@@ -603,6 +728,17 @@ export function WebStudentsScreen() {
           {ticked.size > 0 && (
             <View style={styles.bulk}>
               <Text style={styles.bulkText}>{ticked.size} ticked</Text>
+              {leadsMode &&
+                LEAD_BULK.filter((b) => b.field !== 'assign' || mayHandOver).map((b) => (
+                  <Pressable
+                    key={b.field}
+                    onPress={() => setBulk(b.field)}
+                    style={styles.bulkBtn}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.bulkBtnText}>{b.label}</Text>
+                  </Pressable>
+                ))}
               <Pressable onPress={doExport} style={styles.bulkBtn} accessibilityRole="button">
                 <Text style={styles.bulkBtnText}>⬇ Export</Text>
               </Pressable>
@@ -612,13 +748,36 @@ export function WebStudentsScreen() {
             </View>
           )}
 
-          {table}
+          {view === 'board' && leadsMode ? (
+            <View style={[styles.boardWrap, { height: Math.max(420, winH - 230) }]}>
+              <LeadBoard
+                query={query}
+                closedColumns={false}
+                showAssignee={seesOthers}
+                reloadKey={boardKey}
+                onCall={(l) => openStudent(l.id)}
+                onWhatsApp={(l) => openWhatsApp(l)}
+                onSms={(l) => openStudent(l.id)}
+                onChanged={(m) => showToast(m)}
+                search={debounced}
+                detailed
+                staleDays={0}
+                nameOf={nameOf}
+                onPeek={(l) => setPopup({ kind: 'notes', row: l })}
+                onPlayVoice={(l) => openStudent(l.id)}
+                selected={ticked}
+                onToggle={(l) => toggleTick(l.id)}
+              />
+            </View>
+          ) : (
+            table
+          )}
         </View>
 
         {/* The open student */}
         {openId && sideBySide && (
           <View style={styles.panel}>
-            <PanelHead id={openId} onClose={closePanel} />
+            <PanelHead id={openId} onClose={closePanel} title={leadsMode ? 'Lead' : 'Student'} />
             <View style={styles.flex}>
               <LeadDetailView key={openId} id={openId} embedded onClosed={closePanel} />
             </View>
@@ -631,7 +790,7 @@ export function WebStudentsScreen() {
           <View style={styles.drawerBack}>
             <Pressable style={styles.flex} onPress={closePanel} accessibilityLabel="Close panel" />
             <View style={styles.drawer}>
-              <PanelHead id={openId} onClose={closePanel} />
+              <PanelHead id={openId} onClose={closePanel} title={leadsMode ? 'Lead' : 'Student'} />
               <View style={styles.flex}>
                 <LeadDetailView key={openId} id={openId} embedded onClosed={closePanel} />
               </View>
@@ -670,7 +829,30 @@ export function WebStudentsScreen() {
       {popup?.kind === 'fee' && (
         <FeeChangeSheet leadId={popup.row.id} name={popup.row.name} onClose={() => setPopup(null)} onDone={popupDone} />
       )}
-      {popup?.kind === 'menu' && (
+      {popup?.kind === 'menu' && leadsMode && (
+        <LeadRowMenu
+          row={popup.row}
+          mayHandOver={mayHandOver}
+          onClose={() => setPopup(null)}
+          onPick={(a) => {
+            const row = popup.row;
+            if (a === 'open' || a === 'admit') {
+              setPopup(null);
+              openStudent(row.id);
+              if (a === 'admit') showToast('🎓 Admit from the lead’s Pipeline card (right).');
+            } else if (a === 'whatsapp') {
+              setPopup(null);
+              openWhatsApp(row);
+            } else if (a === 'notes') setPopup({ kind: 'notes', row });
+            else if (a === 'upload') setPopup({ kind: 'upload', row });
+            else {
+              setPopup(null);
+              setOneBulk({ field: a as QuickField | 'lost', row });
+            }
+          }}
+        />
+      )}
+      {popup?.kind === 'menu' && !leadsMode && (
         <RowMenu
           row={popup.row}
           officer={officer}
@@ -708,6 +890,46 @@ export function WebStudentsScreen() {
         />
       )}
 
+      {/* 📋 Leads: the phone's sheets, for one row or the ticked ones */}
+      {(bulk || oneBulk) && (bulk ?? oneBulk!.field) !== 'lost' && (
+        <LeadQuickSheet
+          visible
+          field={(bulk ?? oneBulk!.field) as QuickField}
+          leads={bulk ? rows.filter((r) => ticked.has(r.id)) : [oneBulk!.row]}
+          onClose={() => {
+            setBulk(null);
+            setOneBulk(null);
+          }}
+          onSaved={(message) => {
+            setBulk(null);
+            setOneBulk(null);
+            if (bulk) setTicked(new Set());
+            showToast(message);
+            load(true);
+            setBoardKey((n) => n + 1);
+          }}
+        />
+      )}
+      <LostSheet
+        visible={(bulk ?? oneBulk?.field) === 'lost'}
+        leads={(bulk ? rows.filter((r) => ticked.has(r.id)) : oneBulk ? [oneBulk.row] : []).map((l) => ({
+          id: l.id,
+          name: l.name,
+        }))}
+        onClose={() => {
+          setBulk(null);
+          setOneBulk(null);
+        }}
+        onSaved={(message) => {
+          if (bulk) setTicked(new Set());
+          setBulk(null);
+          setOneBulk(null);
+          showToast(message);
+          load(true);
+          setBoardKey((n) => n + 1);
+        }}
+      />
+
       <LeadFilterSheet
         visible={filterOpen}
         value={filters}
@@ -716,17 +938,19 @@ export function WebStudentsScreen() {
           setFilters(f);
           setFilterOpen(false);
         }}
-        students
-        hiddenFields={['stage', 'lost_reason', 'visit']}
+        students={!leadsMode}
+        hiddenFields={leadsMode ? [] : ['stage', 'lost_reason', 'visit']}
       />
 
       {colsOpen && (
         <ColumnsDialog
+          all={modeCols}
+          defaults={DEFAULT_COLS}
           value={cols}
           onClose={() => setColsOpen(false)}
           onChange={(next) => {
             setCols(next);
-            savePref(COLS_KEY, next);
+            savePref(KEYS.cols, next);
           }}
         />
       )}
@@ -1087,7 +1311,77 @@ function Cell({
           {nameOf(r.admitted_by) ?? '—'}
         </Text>
       );
+    case 'stage':
+      return r.stage ? (
+        <View style={[styles.pill, { backgroundColor: (r.stage.color || '#64748B') + '22' }]}>
+          <Text style={[styles.pillText, { color: r.stage.color || colors.text }]} numberOfLines={1}>
+            {r.stage.name}
+          </Text>
+        </View>
+      ) : (
+        <Text style={styles.dim}>—</Text>
+      );
+    case 'rating': {
+      const c = r.rating ? RATING[r.rating] : null;
+      return c ? (
+        <View style={[styles.pill, { backgroundColor: c + '22' }]}>
+          <Text style={[styles.pillText, { color: c }]}>{r.rating!.toUpperCase()}</Text>
+        </View>
+      ) : (
+        <Text style={styles.dim}>—</Text>
+      );
+    }
+    case 'interest':
+      return (
+        <Text style={styles.text} numberOfLines={1}>
+          {r.lead_courses
+            .map((c) => c.course?.name)
+            .filter(Boolean)
+            .join(', ') || '—'}
+        </Text>
+      );
+    case 'source':
+      return (
+        <Text style={styles.text} numberOfLines={1}>
+          {r.source?.name ?? '—'}
+        </Text>
+      );
+    case 'assignee':
+      return (
+        <Text style={[styles.text, !r.assignee && styles.dim]} numberOfLines={1}>
+          {r.assignee?.full_name ?? 'Unassigned'}
+        </Text>
+      );
+    case 'follow': {
+      if (!r.next_follow_up_at) return <Text style={styles.dim}>—</Text>;
+      const late = new Date(r.next_follow_up_at).getTime() < Date.now();
+      return (
+        <Text style={[styles.text, late && styles.bad]} numberOfLines={1}>
+          {late ? '⚠ ' : ''}
+          {when(r.next_follow_up_at)}
+        </Text>
+      );
+    }
+    case 'created':
+      return <Text style={styles.text}>{day(r.created_at)}</Text>;
+    case 'added_by':
+      return (
+        <Text style={styles.text} numberOfLines={1}>
+          {nameOf(r.created_by) ?? '—'}
+        </Text>
+      );
   }
+}
+
+const RATING: Record<string, string> = { hot: '#E4572E', warm: '#D98E04', cold: '#64748B' };
+
+/** 3 Nov, 4:30 pm (today: just the time) */
+function when(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const t = d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true });
+  if (d.toDateString() === today.toDateString()) return `Today ${t}`;
+  return `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${t}`;
 }
 
 /** The approval dialog's view of a row */
@@ -1148,6 +1442,25 @@ function cellText(col: ColKey, r: LeadListItem, nameOf: (id: string | null) => s
       return r.admitted_at ? day(r.admitted_at) : null;
     case 'admitted_by':
       return nameOf(r.admitted_by);
+    case 'stage':
+      return r.stage?.name ?? null;
+    case 'rating':
+      return r.rating;
+    case 'interest':
+      return r.lead_courses
+        .map((c) => c.course?.name)
+        .filter(Boolean)
+        .join(', ');
+    case 'source':
+      return r.source?.name ?? null;
+    case 'assignee':
+      return r.assignee?.full_name ?? null;
+    case 'follow':
+      return r.next_follow_up_at ? when(r.next_follow_up_at) : null;
+    case 'created':
+      return day(r.created_at);
+    case 'added_by':
+      return nameOf(r.created_by);
   }
 }
 
@@ -1186,10 +1499,10 @@ function ToolButton({
   );
 }
 
-function PanelHead({ id, onClose }: { id: string; onClose: () => void }) {
+function PanelHead({ id, onClose, title }: { id: string; onClose: () => void; title: string }) {
   return (
     <View style={styles.panelHead}>
-      <Text style={styles.panelTitle}>Student</Text>
+      <Text style={styles.panelTitle}>{title}</Text>
       <View style={styles.flex} />
       <ToolButton label="✏️ Edit" onPress={() => router.push(`/leads/edit/${id}` as Href)} />
       <ToolButton label="↗ Full page" onPress={() => router.push(`/leads/${id}` as Href)} />
@@ -1199,10 +1512,14 @@ function PanelHead({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 function ColumnsDialog({
+  all,
+  defaults,
   value,
   onChange,
   onClose,
 }: {
+  all: Col[];
+  defaults: ColKey[];
   value: ColKey[];
   onChange: (cols: ColKey[]) => void;
   onClose: () => void;
@@ -1214,7 +1531,7 @@ function ColumnsDialog({
           <Text style={styles.dialogTitle}>▦ Columns</Text>
           <Text style={styles.muted}>Pick what the table shows. Remembered in this browser.</Text>
           <ScrollView style={styles.dialogList}>
-            {COLS.map((c) => {
+            {all.map((c) => {
               const on = value.includes(c.key);
               const locked = c.key === 'name';
               return (
@@ -1225,7 +1542,7 @@ function ColumnsDialog({
                     onChange(
                       on
                         ? value.filter((k) => k !== c.key)
-                        : COLS.map((x) => x.key).filter((k) => k === c.key || value.includes(k)),
+                        : all.map((x) => x.key).filter((k) => k === c.key || value.includes(k)),
                     )
                   }
                   style={(state) => [styles.colRow, (state as { hovered?: boolean }).hovered && styles.rowHover]}
@@ -1239,7 +1556,7 @@ function ColumnsDialog({
             })}
           </ScrollView>
           <View style={styles.dialogButtons}>
-            <Pressable onPress={() => onChange(DEFAULT_COLS)} style={styles.btnGhost} accessibilityRole="button">
+            <Pressable onPress={() => onChange(defaults)} style={styles.btnGhost} accessibilityRole="button">
               <Text style={styles.btnGhostText}>Reset</Text>
             </Pressable>
             <Pressable onPress={onClose} style={styles.btn} accessibilityRole="button">
@@ -1278,6 +1595,18 @@ const styles = StyleSheet.create({
   toolTextOn: { color: colors.primary },
 
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  seg: {
+    flexDirection: 'row',
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  segBtn: { height: 34, justifyContent: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.surface },
+  segOn: { backgroundColor: colors.primarySoft },
+  segText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
+  segTextOn: { color: colors.primary },
+  boardWrap: { marginBottom: spacing.md },
   chip: {
     paddingVertical: 6,
     paddingHorizontal: spacing.md,
