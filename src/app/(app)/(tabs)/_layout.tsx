@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, AppState, Dimensions, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
 
@@ -11,6 +12,8 @@ import { isWeb } from '@/features/web/api';
 export default function TabsLayout() {
   const { profile, hasPermission } = useAuth();
   const isAdmin = hasPermission('settings.manage');
+  // The phone's own navigation (3 buttons or the gesture line) sits under the tab bar
+  const insets = useSafeAreaInsets();
 
   // 🎓 Students tab: Settings → Students decides who sees it
   const [studentsTab, setStudentsTab] = useState(false);
@@ -35,7 +38,15 @@ export default function TabsLayout() {
         // 🌐 Website: the menu on the left replaces the tabs
         tabBarStyle: isWeb
           ? { display: 'none' }
-          : { backgroundColor: md.surface1, borderTopWidth: 0, elevation: 0, height: 72, paddingTop: 10 },
+          : {
+              backgroundColor: md.surface1,
+              borderTopWidth: 0,
+              elevation: 0,
+              paddingTop: 8,
+              // room for the phone's ◁ ○ □ buttons (or the gesture line) below the tabs
+              paddingBottom: Math.max(insets.bottom, 8),
+              height: 64 + Math.max(insets.bottom, 8),
+            },
         tabBarLabelStyle: { fontSize: 12, fontWeight: fontWeight.semibold, marginTop: 2 },
         tabBarActiveBackgroundColor: 'transparent',
         tabBarButton: (props) => (

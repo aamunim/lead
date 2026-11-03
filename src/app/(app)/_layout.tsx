@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActivityTracker } from '@/features/activity/ActivityTracker';
 import { PushSetup } from '@/features/notifications/PushSetup';
@@ -8,6 +9,8 @@ import { isWeb } from '@/features/web/api';
 import { WebShell } from '@/features/web/WebShell';
 
 export default function AppLayout() {
+  // Pages outside the tabs end above the phone's ◁ ○ □ buttons (the tabs do this themselves)
+  const insets = useSafeAreaInsets();
   const stack = (
     <Stack
       screenOptions={{
@@ -16,12 +19,15 @@ export default function AppLayout() {
         headerTintColor: isWeb ? colors.primary : colors.textOnPrimary,
         headerTitleStyle: { fontWeight: fontWeight.bold },
         headerBackTitle: 'Back',
-        contentStyle: { backgroundColor: colors.background },
+        contentStyle: { backgroundColor: colors.background, paddingBottom: isWeb ? 0 : insets.bottom },
         animation: 'slide_from_right',
       }}
     >
       {/* Tabs: Home and Leads */}
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="(tabs)"
+        options={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}
+      />
 
       {/* Leads */}
       <Stack.Screen name="leads/[id]" options={{ title: 'Lead' }} />
