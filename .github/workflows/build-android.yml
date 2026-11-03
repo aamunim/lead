@@ -32,7 +32,18 @@ jobs:
     timeout-minutes: 120
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1g"
+      # A private repository gets the smaller GitHub machine (2 CPUs, 7 GB memory;
+      # a public one 4 CPUs, 16 GB). Asking Gradle for 6 GB there made the
+      # machine run out of memory and stop in the middle of the build, so:
+      #   · Gradle gets 3.5 GB, uses 2 workers, and Kotlin compiles inside
+      #     Gradle (no second big Java process)
+      #   · only the two phone CPU types are built (no x86 emulator code):
+      #     every Android phone is covered and the build is about twice as fast
+      #   · 8 GB of extra swap on the disk as a safety net
+      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx3584m -XX:MaxMetaspaceSize=768m -XX:+HeapDumpOnOutOfMemoryError" -Dorg.gradle.workers.max=2 -Dorg.gradle.parallel=false
+      ORG_GRADLE_PROJECT_reactNativeArchitectures: armeabi-v7a,arm64-v8a
+      ORG_GRADLE_PROJECT_kotlin.compiler.execution.strategy: in-process
+      NODE_OPTIONS: --max-old-space-size=2048
     steps:
       - name: Check the Expo token
         run: |
@@ -45,6 +56,15 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/node_modules/@angular "$AGENT_TOOLSDIRECTORY/CodeQL" || true
           df -h /
+
+      - name: Add swap (more memory room)
+        run: |
+          sudo fallocate -l 8G /swap-build || sudo dd if=/dev/zero of=/swap-build bs=1M count=8192
+          sudo chmod 600 /swap-build
+          sudo mkswap /swap-build
+          sudo swapon /swap-build
+          free -h
+          nproc
 
       - uses: actions/checkout@v4
 
