@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-a',
+    date: '8 Nov 2026',
+    title: 'A new look for the lead page',
+    items: [
+      '👤 On top: the name (tap the number to copy it), stage, rating, owner, course · source',
+      '📞 Five buttons: Call · WhatsApp · SMS · Note · Next call',
+      '⏰ The next call in one line (red when late, orange today) with Change',
+      '📂 Below, in folds: Timeline (open), Admission (visit, fee, papers, files), Info, Changes',
+      '➕ “+ Note” and “+ Log call” at the bottom; scroll down and the name and 📞 stay on top',
+    ],
+  },
+  {
     key: '2026-11-07-b',
     date: '7 Nov 2026',
     title: 'Last note: Add note first',

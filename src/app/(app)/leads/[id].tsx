@@ -1,5 +1,5 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,7 +12,11 @@ import {
   Text,
   View,
   useWindowDimensions,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { getCallSyncSettings, getDeviceId, markCallFromApp, type WhatsAppDeviceEvent } from '@/features/call-sync/api';
@@ -55,7 +59,11 @@ import {
   type LeadDetail,
 } from '@/features/leads/api';
 import { splitLeadNotes, type LeadNote } from '@/features/leads/notes';
-import { EVENT_LABELS, money } from '@/features/fees/api';
+import { EVENT_LABELS, feeBadge, money } from '@/features/fees/api';
+import { Fold, MIcon, md, type MIconName } from '@/features/home/md';
+import { LeadQuickSheet } from '@/features/leads/LeadQuickSheet';
+import type { LeadListItem } from '@/features/leads/api';
+import { stageBadge } from '@/features/approval/api';
 import { FeeCard } from '@/features/fees/FeeCard';
 import { FilesCard } from '@/features/files/FilesCard';
 import { PapersCard } from '@/features/papers/PapersCard';
@@ -207,6 +215,9 @@ export function LeadDetailView({
   const [undo, setUndo] = useState<{ activityId: string; label: string } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // 📱 Phone page: the top bar shows the name once the header has scrolled away; the note sheet
+  const [compactBar, setCompactBar] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = (message: string) => {
     setToast(message);
@@ -1396,8 +1407,8 @@ export function LeadDetailView({
         <Stack.Screen
           options={{
             title: lead.name,
-            // 🌐 The website's full page has its own header
-            headerShown: webLayout !== 'full',
+            // 🌐 The website's full page has its own header; 📱 the phone page has its own top bar
+            headerShown: webLayout ? webLayout !== 'full' : false,
             headerRight: () => (
               <Pressable
                 onPress={() => router.push(`/leads/edit/${lead.id}` as Href)}
@@ -1412,6 +1423,297 @@ export function LeadDetailView({
         />
       )}
     </>
+  );
+
+  // =====================================================================
+  // 📱 The phone page: a header with the person and five buttons, the
+  //   next call, the pipeline, then folds (Timeline open; Admission, Info,
+  //   Activity), and "+ Note" / "+ Log call" at the bottom.
+  // =====================================================================
+  const tags_ = lead.lead_tags.map((t) => t.tag?.id).filter(Boolean) as string[];
+  const asListItem = {
+    ...lead,
+    lead_tags: tags_.map((tag_id) => ({ tag_id })),
+  } as unknown as LeadListItem;
+  const papersReq = lead.papers_required ?? 0;
+  const papersDone = papersReq - (lead.papers_missing ?? 0);
+  const fee = stageKind === 'open' || stageKind === 'won' ? feeBadge(lead) : null;
+  const approval =
+    stageKind === 'won' && lead.admitted_at
+      ? stageBadge(lead.approval_status, lead.registration_status, lead.listed_at)
+      : null;
+  const admissionSummary =
+    [
+      approval?.text ?? null,
+      lead.visit_status === 'planned' && lead.visit_at
+        ? `🏫 ${formatVisitTime(lead.visit_at)}`
+        : lead.visit_status === 'visited'
+          ? '🏫 Visited'
+          : null,
+      fee?.text ?? null,
+      papersReq > 0 ? `📄 ${papersDone}/${papersReq}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ') || 'Visit, fee, papers, files';
+  const infoSummary =
+    [courses[0] ?? null, lead.area, lead.source?.name ?? null].filter(Boolean).join(' · ') || 'Contact, guardian, source';
+  const late = !!followUp && overdue;
+  const today = !!followUp && !late && new Date(followUp.due_at).toDateString() === new Date().toDateString();
+  const copyPhone = () => {
+    const p = lead.phone ?? lead.whatsapp_number;
+    if (!p) return;
+    Clipboard.setStringAsync(p)
+      .then(() => showToast('📋 Number copied'))
+      .catch(() => undefined);
+  };
+
+  const phoneEl = (
+    <View style={styles.screen}>
+      {/* Top bar: back · (name and 📞 once scrolled) · ✏️ · ⋮ */}
+      <SafeAreaView edges={['top']} style={[p.bar, compactBar && p.barCompact]}>
+        <View style={p.barRow}>
+          <BarBtn icon="arrow-back" label="Back" onPress={() => router.back()} />
+          <Text style={p.barTitle} numberOfLines={1}>
+            {compactBar ? lead.name : ''}
+          </Text>
+          {compactBar && !!lead.phone && (
+            <BarBtn icon="call" label={`Call ${lead.name}`} onPress={() => call(lead.phone!)} />
+          )}
+          <BarBtn icon="edit" label="Edit lead" onPress={() => router.push(`/leads/edit/${lead.id}` as Href)} />
+        </View>
+      </SafeAreaView>
+
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={p.content}
+        scrollEventThrottle={32}
+        onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+          const c = e.nativeEvent.contentOffset.y > 150;
+          if (c !== compactBar) setCompactBar(c);
+        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              load();
+            }}
+          />
+        }
+      >
+        {screenEl}
+
+        {/* 👤 The person */}
+        <View style={p.hero}>
+          <View style={p.who}>
+            <View style={p.avatarBox}>
+              <View style={[p.avatar, { backgroundColor: ratingColor + '26' }]}>
+                <Text style={[p.avatarText, { color: ratingColor }]}>{initials(lead.name) || '?'}</Text>
+              </View>
+              {!!lead.rating && <View style={[p.ring, { borderColor: ratingColor }]} />}
+            </View>
+            <View style={styles.flex}>
+              <Text style={p.name} numberOfLines={2}>
+                {lead.name}
+              </Text>
+              <Pressable onPress={copyPhone} hitSlop={6} style={p.phoneRow} accessibilityRole="button" accessibilityHint="Copies the number">
+                <Text style={p.phone} numberOfLines={1}>
+                  {whatsAppOnly(lead) ? '💬 ' : ''}
+                  {contactLabel(lead)}
+                </Text>
+                {!!(lead.phone ?? lead.whatsapp_number) && <MIcon name="content-copy" size={15} color={colors.textMuted} />}
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={p.chips}>
+            {lead.stage && (
+              <Text style={[p.chip, { backgroundColor: lead.stage.color + '22', color: lead.stage.color }]}>
+                {lead.stage.name}
+              </Text>
+            )}
+            {lead.rating && (
+              <Text style={[p.chip, { backgroundColor: ratingColor + '22', color: ratingColor }]}>
+                {lead.rating === 'hot' ? '🔥 ' : ''}
+                {lead.rating.toUpperCase()}
+              </Text>
+            )}
+            <Text style={[p.chip, p.chipPlain]}>👤 {assigneeName}</Text>
+            {(courses.length > 0 || lead.source) && (
+              <Text style={[p.chip, p.chipPlain]} numberOfLines={1}>
+                {[courses.join(', ') || null, lead.source?.name ?? null].filter(Boolean).join(' · ')}
+              </Text>
+            )}
+          </View>
+
+          {/* Call · WhatsApp · SMS · Note · Next call */}
+          <View style={p.actions}>
+            {!!lead.phone && !isWeb && (
+              <RoundAction icon="call" label="Call" bg={md.okC} fg={md.onOkC} onPress={() => call(lead.phone!)} />
+            )}
+            <RoundAction
+              icon="chat"
+              label="WhatsApp"
+              bg="#DCF8E6"
+              fg="#128C4A"
+              onPress={() => (tapOpensTemplates ? setTemplateChannel('whatsapp') : whatsapp())}
+              onLongPress={templates.allowed ? () => setTemplateChannel('whatsapp') : undefined}
+            />
+            {!!lead.phone && !isWeb && (
+              <RoundAction
+                icon="sms"
+                label="SMS"
+                bg={colors.surface}
+                fg="#0369A1"
+                onPress={() => (tapOpensTemplates ? setTemplateChannel('sms') : sms(lead.phone!))}
+                onLongPress={templates.allowed ? () => setTemplateChannel('sms') : undefined}
+              />
+            )}
+            <RoundAction icon="edit-note" label="Note" bg={colors.surface} fg="#6A1B7A" onPress={() => setNoteOpen(true)} />
+            {showFollowUpCard && (
+              <RoundAction
+                icon="alarm"
+                label="Next call"
+                bg={colors.surface}
+                fg={md.onWarnC}
+                onPress={() => setChoosingFollowUp(true)}
+              />
+            )}
+          </View>
+        </View>
+
+        <View style={p.body}>
+          {/* 👥 Hand over note */}
+          {handover && (
+            <View style={styles.handover}>
+              <Text style={styles.handoverTitle}>
+                👥 From {actorName(handover.item) ?? 'someone'} · {formatDateTime(handover.item.created_at)}
+              </Text>
+              <Text style={styles.handoverNote}>“{handover.note}”</Text>
+            </View>
+          )}
+
+          {/* ⏰ Next call: a strip (the full card while choosing) */}
+          {showFollowUpCard &&
+            (choosingFollowUp ? (
+              followEl
+            ) : (
+              <View style={[p.next, late ? p.nextLate : today ? p.nextToday : !followUp && p.nextNone]}>
+                <MIcon
+                  name="alarm"
+                  size={24}
+                  color={late ? md.onErrorC : today ? md.onWarnC : followUp ? md.onPrimaryC : colors.textMuted}
+                />
+                <View style={styles.flex}>
+                  <Text
+                    style={[p.nextTitle, { color: late ? md.onErrorC : today ? md.onWarnC : colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {followUp ? `Next call · ${formatDue(followUp.due_at)}` : 'No next call set'}
+                  </Text>
+                  {(late || !!followUp?.note) && (
+                    <Text style={p.nextSub} numberOfLines={1}>
+                      {[late ? 'Overdue' : null, followUp?.note ? `“${followUp.note}”` : null].filter(Boolean).join(' · ')}
+                    </Text>
+                  )}
+                </View>
+                {followUp && (
+                  <Pressable onPress={confirmRemoveFollowUp} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove the next call">
+                    <MIcon name="close" size={20} color={colors.textMuted} />
+                  </Pressable>
+                )}
+                <Pressable onPress={() => setChoosingFollowUp(true)} style={p.nextBtn} accessibilityRole="button">
+                  <Text style={[p.nextBtnText, late && { color: md.onErrorC }]}>{followUp ? 'Change' : 'Set'}</Text>
+                </Pressable>
+              </View>
+            ))}
+
+          {/* 🪜 Pipeline */}
+          {pipelineEl}
+
+          {/* 📂 The rest, folded */}
+          <BareSection.Provider value>
+            <Fold
+              id="lead_timeline"
+              defaultOpen
+              icon="history"
+              tint={{ bg: md.primaryC, fg: md.onPrimaryC }}
+              title="Timeline"
+              summary={`${feed.length} calls & notes${talkSec > 0 ? ` · ${formatDuration(talkSec)}` : ''}`}
+            >
+              {callsEl}
+            </Fold>
+            <Fold
+              id="lead_admission"
+              icon="school"
+              tint={{ bg: md.okC, fg: md.onOkC }}
+              title="Admission"
+              summary={admissionSummary}
+            >
+              <View style={p.tray}>
+                {approvalEl}
+                {visitEl}
+                {feeEl}
+                {papersEl}
+                {filesEl}
+              </View>
+            </Fold>
+            <Fold id="lead_info" icon="info-outline" tint={{ bg: md.surface2, fg: colors.text }} title="Info" summary={infoSummary}>
+              {interestEl}
+              {detailsEl}
+            </Fold>
+            <Fold
+              id="lead_activity"
+              icon="manage-history"
+              tint={{ bg: '#F3DDF8', fg: '#6A1B7A' }}
+              title="Changes"
+              summary={`${activity.length}`}
+            >
+              {activityEl}
+            </Fold>
+          </BareSection.Provider>
+
+          {deleteEl}
+        </View>
+      </ScrollView>
+
+      {/* + Note · + Log call */}
+      <View style={p.fabs} pointerEvents="box-none">
+        <Pressable
+          onPress={() => setNoteOpen(true)}
+          android_ripple={{ color: md.ripple, foreground: true }}
+          style={[p.fab, p.fabTonal]}
+          accessibilityRole="button"
+        >
+          <MIcon name="add" size={20} color={md.onPrimaryC} />
+          <Text style={[p.fabText, { color: md.onPrimaryC }]}>Note</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => logManually('phone')}
+          android_ripple={{ color: 'rgba(255,255,255,0.2)', foreground: true }}
+          style={[p.fab, p.fabPrimary]}
+          accessibilityRole="button"
+        >
+          <MIcon name="add" size={20} color="#FFFFFF" />
+          <Text style={[p.fabText, { color: '#FFFFFF' }]}>Log call</Text>
+        </Pressable>
+      </View>
+
+      {/* 📝 A note for this lead */}
+      {noteOpen && (
+        <LeadQuickSheet
+          visible
+          field="note"
+          leads={[asListItem]}
+          onClose={() => setNoteOpen(false)}
+          onSaved={(message) => {
+            setNoteOpen(false);
+            showToast(message);
+            load();
+          }}
+        />
+      )}
+    </View>
   );
 
   return (
@@ -1446,34 +1748,7 @@ export function LeadDetailView({
           }}
         />
       ) : (
-        <ScrollView
-          style={styles.screen}
-          contentContainerStyle={styles.content}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                load();
-              }}
-            />
-          }
-        >
-          {screenEl}
-          {headerEl}
-          {pipelineEl}
-          {approvalEl}
-          {visitEl}
-          {feeEl}
-          {papersEl}
-          {filesEl}
-          {followEl}
-          {callsEl}
-          {interestEl}
-          {detailsEl}
-          {activityEl}
-          {deleteEl}
-        </ScrollView>
+          phoneEl
       )}
 
       {toast && (
@@ -1526,7 +1801,12 @@ export function LeadDetailView({
 // =====================================================================
 // Small building blocks
 // =====================================================================
+/** Inside a fold the sections lose their own card and title (the fold has them) */
+const BareSection = createContext(false);
+
 function Section({ title, right, children }: { title: string; right?: string; children: React.ReactNode }) {
+  const bare = useContext(BareSection);
+  if (bare) return <View style={styles.bare}>{children}</View>;
   return (
     <View style={styles.card}>
       <View style={styles.sectionHeader}>
@@ -1612,6 +1892,7 @@ function ActionButton({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  bare: { gap: spacing.md, padding: spacing.lg },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
   center: {
     flex: 1,
@@ -1796,3 +2077,156 @@ function VoiceChips({
     </View>
   );
 }
+
+// =====================================================================
+// 📱 The phone page's own parts
+// =====================================================================
+function BarBtn({ icon, label, onPress }: { icon: MIconName; label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      android_ripple={{ color: md.ripple, borderless: true, radius: 21 }}
+      style={p.barBtn}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <MIcon name={icon} size={24} color={colors.text} />
+    </Pressable>
+  );
+}
+
+function RoundAction({
+  icon,
+  label,
+  bg,
+  fg,
+  onPress,
+  onLongPress,
+}: {
+  icon: MIconName;
+  label: string;
+  bg: string;
+  fg: string;
+  onPress: () => void;
+  onLongPress?: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
+      style={p.action}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View style={[p.actionCircle, { backgroundColor: bg }]}>
+        <MIcon name={icon} size={23} color={fg} />
+      </View>
+      <Text style={p.actionText} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+const HERO = '#E4E9FF';
+
+const p = StyleSheet.create({
+  bar: { backgroundColor: HERO },
+  barCompact: {
+    backgroundColor: colors.surface,
+    shadowColor: '#101840',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
+  barRow: { height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, gap: 2 },
+  barTitle: { flex: 1, fontSize: 17, fontWeight: fontWeight.semibold, color: colors.text, marginLeft: 4 },
+  barBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+
+  content: { paddingBottom: 96 },
+  hero: {
+    backgroundColor: HERO,
+    paddingHorizontal: 18,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+  },
+  who: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 2 },
+  avatarBox: { width: 66, height: 66, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 23, fontWeight: fontWeight.bold },
+  ring: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 33, borderWidth: 3 },
+  name: { fontSize: 21, fontWeight: fontWeight.bold, color: colors.text },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, alignSelf: 'flex-start' },
+  phone: { fontSize: 14.5, color: colors.textMuted },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
+  chip: {
+    fontSize: 12,
+    fontWeight: fontWeight.semibold,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    overflow: 'hidden',
+    maxWidth: '100%',
+  },
+  chipPlain: { backgroundColor: colors.surface, color: colors.textMuted },
+  actions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 },
+  action: { flex: 1, alignItems: 'center', gap: 5 },
+  actionCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#101840',
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  actionText: { fontSize: 11.5, fontWeight: fontWeight.medium, color: colors.text },
+
+  body: { paddingHorizontal: 14, paddingTop: 12, gap: 10 },
+  next: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingLeft: 14,
+    paddingRight: 10,
+    borderRadius: 16,
+    backgroundColor: md.primaryC,
+  },
+  nextLate: { backgroundColor: md.errorC },
+  nextToday: { backgroundColor: md.warnC },
+  nextNone: { backgroundColor: md.surface1 },
+  nextTitle: { fontSize: 14.5, fontWeight: fontWeight.semibold },
+  nextSub: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  nextBtn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.surface },
+  nextBtnText: { fontSize: 12.5, fontWeight: fontWeight.semibold, color: colors.primary },
+
+  // Admission fold: the cards on a light tray
+  tray: { gap: 10, padding: 10, backgroundColor: md.surface1 },
+
+  fabs: { position: 'absolute', right: 16, bottom: 16, flexDirection: 'row', gap: 10 },
+  fab: {
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 14,
+    paddingRight: 18,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  fabTonal: { backgroundColor: md.primaryC },
+  fabPrimary: { backgroundColor: colors.primary },
+  fabText: { fontSize: 14.5, fontWeight: fontWeight.semibold },
+});
