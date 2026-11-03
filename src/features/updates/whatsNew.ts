@@ -8,15 +8,73 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
-    key: '2026-11-03-build-2-7',
-    date: '3 Nov 2026',
+    key: '2026-11-09-build-2-7',
+    date: '9 Nov 2026',
     title: 'Caller card · version 2.7',
     items: [
       '📲 When a lead calls, a card shows over the call screen: name, stage, money due, last note, next call',
       '➕ An unknown number calling: “Add as lead” in one tap',
       '⚙️ Turn it on once: More → Call log sync → Caller card → Allow display over other apps (then “Try it”)',
+      '📇 New lead: pick the number from your contacts (the app’s list or the phone’s own picker)',
+      '🕘 New lead: or from your recent calls (✓ shows numbers that are already leads)',
       '🏷 The app is now called “ITTC Admission” on your phone',
     ],
+  },
+  {
+    key: '2026-11-08-a',
+    date: '8 Nov 2026',
+    title: 'A new look for the lead page',
+    items: [
+      '👤 On top: the name (tap the number to copy it), stage, rating, owner, course · source',
+      '📞 Five buttons: Call · WhatsApp · SMS · Note · Next call',
+      '⏰ The next call in one line (red when late, orange today) with Change',
+      '📂 Below, in folds: Timeline (open), Admission (visit, fee, papers, files), Info, Changes',
+      '➕ “+ Note” and “+ Log call” at the bottom; scroll down and the name and 📞 stay on top',
+    ],
+  },
+  {
+    key: '2026-11-07-b',
+    date: '7 Nov 2026',
+    title: 'Last note: Add note first',
+    items: ['📝 In the last-note sheet (tap the note on a lead card), “Add note” is now the blue button and “Open lead” the white one'],
+  },
+  {
+    key: '2026-11-07-a',
+    date: '7 Nov 2026',
+    title: 'Fixed: popups under the phone’s buttons',
+    items: [
+      '🔧 Every popup and sheet (last note, call result, filters, sort, fee, payment, stage, papers, voice note…) now sits above the ◁ ○ □ buttons',
+    ],
+  },
+  {
+    key: '2026-11-06-a',
+    date: '6 Nov 2026',
+    title: 'A new look for More',
+    items: [
+      '👤 Your profile on top (🔑 changes the password)',
+      '⚡ Quick tiles: Alerts, WhatsApp, Team activity (or Templates), Discounts, with how many are waiting',
+      '🗂 Every page in neat groups, with what needs you on the right (ON, waiting, problems)',
+      '📱 List design, What’s new and the update check together under APP',
+    ],
+  },
+  {
+    key: '2026-11-05-a',
+    date: '5 Nov 2026',
+    title: 'A new look for Leads and Students',
+    items: [
+      '✨ New lists: a clean top bar, a round search box, and chips that show how many (Mine, 🔥 Hot, 🆕 Not called…)',
+      '⏱ Sorted by next call: leads come in Overdue · Today · Tomorrow groups (the “Groups” button turns them off)',
+      '🗂 Smaller cards: rating ring, stage, course · source · owner, the latest note or call, the next-call time',
+      '✅ Press and hold to mark: “N selected” on top, and Note / Next call / Stage / Give to / Tag / Rating / Fee / Lost below',
+      '📋 Pipeline board: the board icon at the top · 📞 hold the Call button for SMS',
+      '↩ Like the old look better? More → List design → Classic (or ⋮ on the list)',
+    ],
+  },
+  {
+    key: '2026-11-04-a',
+    date: '4 Nov 2026',
+    title: 'Fixed: tabs under the phone’s buttons',
+    items: ['🔧 On phones with ◁ ○ □ buttons, the tabs (and the bottom of other pages) now sit above the buttons'],
   },
   {
     key: '2026-11-03-e',

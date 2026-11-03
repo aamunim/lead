@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import { channelLabel, formatDuration, listLeadCalls, outcomeInfo } from '@/features/calls/api';
 import { isRecordedVoice, listLeadFiles } from '@/features/files/api';
@@ -158,10 +159,10 @@ export function LeadPeekSheet({
 
           <View style={styles.buttons}>
             <View style={styles.flex}>
-              <Button title="📝 Add note" variant="secondary" onPress={onAddNote} fullWidth />
+              <Button title="📝 Add note" onPress={onAddNote} fullWidth />
             </View>
             <View style={styles.flex}>
-              <Button title="Open lead" onPress={onOpen} fullWidth />
+              <Button title="Open lead" variant="secondary" onPress={onOpen} fullWidth />
             </View>
           </View>
         </View>

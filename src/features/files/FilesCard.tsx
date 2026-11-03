@@ -1,6 +1,7 @@
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {

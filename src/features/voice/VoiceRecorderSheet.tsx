@@ -9,7 +9,8 @@ import {
 } from 'expo-audio';
 import { File } from 'expo-file-system';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import { uploadLeadFile } from '@/features/files/api';
 import { clock } from '@/features/voice/format';

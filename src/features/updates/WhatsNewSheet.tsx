@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import { WHATS_NEW, type WhatsNew } from '@/features/updates/whatsNew';
 import { isWeb } from '@/features/web/api';
@@ -40,7 +41,7 @@ export function WhatsNewOnUpdate() {
 
 export function WhatsNewSheet({ entries = WHATS_NEW, onClose }: { entries?: WhatsNew[]; onClose: () => void }) {
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} bottomFill="rgba(16,26,51,0.5)">
       <View style={styles.back}>
         <View style={styles.box}>
           <Text style={styles.head}>🆕 What’s new</Text>

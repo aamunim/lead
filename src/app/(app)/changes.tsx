@@ -2,7 +2,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,6 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { WebChangeLog } from '@/features/web/activity/WebChangeLog';

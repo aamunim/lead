@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, AppState, Dimensions, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
 
@@ -11,6 +12,8 @@ import { isWeb } from '@/features/web/api';
 export default function TabsLayout() {
   const { profile, hasPermission } = useAuth();
   const isAdmin = hasPermission('settings.manage');
+  // The phone's own navigation (3 buttons or the gesture line) sits under the tab bar
+  const insets = useSafeAreaInsets();
 
   // 🎓 Students tab: Settings → Students decides who sees it
   const [studentsTab, setStudentsTab] = useState(false);
@@ -27,15 +30,29 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        // ✨ Tab change: the whole page slides (springy, like turning pages)
-        sceneStyleInterpolator: pageSlide,
-        transitionSpec: { animation: 'spring', config: { stiffness: 260, damping: 30, mass: 1 } },
+        // ✨ Tab change (phone): the whole page slides (springy, like turning pages).
+        // 🌐 The website changes pages from its side menu at once: a full-width
+        // slide and fade there looked like the screen blinking.
+        ...(isWeb
+          ? {}
+          : {
+              sceneStyleInterpolator: pageSlide,
+              transitionSpec: { animation: 'spring' as const, config: { stiffness: 260, damping: 30, mass: 1 } },
+            }),
         tabBarActiveTintColor: md.onPrimaryC,
         tabBarInactiveTintColor: colors.textMuted,
         // 🌐 Website: the menu on the left replaces the tabs
         tabBarStyle: isWeb
           ? { display: 'none' }
-          : { backgroundColor: md.surface1, borderTopWidth: 0, elevation: 0, height: 72, paddingTop: 10 },
+          : {
+              backgroundColor: md.surface1,
+              borderTopWidth: 0,
+              elevation: 0,
+              paddingTop: 8,
+              // room for the phone's ◁ ○ □ buttons (or the gesture line) below the tabs
+              paddingBottom: Math.max(insets.bottom, 8),
+              height: 64 + Math.max(insets.bottom, 8),
+            },
         tabBarLabelStyle: { fontSize: 12, fontWeight: fontWeight.semibold, marginTop: 2 },
         tabBarActiveBackgroundColor: 'transparent',
         tabBarButton: (props) => (
@@ -63,6 +80,7 @@ export default function TabsLayout() {
         name="leads"
         options={{
           title: 'Leads',
+          lazy: !isWeb,
           tabBarIcon: ({ focused }) => <PillIcon focused={focused} on="people" off="people-outline" />,
         }}
       />
@@ -71,6 +89,8 @@ export default function TabsLayout() {
         options={{
           title: 'Students',
           href: studentsTab ? undefined : null,
+          // 🌐 Ready in the background, so the first click shows the table at once (no blank moment)
+          lazy: !(isWeb && studentsTab),
           tabBarIcon: ({ focused }) => <PillIcon focused={focused} on="school" off="school" />,
         }}
       />
@@ -78,6 +98,8 @@ export default function TabsLayout() {
         name="more"
         options={{
           title: 'More',
+          // its own Material top bar (🔔 ⚙️)
+          headerShown: false,
           tabBarIcon: ({ focused }) => <PillIcon focused={focused} on="menu" off="menu" />,
         }}
       />

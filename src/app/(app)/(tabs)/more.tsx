@@ -1,31 +1,53 @@
 import Constants from 'expo-constants';
 import { Redirect, router, useFocusEffect, type Href } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Children, useCallback, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { signOut } from '@/features/auth/api';
 import { isWeb } from '@/features/web/api';
+import { APP_PRODUCT } from '@/features/web/brand';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { canSyncCalls, isCallLogAvailable, isCallSyncEnabled } from '@/features/call-sync/api';
 import { listSyncHealth } from '@/features/call-sync/health';
 import { canImportContacts } from '@/features/contacts/api';
 import { countDiscountsToAnswer } from '@/features/fees/api';
+import { MIcon, md, type MIconName } from '@/features/home/md';
+import { countUnread } from '@/features/notifications/api';
 import { checkAndDownload, currentVersionInfo, restartWithUpdate } from '@/features/updates/api';
 import { WhatsNewSheet } from '@/features/updates/WhatsNewSheet';
 import { countNewFeedback, isDeveloper } from '@/features/feedback/api';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
-import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
-import { Button } from '@/shared/ui/Button';
+import { designOf, saveListDesign, type ListDesign } from '@/features/leads/design';
+import { colors, fontWeight } from '@/shared/theme';
+
+// =====================================================================
+// ☰ More (phone): Material top bar (🔔 ⚙️), your profile card, four
+//   quick tiles, then every page in tidy groups (Reports, Tools, Team,
+//   Admin, App, Help) with what needs you on the right, and Sign out.
+// =====================================================================
 
 export default function MoreScreen() {
   if (isWeb) return <Redirect href="/students" />;
   return <PhoneMore />;
 }
 
+// Tonal icon colours
+const TONE = {
+  blue: [md.primaryC, md.onPrimaryC],
+  green: [md.okC, md.onOkC],
+  orange: [md.warnC, md.onWarnC],
+  red: [md.errorC, md.onErrorC],
+  purple: ['#F3DDF8', '#6A1B7A'],
+  wa: ['#DCF8E6', '#128C4A'],
+  grey: [md.surface2, colors.text],
+} as const;
+type Tone = keyof typeof TONE;
+
 function PhoneMore() {
-  const { profile, session, hasPermission } = useAuth();
+  const { profile, session, hasPermission, refreshProfile } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [contactsAllowed, setContactsAllowed] = useState(false);
@@ -34,6 +56,7 @@ function PhoneMore() {
   const [syncProblems, setSyncProblems] = useState(0);
   const [reportsAllowed, setReportsAllowed] = useState(false);
   const [activityAllowed, setActivityAllowed] = useState(false);
+  const [unread, setUnread] = useState(0);
 
   const canManageUsers = hasPermission('users.manage');
   const canManageSettings = hasPermission('settings.manage');
@@ -51,8 +74,25 @@ function PhoneMore() {
   const [discounts, setDiscounts] = useState(0);
   // 🔄 EAS Update (not in development builds)
   const update = currentVersionInfo();
+  const version = Constants.expoConfig?.version ?? '—';
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'ready' | 'latest'>('idle');
   const [whatsNew, setWhatsNew] = useState(false);
+
+  // 🎨 Leads / Students list: the new design or the classic one
+  const design = designOf(profile?.list_design);
+  const [designBusy, setDesignBusy] = useState(false);
+  const pickDesign = async (next: ListDesign) => {
+    if (!profile?.id || next === design) return;
+    setDesignBusy(true);
+    try {
+      await saveListDesign(profile.id, next);
+      await refreshProfile();
+    } catch {
+      // stays as it was
+    } finally {
+      setDesignBusy(false);
+    }
+  };
 
   // 💬 The developer sees the inbox, with the new ones counted
   const [developer, setDeveloper] = useState(false);
@@ -67,6 +107,9 @@ function PhoneMore() {
         })
         .catch(() => setDeveloper(false));
       countDiscountsToAnswer().then(setDiscounts);
+      countUnread()
+        .then(setUnread)
+        .catch(() => setUnread(0));
       canImportContacts()
         .then(setContactsAllowed)
         .catch(() => setContactsAllowed(false));
@@ -93,7 +136,7 @@ function PhoneMore() {
       countPendingUsers()
         .then(setPendingCount)
         .catch(() => setPendingCount(0));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [canManageUsers, canSeeSyncHealth, profile, canManageSettings]),
   );
 
@@ -106,360 +149,594 @@ function PhoneMore() {
     }
   };
 
-  const showTools = contactsAllowed || callSyncAllowed;
+  const go = (href: string) => () => router.push(href as Href);
+
+  // Four quick tiles: Team activity for those who may see it (else Message templates)
+  const tiles: { icon: MIconName; tone: Tone; label: string; href: string; badge?: number }[] = [
+    { icon: 'notifications', tone: 'blue', label: 'Alerts', href: '/notifications', badge: unread },
+    { icon: 'chat', tone: 'wa', label: 'WhatsApp', href: '/whatsapp' },
+    activityAllowed
+      ? { icon: 'timer', tone: 'purple', label: 'Team activity', href: '/activity' }
+      : { icon: 'description', tone: 'purple', label: 'Templates', href: '/templates' },
+    { icon: 'sell', tone: 'orange', label: 'Discounts', href: '/discounts', badge: discounts },
+  ];
+
+  const updateText =
+    updateState === 'checking'
+      ? 'Checking…'
+      : updateState === 'ready'
+        ? 'A new version is ready'
+        : updateState === 'latest'
+          ? '✓ You have the latest version'
+          : update.enabled
+            ? update.builtIn
+              ? 'Built in'
+              : [
+                  update.createdAt
+                    ? `Update ${update.createdAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+                    : null,
+                  (update.updateId ?? '').slice(0, 8) || null,
+                  update.channel,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+            : 'Development build';
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      {/* Profile */}
-      <View style={styles.profile}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials || '?'}</Text>
+    <View style={styles.screen}>
+      {/* Top bar */}
+      <SafeAreaView edges={['top']} style={styles.bar}>
+        <View style={styles.barRow}>
+          <Text style={styles.barTitle}>More</Text>
+          <IconBtn icon="notifications-none" label="Notifications" badge={unread} onPress={go('/notifications')} />
+          {canManageSettings && <IconBtn icon="settings" label="Settings" onPress={go('/settings')} />}
         </View>
-        <View style={styles.flex}>
-          <Text style={styles.name}>{name}</Text>
-          <Text style={styles.muted}>{profile?.email ?? session?.user.email}</Text>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>{profile?.role?.name ?? 'No role'}</Text>
+      </SafeAreaView>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* 👤 You */}
+        <View style={styles.profile}>
+          <View style={styles.profileGlow} />
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials || '?'}</Text>
           </View>
+          <View style={styles.flex}>
+            <Text style={styles.name} numberOfLines={1}>
+              {name}
+            </Text>
+            <Text style={styles.email} numberOfLines={1}>
+              {profile?.email ?? session?.user.email}
+            </Text>
+            <View style={styles.roleBadge}>
+              <Text style={styles.roleText}>{profile?.role?.name ?? 'No role'}</Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={go('/password')}
+            android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: true, radius: 22 }}
+            style={styles.keyBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Change password"
+          >
+            <MIcon name="vpn-key" size={20} color="#FFFFFF" />
+          </Pressable>
         </View>
-      </View>
 
-      {/* Notifications */}
-      <View style={styles.section}>
-        <View style={styles.group}>
-          <Row icon="🔔" title="Notifications" subtitle="Leads given to you, reminders, visits" href="/notifications" />
-          <Row
-            icon="💬"
-            title="WhatsApp calls"
-            subtitle="WhatsApp calls and messages with leads"
-            href={'/whatsapp' as Href}
-            divider
-          />
-          <Row
-            icon="📝"
-            title="Message templates"
-            subtitle="Ready-made WhatsApp and SMS messages"
-            href={'/templates' as Href}
-            divider
-          />
-          <Row
-            icon="💰"
-            title="Discount requests"
-            subtitle="Discounts waiting for approval"
-            href={'/discounts' as Href}
-            badge={discounts > 0 ? String(discounts) : undefined}
-            divider
-          />
+        {/* ⚡ Quick tiles */}
+        <View style={styles.tiles}>
+          {tiles.map((t) => (
+            <Pressable
+              key={t.label}
+              onPress={go(t.href)}
+              android_ripple={{ color: md.ripple, foreground: true }}
+              style={({ pressed }) => [styles.tile, Platform.OS !== 'android' && pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t.badge ? `${t.label}, ${t.badge}` : t.label}
+            >
+              <View style={[styles.tileIcon, { backgroundColor: TONE[t.tone][0] }]}>
+                <MIcon name={t.icon} size={22} color={TONE[t.tone][1]} />
+              </View>
+              <Text style={styles.tileText} numberOfLines={1}>
+                {t.label}
+              </Text>
+              {!!t.badge && (
+                <View style={styles.tileBadge}>
+                  <Text style={styles.tileBadgeText}>{t.badge > 99 ? '99+' : t.badge}</Text>
+                </View>
+              )}
+            </Pressable>
+          ))}
         </View>
-      </View>
 
-      {/* Reports (Settings → Reports decides who); the scorecard everyone sees (at least their own week) */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>REPORTS</Text>
-        <View style={styles.group}>
+        {/* 📊 Reports (Settings → Reports decides who); everyone sees the scorecard */}
+        <Section title="REPORTS">
           {reportsAllowed && (
-            <Row icon="📊" title="Reports" subtitle="Pipeline, sources, team, best time to call" href="/reports" />
+            <Row
+              icon="bar-chart"
+              tone="blue"
+              title="Reports"
+              subtitle="Pipeline, sources, team, best time to call"
+              onPress={go('/reports')}
+            />
           )}
           <Row
-            icon="🏁"
+            icon="military-tech"
+            tone="green"
             title="Weekly scorecard"
             subtitle="Last week next to the week before"
-            href={'/scorecard' as Href}
-            divider={reportsAllowed}
+            onPress={go('/scorecard')}
           />
-        </View>
-      </View>
+        </Section>
 
-      {/* Tools (for anyone who is allowed) */}
-      {showTools && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>TOOLS</Text>
-          <View style={styles.group}>
-            {callSyncAllowed && (
-              <Row
-                icon="📞"
-                title="Call log sync"
-                subtitle={callSyncOn ? 'On · lead calls are saved automatically' : 'Off · tap to set up'}
-                href="/call-sync"
-                badge={callSyncOn ? undefined : 'Set up'}
-              />
-            )}
-            {contactsAllowed && (
-              <Row
-                icon="📇"
-                title="Phone contacts"
-                subtitle="Save people from your phone as leads"
-                href="/contacts"
-                divider={callSyncAllowed}
-              />
-            )}
-          </View>
-        </View>
-      )}
+        {/* 🧰 Tools */}
+        <Section title="TOOLS">
+          {callSyncAllowed && (
+            <Row
+              icon="phone-callback"
+              tone={callSyncOn ? 'green' : 'orange'}
+              title="Call log sync"
+              subtitle={callSyncOn ? 'On · lead calls are saved automatically' : 'Off · tap to set up'}
+              pill={callSyncOn ? { text: 'ON', tone: 'green' } : { text: 'Set up', tone: 'orange' }}
+              onPress={go('/call-sync')}
+            />
+          )}
+          {contactsAllowed && (
+            <Row
+              icon="contacts"
+              tone="grey"
+              title="Phone contacts"
+              subtitle="Save people from your phone as leads"
+              onPress={go('/contacts')}
+            />
+          )}
+          {activityAllowed && (
+            <Row
+              icon="description"
+              tone="purple"
+              title="Message templates"
+              subtitle="Ready-made WhatsApp and SMS messages"
+              onPress={go('/templates')}
+            />
+          )}
+          <Row
+            icon="chat"
+            tone="wa"
+            title="WhatsApp calls"
+            subtitle="WhatsApp calls and messages with leads"
+            onPress={go('/whatsapp')}
+          />
+        </Section>
 
-      {/* Team (Admins and Team Leads) */}
-      {(canSeeSyncHealth || activityAllowed) && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>TEAM</Text>
-          <View style={styles.group}>
+        {/* 👥 Team (Admins and Team Leads) */}
+        {(canSeeSyncHealth || activityAllowed) && (
+          <Section title="TEAM">
             {activityAllowed && (
-              <>
-                <Row icon="👥" title="Team activity" subtitle="Who is working, app time, calls" href="/activity" />
-                <Row
-                  icon="📜"
-                  title="Change log"
-                  subtitle="Who changed what on which lead"
-                  href="/changes"
-                  divider
-                />
-              </>
+              <Row
+                icon="timer"
+                tone="blue"
+                title="Team activity"
+                subtitle="Who is working, app time, calls"
+                onPress={go('/activity')}
+              />
+            )}
+            {activityAllowed && (
+              <Row
+                icon="history"
+                tone="purple"
+                title="Change log"
+                subtitle="Who changed what on which lead"
+                onPress={go('/changes')}
+              />
             )}
             {canSeeSyncHealth && (
-            <Row
-              icon="🩺"
-              title="Sync health"
-              subtitle={canManageUsers ? 'Call sync on every phone' : 'Call sync on your team’s phones'}
-              href="/sync-health"
-              badge={syncProblems > 0 ? `${syncProblems} ${syncProblems === 1 ? 'problem' : 'problems'}` : undefined}
-              badgeTone="danger"
-              divider={activityAllowed}
-            />
+              <Row
+                icon={syncProblems > 0 ? 'sync-problem' : 'sync'}
+                tone={syncProblems > 0 ? 'red' : 'green'}
+                title="Sync health"
+                subtitle={canManageUsers ? 'Call sync on every phone' : 'Call sync on your team’s phones'}
+                pill={syncProblems > 0 ? { text: String(syncProblems), tone: 'red' } : undefined}
+                onPress={go('/sync-health')}
+              />
             )}
-          </View>
-        </View>
-      )}
+          </Section>
+        )}
 
-      {/* Admin */}
-      {(canManageUsers || canManageSettings) && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>ADMIN</Text>
-          <View style={styles.group}>
+        {/* 🛠 Admin */}
+        {(canManageUsers || canManageSettings) && (
+          <Section title="ADMIN">
             {canManageUsers && (
               <Row
-                icon="👥"
+                icon="manage-accounts"
+                tone="blue"
                 title="Users"
-                href="/users"
-                badge={pendingCount > 0 ? `${pendingCount} waiting` : undefined}
+                subtitle="Approve, roles, teams"
+                pill={pendingCount > 0 ? { text: `${pendingCount} waiting`, tone: 'orange' } : undefined}
+                onPress={go('/users')}
               />
-            )}
-            {canManageSettings && (
-              <Row icon="⚙️" title="Settings" href="/settings" divider={canManageUsers} />
             )}
             {canManageSettings && (
               <Row
-                icon="📱"
-                title="App versions"
-                subtitle="Who runs which update"
-                href={'/app-versions' as Href}
-                divider
+                icon="settings"
+                tone="grey"
+                title="Settings"
+                subtitle="Courses, stages, fees, rules"
+                onPress={go('/settings')}
               />
             )}
-          </View>
-        </View>
-      )}
+            {canManageSettings && (
+              <Row
+                icon="system-update"
+                tone="grey"
+                title="App versions"
+                subtitle="Who runs which update"
+                onPress={go('/app-versions')}
+              />
+            )}
+          </Section>
+        )}
 
-      {/* About */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>ABOUT</Text>
-        <View style={styles.group}>
-          <Pressable
-            onPress={() => setWhatsNew(true)}
-            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-            accessibilityRole="button"
-          >
-            <Text style={styles.rowTitle}>🆕 What’s new</Text>
-          </Pressable>
-          <View style={[styles.row, styles.divider]}>
-            <Text style={styles.rowTitle}>App version</Text>
-            <Text style={styles.muted}>{Constants.expoConfig?.version ?? '—'}</Text>
-          </View>
-          {update.enabled && (
-            <>
-              <View style={[styles.row, styles.divider]}>
-                <Text style={styles.rowTitle}>Update</Text>
-                <Text style={styles.muted}>
-                  {update.builtIn
-                    ? 'Built in'
-                    : `${update.createdAt ? update.createdAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''} · ${(update.updateId ?? '').slice(0, 8)}`}
-                  {update.channel ? ` · ${update.channel}` : ''}
-                </Text>
-              </View>
-              <Pressable
-                onPress={async () => {
-                  setUpdateState('checking');
-                  const r = await checkAndDownload(true);
-                  setUpdateState(r === 'downloaded' ? 'ready' : 'latest');
-                }}
-                disabled={updateState === 'checking'}
-                style={({ pressed }) => [styles.row, styles.divider, pressed && styles.pressed]}
-                accessibilityRole="button"
-              >
-                <Text style={styles.rowTitle}>
-                  {updateState === 'checking'
-                    ? 'Checking…'
-                    : updateState === 'ready'
-                      ? '🔄 Restart to use the new version'
-                      : updateState === 'latest'
-                        ? '✓ You have the latest version'
-                        : 'Check for updates'}
-                </Text>
-                {updateState === 'ready' && (
-                  <Pressable onPress={() => restartWithUpdate()} hitSlop={8} accessibilityRole="button">
-                    <Text style={styles.restart}>Restart</Text>
+        {/* 📱 App */}
+        <Section title="APP">
+          <Row icon="view-agenda" tone="blue" title="List design" subtitle="Leads & Students">
+            <View style={styles.seg}>
+              {(['new', 'classic'] as ListDesign[]).map((d) => {
+                const on = design === d;
+                return (
+                  <Pressable
+                    key={d}
+                    onPress={() => pickDesign(d)}
+                    disabled={designBusy}
+                    style={[styles.segItem, on && styles.segOn]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: on }}
+                  >
+                    <Text style={[styles.segText, on && styles.segTextOn]}>{d === 'new' ? '✨ New' : 'Classic'}</Text>
                   </Pressable>
-                )}
-              </Pressable>
-            </>
-          )}
-        </View>
-      </View>
-
-      {/* 💬 Help */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>HELP</Text>
-        <View style={styles.group}>
+                );
+              })}
+            </View>
+          </Row>
           <Row
-            icon="💬"
+            icon="new-releases"
+            tone="orange"
+            title="What’s new"
+            subtitle="The latest changes"
+            onPress={() => setWhatsNew(true)}
+          />
+          <Row icon="system-update-alt" tone="green" title={`Version ${version}`} subtitle={updateText}>
+            {update.enabled &&
+              (updateState === 'checking' ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : updateState === 'ready' ? (
+                <Pressable onPress={() => restartWithUpdate()} style={styles.chipBtn} accessibilityRole="button">
+                  <Text style={styles.chipBtnText}>Restart</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={async () => {
+                    setUpdateState('checking');
+                    const r = await checkAndDownload(true);
+                    setUpdateState(r === 'downloaded' ? 'ready' : 'latest');
+                  }}
+                  style={styles.chipBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Check for updates"
+                >
+                  <Text style={styles.chipBtnText}>Check</Text>
+                </Pressable>
+              ))}
+          </Row>
+        </Section>
+
+        {/* 💬 Help */}
+        <Section title="HELP">
+          <Row
+            icon="support-agent"
+            tone="purple"
             title="Contact developer"
             subtitle="A problem, an idea or a question"
-            href={'/feedback' as Href}
+            onPress={go('/feedback')}
           />
           {developer && (
             <Row
-              icon="📥"
+              icon="inbox"
+              tone="blue"
               title="Feedback inbox"
               subtitle="Messages from everyone"
-              href={'/feedback/inbox' as Href}
-              badge={newFeedback > 0 ? `${newFeedback} new` : undefined}
-              divider
+              pill={newFeedback > 0 ? { text: `${newFeedback} new`, tone: 'orange' } : undefined}
+              onPress={go('/feedback/inbox')}
             />
           )}
-        </View>
-      </View>
+        </Section>
 
-      <Button
-        title="🔐 Change password"
-        variant="ghost"
-        onPress={() => router.push('/password' as Href)}
-        fullWidth
-      />
-      <Button title="Sign out" variant="secondary" onPress={handleSignOut} loading={signingOut} fullWidth />
+        <Pressable
+          onPress={handleSignOut}
+          disabled={signingOut}
+          android_ripple={{ color: 'rgba(186,26,26,0.12)', foreground: true }}
+          style={({ pressed }) => [styles.signOut, Platform.OS !== 'android' && pressed && styles.pressed]}
+          accessibilityRole="button"
+        >
+          {signingOut ? (
+            <ActivityIndicator color={md.onErrorC} />
+          ) : (
+            <>
+              <MIcon name="logout" size={20} color={md.onErrorC} />
+              <Text style={styles.signOutText}>Sign out</Text>
+            </>
+          )}
+        </Pressable>
+        <Text style={styles.footer}>
+          ITTC {APP_PRODUCT} · v{version}
+        </Text>
+      </ScrollView>
       {whatsNew && <WhatsNewSheet onClose={() => setWhatsNew(false)} />}
-    </ScrollView>
+    </View>
+  );
+}
+
+function IconBtn({
+  icon,
+  label,
+  onPress,
+  badge,
+}: {
+  icon: MIconName;
+  label: string;
+  onPress: () => void;
+  badge?: number;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      android_ripple={{ color: md.ripple, borderless: true, radius: 21 }}
+      style={styles.iconBtn}
+      accessibilityRole="button"
+      accessibilityLabel={badge ? `${label}, ${badge} new` : label}
+    >
+      <MIcon name={icon} size={25} color={colors.text} />
+      {!!badge && (
+        <View style={styles.dot}>
+          <Text style={styles.dotText}>{badge > 99 ? '99+' : badge}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  // Only the rows this person may see; a line between them
+  const rows = Children.toArray(children);
+  if (rows.length === 0) return null;
+  return (
+    <View>
+      <Text style={styles.sectionLabel}>{title}</Text>
+      <View style={styles.group}>
+        {rows.map((r, i) => (
+          <View key={i} style={i > 0 && styles.divider}>
+            {r}
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
 function Row({
   icon,
+  tone,
   title,
   subtitle,
-  href,
-  badge,
-  badgeTone = 'warning',
-  divider,
+  pill,
+  onPress,
+  children,
 }: {
-  icon: string;
+  icon: MIconName;
+  tone: Tone;
   title: string;
   subtitle?: string;
-  href: Href;
-  badge?: string;
-  badgeTone?: 'warning' | 'danger';
-  divider?: boolean;
+  pill?: { text: string; tone: Tone };
+  onPress?: () => void;
+  /** Something on the right instead of the › (a switch, a button) */
+  children?: ReactNode;
 }) {
   return (
     <Pressable
-      onPress={() => router.push(href)}
-      style={({ pressed }) => [styles.row, divider && styles.divider, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={badge ? `${title}, ${badge}` : title}
+      onPress={onPress}
+      disabled={!onPress}
+      android_ripple={onPress ? { color: md.ripple, foreground: true } : undefined}
+      style={({ pressed }) => [styles.row, Platform.OS !== 'android' && pressed && onPress && styles.pressed]}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={pill ? `${title}, ${pill.text}` : title}
     >
-      <Text style={styles.rowIcon}>{icon}</Text>
-      <View style={styles.flex}>
-        <Text style={styles.rowTitle}>{title}</Text>
-        {subtitle && <Text style={styles.rowSubtitle}>{subtitle}</Text>}
+      <View style={[styles.rowIcon, { backgroundColor: TONE[tone][0] }]}>
+        <MIcon name={icon} size={20} color={TONE[tone][1]} />
       </View>
-      {badge && (
-        <View style={[styles.badge, badgeTone === 'danger' && styles.badgeDanger]}>
-          <Text style={[styles.badgeText, badgeTone === 'danger' && styles.badgeTextDanger]}>{badge}</Text>
-        </View>
+      <View style={styles.flex}>
+        <Text style={styles.rowTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        {!!subtitle && (
+          <Text style={styles.rowSubtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+      {!!pill && (
+        <Text style={[styles.pill, { backgroundColor: TONE[pill.tone][0], color: TONE[pill.tone][1] }]}>
+          {pill.text}
+        </Text>
       )}
-      <Text style={styles.chevron}>›</Text>
+      {children}
+      {!!onPress && !children && <MIcon name="chevron-right" size={22} color={md.outline} />}
     </Pressable>
   );
 }
 
+const card = {
+  backgroundColor: colors.surface,
+  shadowColor: '#101840',
+  shadowOpacity: 0.07,
+  shadowRadius: 3,
+  shadowOffset: { width: 0, height: 1 },
+  elevation: 1,
+} as const;
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.xl, paddingBottom: spacing.xxl },
-  flex: { flex: 1 },
-  profile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
+  flex: { flex: 1, minWidth: 0 },
+  pressed: { opacity: 0.7 },
+
+  bar: { backgroundColor: colors.background },
+  barRow: { height: 56, flexDirection: 'row', alignItems: 'center', paddingLeft: 18, paddingRight: 6, gap: 2 },
+  barTitle: { flex: 1, fontSize: 22, fontWeight: fontWeight.semibold, color: colors.text },
+  iconBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  dot: {
+    position: 'absolute',
+    top: 6,
+    right: 5,
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: md.onErrorC,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
-  name: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
-  muted: { fontSize: fontSize.small, color: colors.textMuted },
-  roleBadge: {
-    alignSelf: 'flex-start',
-    marginTop: spacing.sm,
-    paddingVertical: 3,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primarySoft,
-  },
-  roleText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.primaryDark },
-  section: { gap: spacing.sm },
-  sectionLabel: {
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.bold,
-    letterSpacing: 1.2,
-    color: colors.textMuted,
-    marginLeft: spacing.xs,
-  },
-  group: {
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  row: {
+  dotText: { fontSize: 10, fontWeight: fontWeight.bold, color: '#FFFFFF' },
+
+  content: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 28 },
+
+  profile: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    minHeight: 52,
+    gap: 14,
+    padding: 16,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    overflow: 'hidden',
   },
-  divider: { borderTopWidth: 1, borderTopColor: colors.border },
-  restart: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
-  pressed: { backgroundColor: colors.background },
-  rowIcon: { fontSize: 20 },
-  rowTitle: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
-  rowSubtitle: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
-  badge: {
+  // a lighter corner, like a gradient
+  profileGlow: {
+    position: 'absolute',
+    right: -60,
+    top: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { fontSize: 21, fontWeight: fontWeight.semibold, color: '#FFFFFF' },
+  name: { fontSize: 17, fontWeight: fontWeight.semibold, color: '#FFFFFF' },
+  email: { fontSize: 12.5, color: 'rgba(255,255,255,0.85)', marginTop: 1 },
+  roleBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
     paddingVertical: 3,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.warningSoft,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  badgeDanger: { backgroundColor: colors.dangerSoft },
-  badgeText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.warning },
-  badgeTextDanger: { color: colors.danger },
-  chevron: { fontSize: fontSize.heading, color: colors.textMuted },
+  roleText: { fontSize: 11, fontWeight: fontWeight.semibold, color: '#FFFFFF' },
+  keyBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  tiles: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  tile: {
+    ...card,
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 12,
+    paddingBottom: 10,
+    paddingHorizontal: 4,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  tileIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  tileText: { fontSize: 11, color: colors.text },
+  tileBadge: {
+    position: 'absolute',
+    top: 7,
+    right: 10,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: md.onErrorC,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileBadgeText: { fontSize: 10, fontWeight: fontWeight.bold, color: '#FFFFFF' },
+
+  sectionLabel: {
+    fontSize: 11.5,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 0.8,
+    color: colors.textMuted,
+    marginTop: 18,
+    marginBottom: 8,
+    marginHorizontal: 4,
+  },
+  group: { ...card, borderRadius: 18, overflow: 'hidden' },
+  divider: { borderTopWidth: 1, borderTopColor: md.surface2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 58, paddingLeft: 12, paddingRight: 10 },
+  rowIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  rowTitle: { fontSize: 14.5, fontWeight: '500', color: colors.text },
+  rowSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  pill: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+
+  seg: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: 12, backgroundColor: md.surface1 },
+  segItem: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 9 },
+  segOn: {
+    backgroundColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  segText: { fontSize: 12, fontWeight: fontWeight.semibold, color: colors.textMuted },
+  segTextOn: { color: md.onPrimaryC },
+
+  chipBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, backgroundColor: md.primaryC },
+  chipBtnText: { fontSize: 12, fontWeight: fontWeight.semibold, color: md.onPrimaryC },
+
+  signOut: {
+    marginTop: 20,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: md.outline,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    overflow: 'hidden',
+  },
+  signOutText: { fontSize: 14.5, fontWeight: fontWeight.semibold, color: md.onErrorC },
+  footer: { textAlign: 'center', fontSize: 11.5, color: colors.textMuted, marginTop: 12 },
 });

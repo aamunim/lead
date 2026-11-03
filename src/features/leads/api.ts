@@ -312,7 +312,7 @@ export const PAGE_SIZE = 30;
 export const MAX_MARK_ALL = 2000;
 
 /** Builds the leads query with search, quick filter and the full filters */
-function buildLeadQuery(options: LeadQuery, withCount: boolean) {
+function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only') {
   const {
     search = '',
     quick = 'all',
@@ -328,7 +328,10 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean) {
 
   let query = supabase
     .from('leads')
-    .select(LIST_SELECT + filterSelect(filters), withCount ? { count: 'exact' } : undefined)
+    .select(
+      withCount === 'only' ? 'id' + filterSelect(filters) : LIST_SELECT + filterSelect(filters),
+      withCount === 'only' ? { count: 'exact', head: true } : withCount ? { count: 'exact' } : undefined,
+    )
     .is('deleted_at', null);
 
   // Search by name, student ID, phone (any part, e.g. the last 4 digits), WhatsApp
@@ -484,6 +487,12 @@ export async function listLeads(
 
   const items = cleanRows(data);
   return { items, hasMore: items.length === PAGE_SIZE, total: count ?? null };
+}
+
+/** 🔢 How many leads match (the new list's chips show it), without loading them */
+export async function countLeads(options: LeadQuery): Promise<number | null> {
+  const { count, error } = await buildLeadQuery(options, 'only');
+  return error ? null : (count ?? null);
 }
 
 /** Every lead that matches (up to MAX_MARK_ALL), for "Mark all matching" */

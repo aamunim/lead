@@ -25,6 +25,8 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
 import { ResetPasswordSheet } from '@/features/users/ResetPasswordSheet';
+import { designOf, saveListDesign, type ListDesign } from '@/features/leads/design';
+import { ListDesignPicker } from '@/features/leads/ListDesignPicker';
 
 type Form = {
   fullName: string;
@@ -35,7 +37,9 @@ type Form = {
 
 export default function UserEditScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { profile: me, assignment } = useAuth();
+  const { profile: me, assignment, refreshProfile } = useAuth();
+  // 🎨 This person's Leads / Students list design (saved at once)
+  const [designBusy, setDesignBusy] = useState(false);
 
   const [user, setUser] = useState<UserRow | null>(null);
   const [roles, setRoles] = useState<RoleOption[]>([]);
@@ -279,6 +283,30 @@ export default function UserEditScreen() {
             value={form.teamLeadId}
             onChange={(v) => set('teamLeadId', v)}
             disabled={readOnly}
+          />
+        </View>
+      )}
+
+      {/* 🎨 List design on their phone */}
+      {!readOnly && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>List design</Text>
+          <Text style={styles.muted}>How the Leads and Students lists look on {isSelf ? 'your' : 'their'} phone</Text>
+          <ListDesignPicker
+            value={designOf(user.list_design)}
+            busy={designBusy}
+            onChange={async (next: ListDesign) => {
+              setDesignBusy(true);
+              try {
+                await saveListDesign(user.id, next);
+                setUser({ ...user, list_design: next });
+                if (isSelf) await refreshProfile();
+              } catch (e) {
+                Alert.alert('Could not change', e instanceof Error ? e.message : '');
+              } finally {
+                setDesignBusy(false);
+              }
+            }}
           />
         </View>
       )}
