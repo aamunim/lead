@@ -1,6 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
-import { Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import { makePassword, resetUserPassword } from '@/features/users/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';

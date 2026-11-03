@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import {
   autoCrop,
@@ -144,7 +145,7 @@ export function PassportEditor({
   const boxW = Math.round((boxH * width) / height);
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal visible transparent animationType="fade" onRequestClose={onCancel} bottomFill={colors.surface}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={saving ? undefined : onCancel} accessibilityLabel="Close" />
         <View style={styles.sheet}>

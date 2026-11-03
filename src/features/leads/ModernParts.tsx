@@ -1,4 +1,5 @@
-import { ActivityIndicator, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MIcon, md, type MIconName } from '@/features/home/md';
@@ -157,7 +158,7 @@ export type MenuItem = { icon: MIconName; label: string; hint?: string; onPress:
 
 export function ListMenu({ visible, items, onClose }: { visible: boolean; items: MenuItem[]; onClose: () => void }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} bottomFill="rgba(0,0,0,0.08)">
       <Pressable style={styles.menuBackdrop} onPress={onClose} accessibilityLabel="Close menu">
         <SafeAreaView edges={['top']}>
           <View style={styles.menu}>

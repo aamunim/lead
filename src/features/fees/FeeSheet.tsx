@@ -1,5 +1,6 @@
 import { router, type Href } from 'expo-router';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '@/shared/ui/Modal';
 
 import { useActivityLookups } from '@/features/activity/useLookups';
 import { FeeCard } from '@/features/fees/FeeCard';
