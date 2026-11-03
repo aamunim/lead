@@ -16,6 +16,8 @@ import { countNewFeedback, isDeveloper } from '@/features/feedback/api';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
+import { designOf, saveListDesign, type ListDesign } from '@/features/leads/design';
+import { ListDesignPicker } from '@/features/leads/ListDesignPicker';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
@@ -25,7 +27,7 @@ export default function MoreScreen() {
 }
 
 function PhoneMore() {
-  const { profile, session, hasPermission } = useAuth();
+  const { profile, session, hasPermission, refreshProfile } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [contactsAllowed, setContactsAllowed] = useState(false);
@@ -53,6 +55,20 @@ function PhoneMore() {
   const update = currentVersionInfo();
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'ready' | 'latest'>('idle');
   const [whatsNew, setWhatsNew] = useState(false);
+  // 🎨 Leads / Students list: the new design or the classic one
+  const [designBusy, setDesignBusy] = useState(false);
+  const pickDesign = async (next: ListDesign) => {
+    if (!profile?.id) return;
+    setDesignBusy(true);
+    try {
+      await saveListDesign(profile.id, next);
+      await refreshProfile();
+    } catch {
+      // stays as it was
+    } finally {
+      setDesignBusy(false);
+    }
+  };
 
   // 💬 The developer sees the inbox, with the new ones counted
   const [developer, setDeveloper] = useState(false);
@@ -258,6 +274,15 @@ function PhoneMore() {
         </View>
       )}
 
+      {/* 🎨 List design (Leads and Students tabs) */}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>LIST DESIGN</Text>
+        <View style={[styles.group, styles.designBox]}>
+          <Text style={styles.rowSubtitle}>How the Leads and Students lists look on your phone</Text>
+          <ListDesignPicker value={designOf(profile?.list_design)} onChange={pickDesign} busy={designBusy} />
+        </View>
+      </View>
+
       {/* About */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>ABOUT</Text>
@@ -423,6 +448,7 @@ const styles = StyleSheet.create({
   },
   roleText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.primaryDark },
   section: { gap: spacing.sm },
+  designBox: { padding: spacing.md, gap: spacing.sm },
   sectionLabel: {
     fontSize: fontSize.caption,
     fontWeight: fontWeight.bold,
