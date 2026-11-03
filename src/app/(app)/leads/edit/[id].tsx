@@ -34,6 +34,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
 import { VoiceNoteButton } from '@/features/voice/VoiceNote';
+import { PickNumberButtons } from '@/features/leads/PickNumber';
 
 type Option = { value: string; label: string; color?: string };
 
@@ -374,6 +375,13 @@ export default function LeadFormScreen() {
             error={errors.phone}
             keyboardType="phone-pad"
             placeholder="01711234567"
+          />
+          {/* 📇🕘 Or take it from the contacts / recent calls (the name too, if still empty) */}
+          <PickNumberButtons
+            onPick={({ number, name }) => {
+              set('phone', number);
+              if (name && !form.name.trim()) set('name', name);
+            }}
           />
 
           {/* WhatsApp: for leads with no phone, or a different WhatsApp number */}

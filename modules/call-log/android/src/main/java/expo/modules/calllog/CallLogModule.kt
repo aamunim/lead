@@ -83,6 +83,11 @@ class CallLogModule : Module() {
       CallLogStore.latestCallFor(context, number, sinceMs.toLong())
     }
 
+    // 🕘 New lead: the latest calls, one per number, newest first
+    AsyncFunction("recentCalls") { limit: Int ->
+      CallLogStore.recentCalls(context, limit)
+    }
+
     // For the note popup opened from a notification: one call by its call-log id
     AsyncFunction("callById") { id: String ->
       CallLogStore.callById(context, id)

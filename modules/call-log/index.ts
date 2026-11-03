@@ -99,6 +99,7 @@ type NativeCallLog = {
   removePending(ids: string[]): void;
   latestCallFor(number: string, sinceMs: number): Promise<DeviceCall | null>;
   callById(id: string): Promise<DeviceCall | null>;
+  recentCalls(limit: number): Promise<RecentCall[]>;
   markAppCall(number: string): void;
   setLeadDirectory(json: string): Promise<number>;
   clearLeadDirectory(): void;
@@ -199,6 +200,28 @@ export async function latestCallFor(number: string, sinceMs: number): Promise<De
     return await native.latestCallFor(number, sinceMs);
   } catch {
     return null;
+  }
+}
+
+/** 🕘 One recent call per number (newest first), for "new lead from a recent call" */
+export type RecentCall = {
+  number: string;
+  /** The name the phone shows for it (saved contacts), if any */
+  name: string | null;
+  direction: 'incoming' | 'outgoing' | 'missed' | 'rejected' | 'other';
+  durationSec: number;
+  calledAt: string;
+};
+
+/** true when this build can list recent calls (version 2.7 and later) */
+export const hasRecentCalls = has('recentCalls');
+
+export async function recentCalls(limit = 60): Promise<RecentCall[]> {
+  if (!has('recentCalls')) return [];
+  try {
+    return await native!.recentCalls(limit);
+  } catch {
+    return [];
   }
 }
 
