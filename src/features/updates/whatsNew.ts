@@ -8,6 +8,12 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-04-a',
+    date: '4 Nov 2026',
+    title: 'Fixed: tabs under the phone’s buttons',
+    items: ['🔧 On phones with ◁ ○ □ buttons, the tabs (and the bottom of other pages) now sit above the buttons'],
+  },
+  {
     key: '2026-11-03-e',
     date: '3 Nov 2026',
     title: 'Today on Home',

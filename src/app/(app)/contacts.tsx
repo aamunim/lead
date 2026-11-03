@@ -53,7 +53,6 @@ const RATINGS: Option[] = [
 ];
 
 export default function PhoneContactsScreen() {
-  const insets = useSafeAreaInsets();
 
   const [stage, setStage] = useState<Stage>('checking');
   const [error, setError] = useState<string | null>(null);
@@ -340,7 +339,7 @@ export default function PhoneContactsScreen() {
         getItemLayout={(_, index) => ({ length: ROW_HEIGHT, offset: ROW_HEIGHT * index, index })}
         initialNumToRender={20}
         windowSize={10}
-        contentContainerStyle={{ paddingBottom: 110 + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: 110 }}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -394,7 +393,7 @@ export default function PhoneContactsScreen() {
 
       {/* Save bar */}
       {selected.size > 0 && (
-        <View style={[styles.saveBar, { paddingBottom: insets.bottom + spacing.md }]}>
+        <View style={[styles.saveBar, { paddingBottom: spacing.md }]}>
           <Button title={`Save ${selected.size} as leads`} onPress={() => setSheetOpen(true)} fullWidth />
         </View>
       )}
