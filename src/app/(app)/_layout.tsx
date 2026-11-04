@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActivityTracker } from '@/features/activity/ActivityTracker';
 import { CrashScreen } from '@/features/feedback/CrashScreen';
+import { CallSyncGate } from '@/features/call-sync/CallSyncGate';
 import { PushSetup } from '@/features/notifications/PushSetup';
 import { WhatsNewOnUpdate } from '@/features/updates/WhatsNewSheet';
 import { colors, fontWeight } from '@/shared/theme';
@@ -66,7 +67,8 @@ export default function AppLayout() {
     <ActivityTracker>
       {/* Phone push: token, taps, app icon number */}
       <PushSetup />
-      {stack}
+      {/* 📞 Call log sync required by the Super Admin: no way in until it is on */}
+      <CallSyncGate>{stack}</CallSyncGate>
       {/* 🆕 After an update: what changed (once) */}
       <WhatsNewOnUpdate />
     </ActivityTracker>
