@@ -2713,6 +2713,10 @@ export type Database = {
       resubmit_admission: { Args: { p_lead: string; p_note?: string }; Returns: undefined }
       set_nu_admission_id: { Args: { p_lead: string; p_value: string }; Returns: undefined }
       set_student_ref: { Args: { p_lead: string; p_value: string }; Returns: string }
+      credit_streaks: { Args: never; Returns: { user_id: string; streak: number }[] }
+      credit_badges: { Args: { p_user: string }; Returns: Json }
+      team_credits: { Args: { p_from: string; p_to: string }; Returns: { user_id: string; total: number }[] }
+      save_credit_extras: { Args: { p_value: Json }; Returns: undefined }
       leaderboard: {
         Args: { p_from: string; p_to: string }
         Returns: { user_id: string; name: string | null; role_key: string; total: number; rank: number | null; hidden: boolean; team_lead_id: string | null }[]

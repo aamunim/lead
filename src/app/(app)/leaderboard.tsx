@@ -16,6 +16,9 @@ import {
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
   BOARD_PERIODS,
+  getBadges,
+  getStreaks,
+  type Badge,
   boardRange,
   getBreakdown,
   getLeaderboard,
@@ -68,6 +71,8 @@ export default function LeaderboardScreen() {
   const [period, setPeriod] = useState<BoardPeriod>('week');
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [prev, setPrev] = useState<Map<string, number>>(new Map());
+  // 🔥 days in a row
+  const [streaks, setStreaks] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +89,7 @@ export default function LeaderboardScreen() {
       ]);
       setRows(now);
       setPrev(new Map(before.filter((r) => r.rank != null).map((r) => [r.user_id, r.rank as number])));
+      getStreaks().then(setStreaks);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the leaderboard.');
     } finally {
@@ -184,6 +190,7 @@ export default function LeaderboardScreen() {
                         : ahead
                           ? `#${ahead.rank} ${(ahead.name ?? '').split(' ')[0]} is ${fmt(ahead.total - mine.total)} ahead`
                           : 'Your place'}
+                    {(streaks.get(mine.user_id) ?? 0) >= 2 ? `  ·  🔥 ${streaks.get(mine.user_id)} days in a row` : ''}
                   </Text>
                 </View>
                 <MIcon name="chevron-right" size={22} color="#FFFFFF" />
@@ -205,7 +212,12 @@ export default function LeaderboardScreen() {
                       <Text style={s.stepName} numberOfLines={1}>
                         {(r.name ?? 'No name').split(' ')[0]}
                       </Text>
-                      <Text style={s.stepPts}>{fmt(r.total)}</Text>
+                      <Text style={s.stepPts}>
+                        {fmt(r.total)}
+                        {(streaks.get(r.user_id) ?? 0) >= 2 ? (
+                          <Text style={s.fire}> 🔥{streaks.get(r.user_id)}</Text>
+                        ) : null}
+                      </Text>
                       <View
                         style={[s.block, { height: i === 1 ? 54 : i === 0 ? 38 : 26 }, r.user_id === me && s.blockMe]}
                       />
@@ -220,7 +232,14 @@ export default function LeaderboardScreen() {
             {/* Everyone else */}
             <View style={s.list}>
               {rest.map((r) => (
-                <Row key={r.user_id} r={r} me={r.user_id === me} move={move(r)} onPress={() => tap(r)} />
+                <Row
+                  key={r.user_id}
+                  r={r}
+                  me={r.user_id === me}
+                  move={move(r)}
+                  streak={streaks.get(r.user_id) ?? 0}
+                  onPress={() => tap(r)}
+                />
               ))}
               {ranked.length === 0 && <Text style={[s.muted, s.pad]}>Nobody has credits in this period yet.</Text>}
             </View>
@@ -230,7 +249,14 @@ export default function LeaderboardScreen() {
                 <Text style={s.label}>LEFT OUT (ONLY YOU SEE THIS)</Text>
                 <View style={s.list}>
                   {hidden.map((r) => (
-                    <Row key={r.user_id} r={r} me={r.user_id === me} move={null} onPress={() => tap(r)} />
+                    <Row
+                      key={r.user_id}
+                      r={r}
+                      me={r.user_id === me}
+                      move={null}
+                      streak={streaks.get(r.user_id) ?? 0}
+                      onPress={() => tap(r)}
+                    />
                   ))}
                 </View>
               </>
@@ -260,7 +286,19 @@ export default function LeaderboardScreen() {
   );
 }
 
-function Row({ r, me, move, onPress }: { r: BoardRow; me: boolean; move: number | null; onPress: () => void }) {
+function Row({
+  r,
+  me,
+  move,
+  streak,
+  onPress,
+}: {
+  r: BoardRow;
+  me: boolean;
+  move: number | null;
+  streak: number;
+  onPress: () => void;
+}) {
   return (
     <Pressable onPress={onPress} android_ripple={{ color: md.ripple }} style={[s.row, me && s.rowMe]}>
       <Text style={s.rank}>{r.rank ?? '—'}</Text>
@@ -271,6 +309,7 @@ function Row({ r, me, move, onPress }: { r: BoardRow; me: boolean; move: number 
         <Text style={s.name} numberOfLines={1}>
           {r.name ?? 'No name'}
           {me ? ' (you)' : ''}
+          {streak >= 2 ? <Text style={s.fire}> 🔥{streak}</Text> : null}
         </Text>
         <Text style={s.role}>{ROLE[r.role_key] ?? r.role_key}</Text>
       </View>
@@ -308,6 +347,11 @@ function BreakdownSheet({
   const [pts, setPts] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [badges, setBadges] = useState<{ streak: number; badges: Badge[] } | null>(null);
+
+  useEffect(() => {
+    getBadges(row.user_id).then(setBadges);
+  }, [row.user_id]);
 
   useEffect(() => {
     getBreakdown(row.user_id, from, to)
@@ -351,6 +395,26 @@ function BreakdownSheet({
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={s.sheetBody} keyboardShouldPersistTaps="handled">
+            {/* 🔥 streak and 🎖 badges */}
+            {!!badges && (badges.streak > 0 || badges.badges.length > 0) && (
+              <View style={s.badges}>
+                {badges.streak > 0 && (
+                  <View style={[s.badge, s.badgeOn]}>
+                    <Text style={s.badgeIcon}>🔥</Text>
+                    <Text style={s.badgeText}>{badges.streak} days in a row</Text>
+                  </View>
+                )}
+                {badges.badges.map((b) => (
+                  <View key={b.key} style={[s.badge, b.count > 0 ? s.badgeOn : s.badgeOff]}>
+                    <Text style={s.badgeIcon}>{b.icon}</Text>
+                    <Text style={s.badgeText} numberOfLines={2}>
+                      {b.label}
+                      {b.count > 1 ? ` ×${b.count}` : ''}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
             {err ? (
               <Text style={s.muted}>{err}</Text>
             ) : !list ? (
@@ -448,6 +512,21 @@ function BreakdownSheet({
 }
 
 const s = StyleSheet.create({
+  fire: { fontSize: 12, fontWeight: fontWeight.bold, color: '#C2410C' },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
+  badge: {
+    width: '31.5%',
+    flexGrow: 1,
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+  },
+  badgeOn: { backgroundColor: '#FFF4D6' },
+  badgeOff: { backgroundColor: md.surface1, opacity: 0.45 },
+  badgeIcon: { fontSize: 20 },
+  badgeText: { fontSize: 11, textAlign: 'center', color: colors.text, fontWeight: fontWeight.semibold },
   screen: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1, minWidth: 0 },
   content: { padding: 14, paddingBottom: 40, gap: 12 },

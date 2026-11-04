@@ -14,6 +14,7 @@ import {
 import { useAuth } from '@/features/auth/AuthProvider';
 import { WebTeamActivity } from '@/features/web/activity/WebTeamActivity';
 import { ExportWorkSheet } from '@/features/activity/ExportWorkSheet';
+import { getTeamCredits } from '@/features/credits/api';
 import { isWeb } from '@/features/web/api';
 import {
   ACTIVITY_PERIODS,
@@ -91,6 +92,8 @@ function TeamActivityScreen() {
   const [sort, setSort] = useState<Sort>('name');
   const [rows, setRows] = useState<TeamMember[]>([]);
   const [exporting, setExporting] = useState(false);
+  // 🏆 credits in the period
+  const [credits, setCredits] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +116,7 @@ function TeamActivityScreen() {
     try {
       setError(null);
       setRows(await listTeamActivity(from, to));
+      getTeamCredits(from, to).then(setCredits);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the activity.');
     } finally {
@@ -274,6 +278,7 @@ function TeamActivityScreen() {
                   <Stat value={`➕${m.leads_added ?? 0}`} label="leads" />
                 </Pressable>
                 <Stat value={String(m.admitted)} label="🎓" />
+                {credits.size > 0 && <Stat value={`⭐${Math.round(credits.get(m.user_id) ?? 0)}`} label="credits" />}
               </View>
 
               <Text style={styles.meta}>
