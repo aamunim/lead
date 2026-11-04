@@ -23,6 +23,7 @@ import { countPendingUsers } from '@/features/users/api';
 import { MIcon, Tap, md, type MIconName } from '@/features/home/md';
 import { TodayStats } from '@/features/home/TodayStats';
 import { RankCard } from '@/features/credits/RankCard';
+import { StreakChip } from '@/features/credits/StreakChip';
 import { colors, fontSize, fontWeight } from '@/shared/theme';
 import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
 
@@ -180,6 +181,7 @@ function PhoneHome() {
               {APP_COLLEGE}
             </Text>
           </View>
+          <StreakChip />
           <Tap
             onPress={() => router.push('/notifications' as Href)}
             style={styles.iconBtn}

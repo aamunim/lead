@@ -242,11 +242,102 @@ export async function getStreaks(): Promise<Map<string, number>> {
 
 export type Badge = { key: string; icon: string; label: string; count: number };
 
-export async function getBadges(userId: string): Promise<{ streak: number; badges: Badge[] } | null> {
+export type BadgeInfo = { streak: number; best_streak: number; level: Level | null; badges: Badge[] };
+
+export async function getBadges(userId: string): Promise<BadgeInfo | null> {
   const { data, error } = await supabase.rpc('credit_badges', { p_user: userId });
   if (error || !data) return null;
-  const d = data as unknown as { streak: number; badges: Badge[] };
-  return { streak: Number(d.streak ?? 0), badges: (d.badges ?? []).map((b) => ({ ...b, count: Number(b.count) })) };
+  const d = data as unknown as { streak: number; best_streak?: number; level?: unknown; badges: Badge[] };
+  return {
+    streak: Number(d.streak ?? 0),
+    best_streak: Number(d.best_streak ?? 0),
+    level: toLevel(d.level),
+    badges: (d.badges ?? []).map((b) => ({ ...b, count: Number(b.count) })),
+  };
+}
+
+// ---------------------------------------------------------------------
+// 🏅 Milestones (levels by all-time credits) and your own 🔥 streak
+// ---------------------------------------------------------------------
+export type Milestone = { at: number; icon: string; name: string };
+
+export const DEFAULT_MILESTONES: Milestone[] = [
+  { at: 100, icon: '🌱', name: 'Starter' },
+  { at: 500, icon: '🥉', name: 'Bronze' },
+  { at: 1000, icon: '🥈', name: 'Silver' },
+  { at: 2500, icon: '🥇', name: 'Gold' },
+  { at: 5000, icon: '💎', name: 'Platinum' },
+  { at: 10000, icon: '💠', name: 'Diamond' },
+  { at: 20000, icon: '🏅', name: 'Master' },
+  { at: 35000, icon: '🎖', name: 'Grand Master' },
+  { at: 50000, icon: '👑', name: 'Champion' },
+  { at: 100000, icon: '🏆', name: 'Legend' },
+];
+
+export type Level = {
+  user_id: string;
+  lifetime: number;
+  level: number; // 0 = none yet
+  icon: string | null;
+  name: string | null;
+  at: number | null;
+  next_at: number | null;
+  next_icon: string | null;
+  next_name: string | null;
+};
+
+function toLevel(v: unknown): Level | null {
+  if (!v || typeof v !== 'object') return null;
+  const r = v as Record<string, unknown>;
+  const num = (x: unknown) => (x == null ? null : Number(x));
+  return {
+    user_id: String(r.user_id ?? ''),
+    lifetime: Number(r.lifetime ?? 0),
+    level: Number(r.level ?? 0),
+    icon: (r.icon as string) ?? null,
+    name: (r.name as string) ?? null,
+    at: num(r.at),
+    next_at: num(r.next_at),
+    next_icon: (r.next_icon as string) ?? null,
+    next_name: (r.next_name as string) ?? null,
+  };
+}
+
+/** 0..1 of the way from this level to the next (1 at the top level). */
+export function levelProgress(l: Level): number {
+  if (l.next_at == null) return 1;
+  const from = l.at ?? 0;
+  const span = l.next_at - from;
+  return span > 0 ? Math.max(0, Math.min(1, (l.lifetime - from) / span)) : 0;
+}
+
+export async function getLevels(): Promise<Map<string, Level>> {
+  const { data, error } = await supabase.rpc('credit_levels');
+  if (error) return new Map();
+  return new Map(
+    ((data ?? []) as unknown[])
+      .map((r) => toLevel(r)!)
+      .filter(Boolean)
+      .map((l) => [l.user_id, l] as const),
+  );
+}
+
+export type Me = { streak: number; enabled: boolean; level: Level | null };
+
+// The Home bar and the rank card both ask; one call per 30 seconds is enough.
+let meCache: { at: number; p: Promise<Me | null> } | null = null;
+
+export function getMe(force = false): Promise<Me | null> {
+  if (!force && meCache && Date.now() - meCache.at < 30_000) return meCache.p;
+  const p = (async () => {
+    const { data, error } = await supabase.rpc('credit_me');
+    if (error || !data) return null;
+    const d = data as unknown as { streak: number; enabled: boolean; level: unknown };
+    return { streak: Number(d.streak ?? 0), enabled: d.enabled !== false, level: toLevel(d.level) };
+  })();
+  meCache = { at: Date.now(), p };
+  p.catch(() => (meCache = null));
+  return p;
 }
 
 export async function getTeamCredits(from: string, to: string): Promise<Map<string, number>> {
@@ -261,6 +352,7 @@ export type CreditExtras = {
   nudge: { on: boolean; hour: number; gap: number };
   streak_min: number;
   badges: boolean;
+  milestones: Milestone[];
 };
 
 export const DEFAULT_EXTRAS: CreditExtras = {
@@ -269,6 +361,7 @@ export const DEFAULT_EXTRAS: CreditExtras = {
   nudge: { on: true, hour: 16, gap: 50 },
   streak_min: 50,
   badges: true,
+  milestones: DEFAULT_MILESTONES,
 };
 
 export async function getCreditExtras(): Promise<CreditExtras> {
@@ -280,6 +373,9 @@ export async function getCreditExtras(): Promise<CreditExtras> {
     nudge: { ...DEFAULT_EXTRAS.nudge, ...(v.nudge ?? {}) },
     streak_min: v.streak_min ?? DEFAULT_EXTRAS.streak_min,
     badges: v.badges ?? DEFAULT_EXTRAS.badges,
+    milestones: Array.isArray(v.milestones)
+      ? v.milestones.map((m) => ({ at: Number(m.at), icon: String(m.icon ?? ''), name: String(m.name ?? '') }))
+      : DEFAULT_MILESTONES,
   };
 }
 

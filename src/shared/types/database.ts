@@ -2715,6 +2715,21 @@ export type Database = {
       set_student_ref: { Args: { p_lead: string; p_value: string }; Returns: string }
       credit_streaks: { Args: never; Returns: { user_id: string; streak: number }[] }
       credit_badges: { Args: { p_user: string }; Returns: Json }
+      credit_me: { Args: never; Returns: Json }
+      credit_levels: {
+        Args: never;
+        Returns: {
+          user_id: string;
+          lifetime: number;
+          level: number;
+          icon: string | null;
+          name: string | null;
+          at: number | null;
+          next_at: number | null;
+          next_icon: string | null;
+          next_name: string | null;
+        }[];
+      }
       team_credits: { Args: { p_from: string; p_to: string }; Returns: { user_id: string; total: number }[] }
       save_credit_extras: { Args: { p_value: Json }; Returns: undefined }
       leaderboard: {

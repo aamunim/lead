@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-14-a',
+    date: '14 Nov 2026',
+    title: '🏅 Levels, 14 badges and your streak on Home',
+    items: [
+      '🔥 Your streak and level at the very top of Home (tap = the leaderboard), even when you are left out of the leaderboard',
+      '🏅 10 levels by all your credits: 🌱 Starter 100 · 🥉 Bronze 500 · 🥈 Silver 1,000 · 🥇 Gold 2,500 · 💎 Platinum 5,000 · 💠 Diamond 10,000 · 🏅 Master 20,000 · 🎖 Grand Master 35,000 · 👑 Champion 50,000 · 🏆 Legend 100,000',
+      '📈 Home shows how far you are to the next level, and you get a notice when you reach one',
+      '🎖 9 new badges: 🎯 50 talked a day · ⚡ new lead called in 10 min · 🆕 10 leads · 📝 30 notes · 💬 50 WhatsApp · 🏫 5 visits a week · 💵 ৳50,000 a week · 🔥 7 and ☄️ 30 days in a row',
+      '⚙️ Admins: Settings → Credits & leaderboard → Milestones to change the levels',
+    ],
+  },
+  {
     key: '2026-11-13-a',
     date: '13 Nov 2026',
     title: '🔥 Streaks, badges and leaderboard news',

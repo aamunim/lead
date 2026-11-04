@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
-import { boardRange, getLeaderboard } from '@/features/credits/api';
+import { boardRange, getLeaderboard, getMe, levelProgress, type Level } from '@/features/credits/api';
 import { MIcon, Tap, md } from '@/features/home/md';
 import { colors, fontWeight } from '@/shared/theme';
 
@@ -13,10 +13,14 @@ export function RankCard() {
   const [line, setLine] = useState<{ rank: number | null; total: number; move: number | null; of: number } | null>(
     null,
   );
+  const [level, setLevel] = useState<Level | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       if (!profile?.id) return;
+      getMe()
+        .then((m) => setLevel(m?.enabled ? (m.level ?? null) : null))
+        .catch(() => setLevel(null));
       const r = boardRange('week');
       Promise.all([getLeaderboard(r.from, r.to), r.prev ? getLeaderboard(r.prev.from, r.prev.to) : Promise.resolve([])])
         .then(([now, before]) => {
@@ -34,23 +38,40 @@ export function RankCard() {
     }, [profile?.id]),
   );
 
-  if (!line) return null;
+  if (!line && !level) return null;
+  const n = (x: number) => Math.round(x).toLocaleString('en-IN');
   return (
     <Tap onPress={() => router.push('/leaderboard' as Href)} style={styles.card} label="Leaderboard">
-      <Text style={styles.cup}>🏆</Text>
+      <Text style={styles.cup}>{level?.icon ?? '🏆'}</Text>
       <View style={styles.flex}>
-        <Text style={styles.title}>
-          {line.rank ? `#${line.rank} of ${line.of} this week` : 'This week'} ·{' '}
-          {Math.round(line.total).toLocaleString('en-IN')} credits
-          {line.move ? (
-            <Text style={{ color: line.move > 0 ? md.onOkC : md.onErrorC }}>
-              {'  '}
-              {line.move > 0 ? '▲' : '▼'}
-              {Math.abs(line.move)}
+        {line ? (
+          <Text style={styles.title}>
+            {line.rank ? `#${line.rank} of ${line.of} this week` : 'This week'} ·{' '}
+            {Math.round(line.total).toLocaleString('en-IN')} credits
+            {line.move ? (
+              <Text style={{ color: line.move > 0 ? md.onOkC : md.onErrorC }}>
+                {'  '}
+                {line.move > 0 ? '▲' : '▼'}
+                {Math.abs(line.move)}
+              </Text>
+            ) : null}
+          </Text>
+        ) : null}
+        {level ? (
+          <>
+            <Text style={line ? styles.sub : styles.title} numberOfLines={1}>
+              {level.name ? `${level.icon} ${level.name}` : 'No level yet'} · {n(level.lifetime)}
+              {level.next_at != null
+                ? ` / ${n(level.next_at)} → ${level.next_icon ?? ''} ${level.next_name ?? ''}`
+                : ' credits · top level!'}
             </Text>
-          ) : null}
-        </Text>
-        <Text style={styles.sub}>{line.rank === 1 ? 'You are at the top! 🥇' : 'Tap to see the leaderboard'}</Text>
+            <View style={styles.track}>
+              <View style={[styles.fill, { width: `${Math.round(levelProgress(level) * 100)}%` }]} />
+            </View>
+          </>
+        ) : (
+          <Text style={styles.sub}>{line?.rank === 1 ? 'You are at the top! 🥇' : 'Tap to see the leaderboard'}</Text>
+        )}
       </View>
       <MIcon name="chevron-right" size={22} color={colors.textMuted} />
     </Tap>
@@ -73,4 +94,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   title: { fontSize: 14, fontWeight: fontWeight.semibold, color: colors.text },
   sub: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  track: { height: 6, borderRadius: 3, backgroundColor: 'rgba(122,75,0,0.15)', marginTop: 6, overflow: 'hidden' },
+  fill: { height: 6, borderRadius: 3, backgroundColor: '#E8A100' },
 });
