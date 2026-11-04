@@ -230,3 +230,60 @@ export function boardRange(
       return { from: '2020-01-01', to: ymd(now), prev: null };
   }
 }
+
+// ---------------------------------------------------------------------
+// 🔥 Streaks, 🎖 badges, credits in Team activity, notification settings
+// ---------------------------------------------------------------------
+export async function getStreaks(): Promise<Map<string, number>> {
+  const { data, error } = await supabase.rpc('credit_streaks');
+  if (error) return new Map();
+  return new Map(((data ?? []) as { user_id: string; streak: number }[]).map((r) => [r.user_id, Number(r.streak)]));
+}
+
+export type Badge = { key: string; icon: string; label: string; count: number };
+
+export async function getBadges(userId: string): Promise<{ streak: number; badges: Badge[] } | null> {
+  const { data, error } = await supabase.rpc('credit_badges', { p_user: userId });
+  if (error || !data) return null;
+  const d = data as unknown as { streak: number; badges: Badge[] };
+  return { streak: Number(d.streak ?? 0), badges: (d.badges ?? []).map((b) => ({ ...b, count: Number(b.count) })) };
+}
+
+export async function getTeamCredits(from: string, to: string): Promise<Map<string, number>> {
+  const { data, error } = await supabase.rpc('team_credits', { p_from: from, p_to: to });
+  if (error) return new Map();
+  return new Map(((data ?? []) as { user_id: string; total: number }[]).map((r) => [r.user_id, Number(r.total)]));
+}
+
+export type CreditExtras = {
+  winner: { on: boolean; dow: number; hour: number };
+  rank: { on: boolean };
+  nudge: { on: boolean; hour: number; gap: number };
+  streak_min: number;
+  badges: boolean;
+};
+
+export const DEFAULT_EXTRAS: CreditExtras = {
+  winner: { on: true, dow: 5, hour: 14 },
+  rank: { on: true },
+  nudge: { on: true, hour: 16, gap: 50 },
+  streak_min: 50,
+  badges: true,
+};
+
+export async function getCreditExtras(): Promise<CreditExtras> {
+  const { data } = await supabase.from('app_settings').select('value').eq('key', 'credit_extras').maybeSingle();
+  const v = (data?.value ?? {}) as Partial<CreditExtras>;
+  return {
+    winner: { ...DEFAULT_EXTRAS.winner, ...(v.winner ?? {}) },
+    rank: { ...DEFAULT_EXTRAS.rank, ...(v.rank ?? {}) },
+    nudge: { ...DEFAULT_EXTRAS.nudge, ...(v.nudge ?? {}) },
+    streak_min: v.streak_min ?? DEFAULT_EXTRAS.streak_min,
+    badges: v.badges ?? DEFAULT_EXTRAS.badges,
+  };
+}
+
+export async function saveCreditExtras(x: CreditExtras): Promise<void> {
+  const { error } = await supabase.rpc('save_credit_extras', { p_value: x as unknown as Json });
+  if (error) throw new Error(error.message);
+}

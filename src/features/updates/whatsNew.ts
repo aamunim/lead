@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-13-a',
+    date: '13 Nov 2026',
+    title: '🔥 Streaks, badges and leaderboard news',
+    items: [
+      '👑 Every Friday at 2 PM: the winner of the week, and your own place',
+      '🥇 “You are now #2!” when you get into the top 3 · 💪 “Only 25 credits to #3” in the afternoon',
+      '🔥 Days in a row with enough credits, next to your name on the leaderboard',
+      '🎖 Badges: 💯 100 calls a day · 🎓 5 admitted a week · ⏱ 2 hours of talk · 🌅 first call before 9 AM · 👑 winner',
+      '⭐ Credits in Team activity',
+    ],
+  },
+  {
     key: '2026-11-12-a',
     date: '12 Nov 2026',
     title: '🏆 Credits and the leaderboard',

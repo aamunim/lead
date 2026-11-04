@@ -16,6 +16,7 @@ import {
 } from '@/features/activity/api';
 import { writeAndShareSpreadsheet } from '@/features/import-export/excel';
 import { ExportWorkSheet } from '@/features/activity/ExportWorkSheet';
+import { getTeamCredits } from '@/features/credits/api';
 import { CellText, Chips, Tool, WebTable, webPage, type WebCol } from '@/features/web/WebTable';
 import { colors, fontSize, fontWeight } from '@/shared/theme';
 
@@ -75,6 +76,7 @@ export function WebTeamActivity() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [credits, setCredits] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     getActivitySettings()
@@ -95,6 +97,7 @@ export function WebTeamActivity() {
       ]);
       const b = new Map(before.map((x) => [x.user_id, x]));
       setRows(now.map((x) => ({ ...x, before: b.get(x.user_id) ?? null })));
+      getTeamCredits(range.from, range.to).then(setCredits);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load.');
     } finally {
@@ -221,6 +224,15 @@ export function WebTeamActivity() {
       render: (r) => <Num v={r.admitted} before={r.before?.admitted} />,
       sortValue: (r) => r.admitted,
       text: (r) => r.admitted,
+    },
+    {
+      key: 'credits',
+      label: 'Credits',
+      width: 96,
+      align: 'right',
+      render: (r) => <CellText bold>{`⭐ ${Math.round(credits.get(r.user_id) ?? 0)}`}</CellText>,
+      sortValue: (r) => credits.get(r.user_id) ?? 0,
+      text: (r) => Math.round(credits.get(r.user_id) ?? 0),
     },
     {
       key: 'span',

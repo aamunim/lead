@@ -21,7 +21,8 @@ export type NotificationKind =
   | 'discount'
   | 'payment'
   | 'feedback'
-  | 'scorecard';
+  | 'scorecard'
+  | 'leaderboard';
 
 export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; text: string }[] = [
   { kind: 'assigned', icon: '👥', title: 'Lead given to you', text: 'Someone hands you a lead (with their note)' },
@@ -34,6 +35,12 @@ export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; t
   { kind: 'sync_nudge', icon: '📞', title: 'Turn on call sync', text: 'When an admin sends the reminder' },
   { kind: 'missed_call', icon: '📵', title: 'Missed call from a lead', text: 'To the lead’s person, when another phone missed it' },
   { kind: 'discount', icon: '💰', title: 'Discounts', text: 'Requests to approve, answers, and approved ones running out' },
+  {
+    kind: 'leaderboard',
+    icon: '🏆',
+    title: 'Leaderboard',
+    text: 'Friday’s winner, “you are now #2”, “only 25 credits to #3”',
+  },
   { kind: 'scorecard', icon: '🏁', title: 'Weekly scorecard', text: 'Sunday morning: last week’s totals, to admins' },
   { kind: 'feedback', icon: '💬', title: 'Contact developer', text: 'An answer to your message; new messages to the developer' },
   { kind: 'payment', icon: '📅', title: 'Installments', text: 'Before and on the date; late ones to Team Lead and admins' },
@@ -60,6 +67,7 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
     payment: true,
     feedback: true,
     scorecard: true,
+    leaderboard: true,
   },
   assigned_in_quiet_hours: true,
 };
