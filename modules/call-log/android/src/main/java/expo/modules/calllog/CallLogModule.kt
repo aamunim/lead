@@ -17,6 +17,33 @@ class CallLogModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("CallLog")
 
+    // 💥 Android-side crashes are written down, the app sends them next time
+    OnCreate {
+      appContext.reactContext?.let { NativeCrash.install(it) }
+    }
+
+    Function("takeNativeCrashes") {
+      NativeCrash.take(context)
+    }
+
+    // 👥 Contact groups / labels
+    AsyncFunction("getContactGroups") {
+      ContactGroups.groups(context)
+    }
+
+    AsyncFunction("getGroupContactIds") { groupIds: List<String> ->
+      ContactGroups.contactIds(context, groupIds)
+    }
+
+    // 📵 Call lock (the server address, the public key and this phone's key)
+    Function("setCallLock") { url: String?, anonKey: String?, deviceKey: String?, enabled: Boolean ->
+      CallLock.configure(context, url, anonKey, deviceKey, enabled)
+    }
+
+    Function("getCallLock") {
+      CallLock.status(context)
+    }
+
     // One id per app install
     Function("getDeviceId") {
       CallLogStore.deviceId(context)

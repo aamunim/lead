@@ -2500,6 +2500,13 @@ export type Database = {
       }
       crash_inbox: { Args: never; Returns: Json }
       solve_crash: { Args: { p_id: string; p_solved?: boolean }; Returns: undefined }
+      start_call_lock: { Args: { p_lead: string; p_channel?: string; p_force?: boolean }; Returns: Json }
+      end_call_lock: { Args: { p_lead?: string | null }; Returns: undefined }
+      active_call_locks: {
+        Args: { p_leads: string[] }
+        Returns: { lead_id: string; user_id: string; user_name: string | null; started_at: string; channel: string }[]
+      }
+      register_call_lock_device: { Args: { p_key: string }; Returns: undefined }
       answer_feedback: { Args: { p_id: string; p_status: string; p_reply: string }; Returns: undefined }
       feedback_inbox: {
         Args: never

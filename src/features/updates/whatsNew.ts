@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-17-a',
+    date: '17 Nov 2026',
+    title: '📲 App 2.8.0',
+    items: [
+      '📵 Call lock: while someone is on a call with a lead, others can’t call it (“🚫 Rahim is on a call”); the cards show who is on a call',
+      '👥 Phone contacts: pick a group or label from your phone (Family, Students 2025…) and save all of it as leads',
+      '📕 Export my work as PDF',
+      '📸 Tap any screen with three fingers to send a picture of it to the developer',
+      '💥 Crashes in the phone part of the app now reach the developer too',
+    ],
+  },
+  {
     key: '2026-11-16-a',
     date: '16 Nov 2026',
     title: '💬 Contact developer: pictures, voice and crashes',

@@ -631,6 +631,8 @@ export function LeadDetailView({
         return 'Lead deleted';
       case 'restored':
         return 'Lead restored';
+      case 'call_lock_override':
+        return `📵 Called anyway · ${String(d.other_name ?? 'someone').split(' ')[0]} was on a call with the lead`;
       case 'double_call':
         return `⚠️ Called anyway · ${String(d.other_name ?? 'someone').split(' ')[0]} ${d.kind === 'note' ? 'wrote a note' : d.kind === 'voice' ? 'left a voice note' : 'called'} ${Number(d.minutes ?? 0)} min before`;
       default:

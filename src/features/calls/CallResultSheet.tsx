@@ -38,6 +38,7 @@ import {
 } from '@/features/calls/api';
 import { cancelFollowUp, followUpPresets, formatDue, scheduleFollowUp } from '@/features/follow-ups/api';
 import { updateLead, type Rating } from '@/features/leads/api';
+import { endCallLock } from '@/features/calls/callLock';
 import { reopenLead } from '@/features/pipeline/api';
 import { listHolidays, type Holiday } from '@/features/settings/api';
 import { supabase } from '@/shared/lib/supabase';
@@ -133,6 +134,10 @@ export function CallResultSheet({
   onSaved,
 }: Props) {
   const isWa = channel === 'whatsapp' || !!waEvent;
+  // 📵 Back from the call: the lead is free for others again
+  useEffect(() => {
+    if (visible && !deviceCallId && !waEvent) endCallLock(lead.id);
+  }, [visible, lead.id, deviceCallId, waEvent]);
   const [waMedia, setWaMedia] = useState<WhatsAppMedia | null>(null);
   const [waDirection, setWaDirection] = useState<'outgoing' | 'incoming'>('outgoing');
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);

@@ -119,6 +119,12 @@ type NativeCallLog = {
   removeWhatsAppPending(ids: string[]): void;
   whatsAppEventById(id: string): WhatsAppDeviceEvent | null;
   clearWhatsApp(): void;
+  // 2.8.0
+  takeNativeCrashes(): string;
+  getContactGroups(): Promise<string>;
+  getGroupContactIds(groupIds: string[]): Promise<string[]>;
+  setCallLock(url: string | null, anonKey: string | null, deviceKey: string | null, enabled: boolean): void;
+  getCallLock(): { enabled: boolean; hasKey: boolean };
 };
 
 // Missing in Expo Go and on iPhone; everything below then quietly does nothing.
@@ -344,4 +350,47 @@ export function whatsAppEventById(id: string): WhatsAppDeviceEvent | null {
 
 export function clearWhatsApp(): void {
   if (has('clearWhatsApp')) native!.clearWhatsApp();
+}
+
+// =====================================================================
+// 2.8.0: 💥 Android crashes · 👥 contact groups · 📵 call lock
+// =====================================================================
+export type NativeCrashItem = { name: string; message: string; stack: string; thread: string; at: number };
+
+/** Crashes in the Android part since the last time (and they are cleared) */
+export function takeNativeCrashes(): NativeCrashItem[] {
+  if (!has('takeNativeCrashes')) return [];
+  try {
+    return JSON.parse(native!.takeNativeCrashes()) as NativeCrashItem[];
+  } catch {
+    return [];
+  }
+}
+
+export type ContactGroup = { key: string; title: string; count: number; ids: string[] };
+
+export const hasContactGroups = has('getContactGroups');
+
+export async function getContactGroups(): Promise<ContactGroup[]> {
+  if (!hasContactGroups) return [];
+  try {
+    return JSON.parse(await native!.getContactGroups()) as ContactGroup[];
+  } catch {
+    return [];
+  }
+}
+
+export async function getGroupContactIds(groupIds: string[]): Promise<string[]> {
+  if (!has('getGroupContactIds')) return [];
+  try {
+    return await native!.getGroupContactIds(groupIds);
+  } catch {
+    return [];
+  }
+}
+
+export const hasNativeCallLock = has('setCallLock');
+
+export function setNativeCallLock(url: string | null, anonKey: string | null, deviceKey: string | null, enabled: boolean): void {
+  if (hasNativeCallLock) native!.setCallLock(url, anonKey, deviceKey, enabled);
 }

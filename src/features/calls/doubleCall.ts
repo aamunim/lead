@@ -1,6 +1,7 @@
 import { Alert } from 'react-native';
 
 import { formatDuration, outcomeInfo } from '@/features/calls/api';
+import { confirmLock, endCallLock } from '@/features/calls/callLock';
 import { getSetting, updateSetting } from '@/features/settings/api';
 import { supabase } from '@/shared/lib/supabase';
 import type { Json } from '@/shared/types/database';
@@ -93,6 +94,14 @@ const firstName = (n: string | null) => (n ?? '').trim().split(' ')[0] || 'Someo
  * onRead: "Read notes" (show the lead's last calls and notes).
  */
 export async function confirmCall(leadId: string, onRead?: () => void): Promise<boolean> {
+  // 📵 Someone is on a call with this lead right now: stop (or ask) first
+  if (!(await confirmLock(leadId, 'phone'))) return false;
+  const go = await askDoubleCall(leadId, onRead);
+  if (!go) endCallLock(leadId); // not calling after all: the lead is free again
+  return go;
+}
+
+async function askDoubleCall(leadId: string, onRead?: () => void): Promise<boolean> {
   const r = await recentContact(leadId);
   if (!r) return true;
 

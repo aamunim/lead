@@ -18,6 +18,22 @@ import android.telephony.TelephonyManager
 class CallEndReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
+    NativeCrash.install(context)
+
+    // 📵 Call lock: answered lead call → "on call"; any call over → free again
+    try {
+      when (intent.getStringExtra(TelephonyManager.EXTRA_STATE)) {
+        @Suppress("DEPRECATION")
+        TelephonyManager.EXTRA_STATE_RINGING ->
+          intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)?.let { CallLock.onRinging(context, it) }
+        TelephonyManager.EXTRA_STATE_OFFHOOK -> CallLock.onOffhook(context, this)
+        TelephonyManager.EXTRA_STATE_IDLE -> CallLock.onIdle(context, this)
+        else -> Unit
+      }
+    } catch (_: Throwable) {
+      // never crash while a call rings or ends
+    }
+
     if (!CallLogStore.isEnabled(context)) return
 
     when (intent.getStringExtra(TelephonyManager.EXTRA_STATE)) {

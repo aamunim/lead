@@ -2,13 +2,13 @@
   "expo": {
     "name": "ITTC Admission",
     "slug": "lead-management",
-    "version": "2.7.0",
+    "version": "2.8.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "leadmanagement",
     "userInterfaceStyle": "automatic",
     "owner": "ittc.lead",
-    "runtimeVersion": "2",
+    "runtimeVersion": "3",
     "updates": {
       "url": "https://u.expo.dev/e1dd018b-e4a5-496c-adc3-0c4acb50f8f6",
       "checkAutomatically": "ON_LOAD",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.abamunim.leads",
-      "versionCode": 21,
+      "versionCode": 22,
       "adaptiveIcon": {
         "backgroundColor": "#3F5BD3",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

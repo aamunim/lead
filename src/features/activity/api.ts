@@ -231,7 +231,7 @@ export type ChangeKind =
 export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; actions: string[] }[] = [
   { kind: 'stage', label: 'Stage', icon: '🚩', actions: ['stage_changed'] },
   { kind: 'tag', label: 'Tag', icon: '🏷', actions: ['tag_added', 'tag_removed'] },
-  { kind: 'call', label: 'Call', icon: '📞', actions: ['call_logged', 'double_call'] },
+  { kind: 'call', label: 'Call', icon: '📞', actions: ['call_logged', 'double_call', 'call_lock_override'] },
   { kind: 'note', label: 'Note', icon: '📝', actions: ['note_added', 'note_edited'] },
   { kind: 'followup', label: 'Next call', icon: '⏰', actions: ['follow_up_set', 'follow_up_cancelled'] },
   { kind: 'assign', label: 'Assign', icon: '👥', actions: ['assigned'] },
@@ -489,6 +489,12 @@ export function describeChange(
         warn: true,
       };
     }
+    case 'call_lock_override':
+      // 📵 Called while someone else was on a call with the lead
+      return {
+        text: `📵 Called anyway · ${String(d.other_name ?? 'someone').split(' ')[0]} was on a call with the lead`,
+        warn: true,
+      };
     default:
       return { text: item.action.replace(/_/g, ' '), warn: false };
   }

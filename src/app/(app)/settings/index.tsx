@@ -198,6 +198,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/double-call' as Href,
       },
       {
+        title: 'Call lock',
+        description: '“Rahim is on a call with this lead” — one person at a time',
+        icon: '📵',
+        href: '/settings/call-lock' as Href,
+      },
+      {
         title: 'Notifications',
         description: 'What sends a push, quiet hours, reminders, who can hand over leads',
         icon: '🔔',

@@ -27,6 +27,7 @@ import {
     type SaveContactResult,
 } from '@/features/contacts/api';
 import { listAssignableUsers, normalizePhone } from '@/features/leads/api';
+import { getContactGroups, getGroupContactIds, hasContactGroups, type ContactGroup } from '../../../modules/call-log';
 import { listCourses, listItems } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -65,6 +66,10 @@ export default function PhoneContactsScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [result, setResult] = useState<SaveContactResult | null>(null);
   const [undoing, setUndoing] = useState(false);
+  // 👥 The phone's groups / labels (2.8.0): show one group, then "Mark all"
+  const [groups, setGroups] = useState<ContactGroup[]>([]);
+  const [group, setGroup] = useState<ContactGroup | null>(null);
+  const [inGroup, setInGroup] = useState<Set<string> | null>(null);
 
   // --- read the contacts and mark the ones that are already leads --------
   const loadContacts = useCallback(async () => {
@@ -75,6 +80,7 @@ export default function PhoneContactsScreen() {
       setContacts(list);
       const phones = list.flatMap((c) => c.numbers.filter((n) => n.valid).map((n) => n.normalized));
       setExisting(await findExistingLeadPhones(phones));
+      if (hasContactGroups) getContactGroups().then(setGroups);
       setStage('ready');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not read your contacts.');
@@ -130,16 +136,23 @@ export default function PhoneContactsScreen() {
   };
 
   // --- search -------------------------------------------------------------
+  const pickGroup = async (g: ContactGroup | null) => {
+    setGroup(g);
+    if (!g) return setInGroup(null);
+    setInGroup(new Set(await getGroupContactIds(g.ids)));
+  };
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return contacts;
+    const base = inGroup ? contacts.filter((c) => inGroup.has(c.id)) : contacts;
+    if (!q) return base;
     const digits = normalizePhone(q);
-    return contacts.filter(
+    return base.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
         (digits.length >= 3 && c.numbers.some((n) => n.normalized.includes(digits))),
     );
-  }, [contacts, search]);
+  }, [contacts, search, inGroup]);
 
   const selectable = visible.filter((c) => rowState(c) === 'ok');
   const allVisibleMarked = selectable.length > 0 && selectable.every((c) => selected.has(c.id));
@@ -278,6 +291,33 @@ export default function PhoneContactsScreen() {
           <Ionicons name="refresh" size={20} color={colors.text} />
         </Pressable>
       </View>
+
+      {/* 👥 Groups / labels from the phone */}
+      {groups.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.groupScroll}
+          contentContainerStyle={styles.groupRow}
+        >
+          {[null, ...groups].map((g) => {
+            const on = (group?.key ?? null) === (g?.key ?? null);
+            return (
+              <Pressable
+                key={g?.key ?? 'all'}
+                onPress={() => pickGroup(g)}
+                style={[styles.groupChip, on && styles.groupChipOn]}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: on }}
+              >
+                <Text style={[styles.groupText, on && styles.groupTextOn]}>
+                  {g ? `${g.title} · ${g.count}` : '👥 All contacts'}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
 
       {/* Counts + mark all */}
       <View style={styles.infoRow}>
@@ -633,6 +673,19 @@ const styles = StyleSheet.create({
   link: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
 
   searchRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
+  groupScroll: { flexGrow: 0, marginTop: spacing.sm },
+  groupRow: { gap: spacing.sm, paddingHorizontal: spacing.lg },
+  groupChip: {
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  groupChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  groupText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
+  groupTextOn: { color: colors.textOnPrimary },
   searchBox: {
     flex: 1,
     flexDirection: 'row',

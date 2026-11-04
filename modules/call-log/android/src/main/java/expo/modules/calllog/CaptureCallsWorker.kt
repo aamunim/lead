@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
 class CaptureCallsWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
 
   override fun doWork(): Result {
+    NativeCrash.install(applicationContext)
     return try {
       val added = CallLogStore.captureNew(applicationContext)
       if (added.isNotEmpty()) notifyLeadCalls(added)

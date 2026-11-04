@@ -14,7 +14,7 @@ import { supabase } from '@/shared/lib/supabase';
 // =====================================================================
 
 export type WorkPart = 'summary' | 'calls' | 'notes' | 'changes' | 'added';
-export type WorkFormat = 'xlsx' | 'txt' | 'csv';
+export type WorkFormat = 'xlsx' | 'txt' | 'csv' | 'pdf';
 
 export const WORK_PARTS: { key: WorkPart; label: string }[] = [
   { key: 'summary', label: '📊 Summary' },
@@ -407,12 +407,149 @@ export function toText(list: WorkData[], parts: Set<WorkPart>, lk: Lookups): str
 }
 
 // ---------------------------------------------------------------------
+// 📄 PDF: the same report as tables, A4 (made on the phone with expo-print)
+// ---------------------------------------------------------------------
+const esc = (v: string | number | null | undefined) =>
+  String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+function htmlTable(head: string[], rows: (string | number | null)[][], empty: string): string {
+  if (rows.length === 0) return `<p class="muted">${esc(empty)}</p>`;
+  return `<table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows
+    .map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>`)
+    .join('')}</tbody></table>`;
+}
+
+export function toHtml(list: WorkData[], parts: Set<WorkPart>, lk: Lookups): string {
+  const pages = list.map((w) => {
+    const s = w.summary;
+    const out: string[] = [
+      `<h1>${esc(w.person.name ?? 'No name')} <span class="muted">· ${esc(roleName(w.person.role))}</span></h1>`,
+      `<p class="muted">ITTC Admission · Work report · ${esc(periodText(w.from, w.to))}</p>`,
+    ];
+    if (parts.has('summary')) {
+      const tiles: [string, string | number][] = [
+        ['📞 Calls', s.calls],
+        ['✅ Connected', `${s.connected} (${pct(s.connected, s.calls)})`],
+        ['⏱ Talk time', dur(s.talk_sec)],
+        ['💬 WhatsApp', `${s.wa_calls} calls · ${s.wa_messages} msgs`],
+        ['➕ Leads added', s.leads_added],
+        ['🎓 Admitted', s.admitted],
+        ['📝 Notes', s.notes],
+        ['⏰ Next calls set', s.follow_ups],
+        ['🚩 Stage changes', s.stage_changes],
+        ['📱 App time', `${dur(s.app_sec)} · ${s.sessions} sessions`],
+      ];
+      out.push(
+        `<h2>Summary</h2><div class="tiles">${tiles
+          .map(([k, v]) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`)
+          .join('')}</div>`,
+      );
+    }
+    if (parts.has('calls'))
+      out.push(
+        `<h2>Call log (${w.calls.length})</h2>`,
+        htmlTable(
+          ['Date', 'Time', 'Lead', 'Phone', 'Direction', 'Result', 'Length', 'Note'],
+          w.calls.map((c) => [
+            bdDate(c.called_at),
+            bdTime(c.called_at),
+            c.lead_name,
+            c.lead_phone ?? '',
+            `${c.channel === 'whatsapp' ? '💬 ' : ''}${DIRECTION[c.direction] ?? c.direction}`,
+            outcomeInfo(c.outcome).label,
+            c.outcome === 'connected' ? dur(c.duration_sec) : '',
+            c.notes ?? '',
+          ]),
+          'No calls.',
+        ),
+      );
+    if (parts.has('notes'))
+      out.push(
+        `<h2>Notes (${w.notes.length})</h2>`,
+        htmlTable(
+          ['Date', 'Time', 'Lead', 'Note'],
+          w.notes.map((n) => [bdDate(n.created_at), bdTime(n.created_at), n.lead_name, n.note ?? '']),
+          'No notes.',
+        ),
+      );
+    if (parts.has('changes'))
+      out.push(
+        `<h2>Changes (${w.changes.length})</h2>`,
+        htmlTable(
+          ['Date', 'Time', 'Lead', 'Change'],
+          w.changes.map((c) => [
+            bdDate(c.created_at),
+            bdTime(c.created_at),
+            c.lead_name,
+            describeChange(c, lk.stages, lk.userNames).text,
+          ]),
+          'No changes.',
+        ),
+      );
+    if (parts.has('added'))
+      out.push(
+        `<h2>Leads added (${w.leads_added.length})</h2>`,
+        htmlTable(
+          ['Date', 'Time', 'Name', 'Phone', 'Source', ''],
+          w.leads_added.map((l) => [
+            bdDate(l.created_at),
+            bdTime(l.created_at),
+            l.name,
+            l.phone ?? '',
+            l.source ?? '',
+            l.imported ? 'imported' : '',
+          ]),
+          'No leads added.',
+        ),
+      );
+    if ([w.calls, w.notes, w.changes, w.leads_added].some((a) => a.length >= w.capped))
+      out.push(`<p class="muted">Only the first ${w.capped} of each list are included: choose a shorter period for the rest.</p>`);
+    return `<section>${out.join('')}</section>`;
+  });
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page { size: A4; margin: 14mm 12mm; }
+    body { font-family: -apple-system, Roboto, 'Noto Sans Bengali', sans-serif; color: #1b1b1f; font-size: 10.5px; }
+    section + section { page-break-before: always; }
+    h1 { font-size: 18px; margin: 0 0 2px; } h2 { font-size: 13px; margin: 16px 0 6px; color: #3557D4; }
+    .muted { color: #6b6b75; font-weight: normal; }
+    .tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tile { width: 18.4%; border: 1px solid #e2e2ea; border-radius: 6px; padding: 5px 6px; }
+    .tile .k { color: #6b6b75; font-size: 9px; } .tile .v { font-size: 12px; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; background: #eef1fb; font-size: 9.5px; }
+    th, td { border: 1px solid #e2e2ea; padding: 3px 4px; vertical-align: top; }
+    tr { page-break-inside: avoid; }
+  </style></head><body>${pages.join('')}</body></html>`;
+}
+
+/** Makes the PDF and opens the share sheet (the website opens the browser's print / Save as PDF) */
+export async function sharePdf(name: string, html: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Print = require('expo-print') as typeof import('expo-print');
+  if (Platform.OS === 'web') {
+    await Print.printAsync({ html });
+    return;
+  }
+  const made = await Print.printToFileAsync({ html, base64: false });
+  const file = new File(Paths.cache, name);
+  if (file.exists) file.delete();
+  new File(made.uri).move(file);
+  if (!(await Sharing.isAvailableAsync())) throw new Error('Sharing is not available on this phone.');
+  await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: name, UTI: 'com.adobe.pdf' });
+}
+
+// ---------------------------------------------------------------------
 // Save / share the file
 // ---------------------------------------------------------------------
 const MIME: Record<WorkFormat, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   txt: 'text/plain',
   csv: 'text/csv',
+  pdf: 'application/pdf',
 };
 
 export async function shareFile(name: string, body: Uint8Array | string, format: WorkFormat): Promise<void> {
