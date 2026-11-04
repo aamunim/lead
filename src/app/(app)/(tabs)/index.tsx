@@ -22,6 +22,7 @@ import { takeBootUrl } from '@/shared/web/bootUrl';
 import { countPendingUsers } from '@/features/users/api';
 import { MIcon, Tap, md, type MIconName } from '@/features/home/md';
 import { TodayStats } from '@/features/home/TodayStats';
+import { RankCard } from '@/features/credits/RankCard';
 import { colors, fontSize, fontWeight } from '@/shared/theme';
 import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
 
@@ -216,6 +217,8 @@ function PhoneHome() {
 
         {/* ── Today at a glance ────────────────────── */}
         <TodayStats onOpenCalls={() => scrollRef.current?.scrollTo({ y: callsY.current, animated: true })} />
+        {/* 🏆 My place this week */}
+        <RankCard />
 
         {/* ── Banners ──────────────────────────────── */}
         {nudge && !setupVisible && (

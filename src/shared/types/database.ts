@@ -2713,6 +2713,15 @@ export type Database = {
       resubmit_admission: { Args: { p_lead: string; p_note?: string }; Returns: undefined }
       set_nu_admission_id: { Args: { p_lead: string; p_value: string }; Returns: undefined }
       set_student_ref: { Args: { p_lead: string; p_value: string }; Returns: string }
+      leaderboard: {
+        Args: { p_from: string; p_to: string }
+        Returns: { user_id: string; name: string | null; role_key: string; total: number; rank: number | null; hidden: boolean; team_lead_id: string | null }[]
+      }
+      credit_breakdown: { Args: { p_user: string; p_from: string; p_to: string }; Returns: { kind: string; qty: number; points: number }[] }
+      current_credit_rules: { Args: never; Returns: Json }
+      save_credit_rules: { Args: { p_rules: Json; p_enabled: boolean; p_retro: boolean }; Returns: undefined }
+      set_leaderboard_hidden: { Args: { p_user: string; p_hidden: boolean }; Returns: undefined }
+      add_credit_adjustment: { Args: { p_user: string; p_points: number; p_reason: string }; Returns: undefined }
       user_export: { Args: { p_user: string; p_from: string; p_to: string }; Returns: Json }
       recent_contact: { Args: { p_lead: string }; Returns: Json }
       log_double_call: { Args: { p_lead: string; p_other: string; p_minutes: number; p_kind: string }; Returns: undefined }

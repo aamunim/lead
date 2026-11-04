@@ -78,6 +78,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/stages' as Href,
       },
       {
+        title: 'Credits & leaderboard',
+        description: 'Credits for each kind of work, the most a day',
+        icon: '🏆',
+        href: '/settings/credits' as Href,
+      },
+      {
         title: 'Reports',
         description: 'Who sees reports, the Home card, which parts are shown',
         icon: '📊',

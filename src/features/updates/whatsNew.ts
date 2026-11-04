@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-12-a',
+    date: '12 Nov 2026',
+    title: '🏆 Credits and the leaderboard',
+    items: [
+      '⭐ Every kind of work earns credits: calls, talk time, WhatsApp, notes, next calls, new leads, visits, papers, admissions, money taken, app time',
+      '🏆 More → Leaderboard: everyone’s place today, this week, this month or all time; the top three on a podium',
+      '🙋 Tap yourself to see where your credits came from; Home shows your place this week',
+      '⚙️ Admins: Settings → Credits & leaderboard sets how many credits each kind of work is worth',
+    ],
+  },
+  {
     key: '2026-11-11-a',
     date: '11 Nov 2026',
     title: 'Export your work',
