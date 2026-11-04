@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-16-a',
+    date: '16 Nov 2026',
+    title: '💬 Contact developer: pictures, voice and crashes',
+    items: [
+      '🖼 Add up to 3 screenshots or photos to a message, and 🎙 a voice message (up to 3 minutes)',
+      '✅ “It’s solved”: mark your own message solved when it works again',
+      '💥 If the app breaks, the developer is told by itself; you can add a few words about what happened',
+    ],
+  },
+  {
     key: '2026-11-15-a',
     date: '15 Nov 2026',
     title: '📌 Keep in place',

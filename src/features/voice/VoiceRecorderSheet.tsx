@@ -34,10 +34,15 @@ const OPTIONS: RecordingOptions = {
 const MAX_SEC = 60 * 60;
 
 type Props = {
-  leadId: string;
-  context: string;
+  leadId?: string;
+  context?: string;
   onClose: () => void;
   onSaved: (seconds: number, fileId: string) => void;
+  /** 💬 Somewhere else than the lead's Drive (e.g. Contact developer): gives the saved id/path */
+  upload?: (uri: string, seconds: number) => Promise<string>;
+  /** Stops by itself after this many seconds (default an hour) */
+  maxSec?: number;
+  title?: string;
 };
 
 type Phase = 'asking' | 'denied' | 'ready' | 'recording' | 'paused' | 'done' | 'saving';
@@ -48,7 +53,7 @@ function fileName(now = new Date()): string {
   return `Voice ${date} ${time}.m4a`;
 }
 
-export function VoiceRecorderSheet({ leadId, context, onClose, onSaved }: Props) {
+export function VoiceRecorderSheet({ leadId, context, onClose, onSaved, upload, maxSec = MAX_SEC, title }: Props) {
   const recorder = useAudioRecorder(OPTIONS);
   const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
@@ -72,7 +77,7 @@ export function VoiceRecorderSheet({ leadId, context, onClose, onSaved }: Props)
     tick.current = setInterval(() => {
       const s = Math.floor(recorder.currentTime);
       setSeconds(s);
-      if (s >= MAX_SEC) stop();
+      if (s >= maxSec) stop();
     }, 500);
   };
   const stopTick = () => {
@@ -133,6 +138,13 @@ export function VoiceRecorderSheet({ leadId, context, onClose, onSaved }: Props)
     player.pause();
     setPhase('saving');
     try {
+      if (upload) {
+        const id = await upload(uri, Math.max(1, seconds));
+        discardFile();
+        onSaved(seconds, id);
+        return;
+      }
+      if (!leadId) throw new Error('No lead.');
       const row = await uploadLeadFile({
         leadId,
         kind: 'voice',
@@ -140,7 +152,7 @@ export function VoiceRecorderSheet({ leadId, context, onClose, onSaved }: Props)
         name: fileName(),
         mimeType: 'audio/mp4',
         durationSec: Math.max(1, seconds),
-        context,
+        context: context ?? 'note',
       });
       discardFile();
       onSaved(seconds, row.id);
@@ -177,7 +189,7 @@ export function VoiceRecorderSheet({ leadId, context, onClose, onSaved }: Props)
         <Pressable style={styles.flex} onPress={close} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={styles.title}>🎙 Voice note</Text>
+          <Text style={styles.title}>{title ?? '🎙 Voice note'}</Text>
 
           {phase === 'asking' && <ActivityIndicator color={colors.primary} />}
 
@@ -198,7 +210,7 @@ export function VoiceRecorderSheet({ leadId, context, onClose, onSaved }: Props)
               </Text>
               <Text style={styles.hint}>
                 {phase === 'ready'
-                  ? 'Press Record and speak. It stops by itself after an hour.'
+                  ? `Press Record and speak. It stops by itself after ${maxSec >= 3600 ? 'an hour' : `${Math.round(maxSec / 60)} minutes`}.`
                   : phase === 'paused'
                     ? 'Paused.'
                     : 'Recording…'}

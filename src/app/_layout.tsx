@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, usePathname, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -6,6 +6,8 @@ import { Platform } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
+import { CrashScreen } from '@/features/feedback/CrashScreen';
+import { flushCrashes, installCrashHandler, setCrashScreen } from '@/features/feedback/crash';
 import { colors } from '@/shared/theme';
 import { UpdateBanner } from '@/features/updates/UpdateBanner';
 import { OfflineBanner } from '@/shared/ui/OfflineBanner';
@@ -17,6 +19,14 @@ SplashScreen.preventAutoHideAsync();
 
 // 🌐 Website: Alert.alert shows our own dialog (a browser shows nothing)
 if (Platform.OS === 'web') installWebAlert();
+
+// 💥 Errors go to the developer by themselves (Contact developer → inbox → Crashes)
+if (Platform.OS !== 'web') installCrashHandler();
+
+/** 💥 A screen broke: shown in its place (the error is sent by itself) */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  return <CrashScreen error={error} retry={retry} />;
+}
 
 export default function RootLayout() {
   return (
@@ -31,6 +41,15 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { status } = useAuth();
+
+  // 💥 Which screen is open goes with a crash report; waiting reports are sent once signed in
+  const pathname = usePathname();
+  useEffect(() => {
+    setCrashScreen(pathname);
+  }, [pathname]);
+  useEffect(() => {
+    if (status === 'active' && Platform.OS !== 'web') flushCrashes().catch(() => undefined);
+  }, [status]);
 
   useEffect(() => {
     if (status !== 'loading') SplashScreen.hideAsync();

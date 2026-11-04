@@ -18,9 +18,11 @@ import {
   dayTime,
   listMyFeedback,
   sendFeedback,
+  solveFeedback,
   type Feedback,
   type FeedbackKind,
 } from '@/features/feedback/api';
+import { AttachmentPicker, AttachmentView, readyAttachments, stillUploading, type Picked } from '@/features/feedback/Attachments';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
@@ -34,6 +36,8 @@ export default function ContactDeveloperScreen() {
   const { profile } = useAuth();
   const [kind, setKind] = useState<FeedbackKind>('bug');
   const [text, setText] = useState('');
+  // 📸 pictures and 🎙 a voice message (uploaded as soon as they are picked)
+  const [files, setFiles] = useState<Picked[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -57,12 +61,15 @@ export default function ContactDeveloperScreen() {
   );
 
   const send = async () => {
-    if (text.trim().length < 3) return setError('Please write a little more.');
+    const ready = readyAttachments(files);
+    if (text.trim().length < 3 && ready.length === 0) return setError('Please write a little more.');
+    if (stillUploading(files)) return setError('Wait a moment: the files are still being added.');
     setSending(true);
     setError(null);
     try {
-      await sendFeedback(kind, text.trim());
+      await sendFeedback(kind, text.trim(), ready);
       setText('');
+      setFiles([]);
       setSent(true);
       setTimeout(() => setSent(false), 4000);
       await load();
@@ -125,6 +132,7 @@ export default function ContactDeveloperScreen() {
           style={styles.input}
           textAlignVertical="top"
         />
+        <AttachmentPicker value={files} onChange={setFiles} />
         <Text style={styles.small}>Your name, the app version and your phone model are sent with it.</Text>
         {error && <Text style={styles.error}>{error}</Text>}
         {sent && <Text style={styles.ok}>✅ Sent to the developer. Thank you!</Text>}
@@ -153,12 +161,32 @@ export default function ContactDeveloperScreen() {
                 </View>
               </View>
               <Text style={styles.message}>{f.message}</Text>
-              <Text style={styles.small}>{dayTime(f.createdAt)}</Text>
+              <AttachmentView files={f.attachments} />
+              <Text style={styles.small}>
+                {dayTime(f.createdAt)}
+                {f.solvedAt ? ` · ✅ solved ${dayTime(f.solvedAt)}` : ''}
+              </Text>
               {!!f.reply && (
                 <View style={styles.reply}>
                   <Text style={styles.replyLabel}>💬 Developer{f.repliedAt ? ` · ${dayTime(f.repliedAt)}` : ''}</Text>
                   <Text style={styles.message}>{f.reply}</Text>
                 </View>
+              )}
+              {f.status !== 'done' && f.status !== 'wont' && (
+                <Pressable
+                  onPress={async () => {
+                    try {
+                      await solveFeedback(f.id);
+                      await load();
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : 'Could not save.');
+                    }
+                  }}
+                  style={styles.solve}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.solveText}>✅ It’s solved</Text>
+                </Pressable>
               )}
             </View>
           );
@@ -241,5 +269,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.primarySoft,
   },
+  solve: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.successSoft,
+  },
+  solveText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.success },
   replyLabel: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.primary },
 });
