@@ -218,6 +218,7 @@ export function WebShell({ children }: { children: React.ReactNode }) {
           { label: 'Change log', icon: '📜', href: '/changes', match: (p: string) => p.startsWith('/changes') },
         ]
       : []),
+    { label: 'Leaderboard', icon: '🏆', href: '/leaderboard', match: (p: string) => p.startsWith('/leaderboard') },
     {
       label: 'Scorecard',
       icon: '🏁',

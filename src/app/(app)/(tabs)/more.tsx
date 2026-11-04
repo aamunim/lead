@@ -262,6 +262,13 @@ function PhoneMore() {
             />
           )}
           <Row
+            icon="emoji-events"
+            tone="orange"
+            title="Leaderboard"
+            subtitle="Credits for everyone's work, and your place"
+            onPress={go('/leaderboard')}
+          />
+          <Row
             icon="military-tech"
             tone="green"
             title="Weekly scorecard"
