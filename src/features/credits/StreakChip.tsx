@@ -4,7 +4,7 @@ import { StyleSheet, Text } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { getMe, type Me } from '@/features/credits/api';
-import { Tap } from '@/features/home/md';
+import { Tap, md } from '@/features/home/md';
 import { fontWeight } from '@/shared/theme';
 
 // 🔥 Home top bar: your streak and your level icon (also when the Super
@@ -40,10 +40,10 @@ const styles = StyleSheet.create({
     height: 32,
     paddingHorizontal: 10,
     borderRadius: 16,
-    backgroundColor: '#FFF4D6',
+    backgroundColor: md.goldC,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  text: { fontSize: 14, fontWeight: fontWeight.semibold, color: '#7A4B00' },
+  text: { fontSize: 14, fontWeight: fontWeight.semibold, color: md.onGoldC },
 });

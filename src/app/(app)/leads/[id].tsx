@@ -1559,8 +1559,8 @@ export function LeadDetailView({
             <RoundAction
               icon="chat"
               label="WhatsApp"
-              bg="#DCF8E6"
-              fg="#128C4A"
+              bg={md.waC}
+              fg={md.onWaC}
               onPress={() => (tapOpensTemplates ? setTemplateChannel('whatsapp') : whatsapp())}
               onLongPress={templates.allowed ? () => setTemplateChannel('whatsapp') : undefined}
             />
@@ -1569,12 +1569,12 @@ export function LeadDetailView({
                 icon="sms"
                 label="SMS"
                 bg={colors.surface}
-                fg="#0369A1"
+                fg={md.onSkyC}
                 onPress={() => (tapOpensTemplates ? setTemplateChannel('sms') : sms(lead.phone!))}
                 onLongPress={templates.allowed ? () => setTemplateChannel('sms') : undefined}
               />
             )}
-            <RoundAction icon="edit-note" label="Note" bg={colors.surface} fg="#6A1B7A" onPress={() => setNoteOpen(true)} />
+            <RoundAction icon="edit-note" label="Note" bg={colors.surface} fg={md.onPurpleC} onPress={() => setNoteOpen(true)} />
             {showFollowUpCard && (
               <RoundAction
                 icon="alarm"
@@ -1670,7 +1670,7 @@ export function LeadDetailView({
             <Fold
               id="lead_activity"
               icon="manage-history"
-              tint={{ bg: '#F3DDF8', fg: '#6A1B7A' }}
+              tint={{ bg: md.purpleC, fg: md.onPurpleC }}
               title="Changes"
               summary={`${activity.length}`}
             >
@@ -2134,7 +2134,7 @@ function RoundAction({
   );
 }
 
-const HERO = '#E4E9FF';
+const HERO = md.heroC;
 
 const p = StyleSheet.create({
   bar: { backgroundColor: HERO },

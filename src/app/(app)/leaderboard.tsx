@@ -60,10 +60,10 @@ const initials = (n: string | null) =>
     .join('') || '?';
 const PAL = [
   [md.primaryC, md.onPrimaryC],
-  ['#FFE0D6', '#9C2E00'],
+  [md.peachC, md.onPeachC],
   [md.okC, md.onOkC],
   [md.warnC, md.onWarnC],
-  ['#F3DDF8', '#6A1B7A'],
+  [md.purpleC, md.onPurpleC],
 ];
 const pal = (n: string | null) => PAL[[...(n ?? '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % PAL.length];
 
@@ -555,20 +555,20 @@ function BreakdownSheet({
 }
 
 const s = StyleSheet.create({
-  fire: { fontSize: 12, fontWeight: fontWeight.bold, color: '#C2410C' },
+  fire: { fontSize: 12, fontWeight: fontWeight.bold, color: md.fire },
   level: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     padding: 12,
     borderRadius: 14,
-    backgroundColor: '#FFF4D6',
+    backgroundColor: md.goldC,
     marginBottom: 10,
   },
   levelIcon: { fontSize: 30 },
   levelName: { fontSize: 14, fontWeight: fontWeight.semibold, color: colors.text },
   levelTrack: { height: 6, borderRadius: 3, backgroundColor: 'rgba(122,75,0,0.15)', marginTop: 6, overflow: 'hidden' },
-  levelFill: { height: 6, borderRadius: 3, backgroundColor: '#E8A100' },
+  levelFill: { height: 6, borderRadius: 3, backgroundColor: md.gold },
   levelNext: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
   badgeHead: {
     fontSize: 11,
@@ -587,7 +587,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 6,
     borderRadius: 12,
   },
-  badgeOn: { backgroundColor: '#FFF4D6' },
+  badgeOn: { backgroundColor: md.goldC },
   badgeOff: { backgroundColor: md.surface1, opacity: 0.45 },
   badgeIcon: { fontSize: 20 },
   badgeText: { fontSize: 11, textAlign: 'center', color: colors.text, fontWeight: fontWeight.semibold },
@@ -657,7 +657,7 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: md.surface2,
   },
-  rowMe: { backgroundColor: '#EEF2FF' },
+  rowMe: { backgroundColor: md.meC },
   rank: { width: 24, textAlign: 'center', fontSize: 14, fontWeight: fontWeight.bold, color: colors.textMuted },
   avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 13, fontWeight: fontWeight.semibold },

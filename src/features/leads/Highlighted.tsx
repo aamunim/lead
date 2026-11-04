@@ -1,6 +1,7 @@
 import { StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native';
 
 import { findDigits, findText } from '@/features/leads/search';
+import { md } from '@/features/home/md';
 import { colors, fontWeight } from '@/shared/theme';
 
 /** One line of text with the searched part marked (words, or digits in a number) */
@@ -25,5 +26,5 @@ export function Highlighted({ text, search, style }: { text: string; search: str
 }
 
 const styles = StyleSheet.create({
-  hit: { fontWeight: fontWeight.bold, color: colors.text, backgroundColor: '#FEF08A' },
+  hit: { fontWeight: fontWeight.bold, color: colors.text, backgroundColor: md.highlight },
 });

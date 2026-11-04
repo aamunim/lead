@@ -55,6 +55,6 @@ const styles = StyleSheet.create({
     backgroundColor: md.warnC,
     overflow: 'hidden',
   },
-  text: { flex: 1, fontSize: 13.5, fontWeight: fontWeight.medium, color: '#2C1600' },
+  text: { flex: 1, fontSize: 13.5, fontWeight: fontWeight.medium, color: md.warnText },
   action: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: md.onWarnC },
 });
