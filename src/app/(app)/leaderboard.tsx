@@ -18,7 +18,10 @@ import {
   BOARD_PERIODS,
   getBadges,
   getStreaks,
-  type Badge,
+  getLevels,
+  levelProgress,
+  type BadgeInfo,
+  type Level,
   boardRange,
   getBreakdown,
   getLeaderboard,
@@ -73,6 +76,8 @@ export default function LeaderboardScreen() {
   const [prev, setPrev] = useState<Map<string, number>>(new Map());
   // 🔥 days in a row
   const [streaks, setStreaks] = useState<Map<string, number>>(new Map());
+  // 🏅 all-time level of each person
+  const [levels, setLevels] = useState<Map<string, Level>>(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +95,7 @@ export default function LeaderboardScreen() {
       setRows(now);
       setPrev(new Map(before.filter((r) => r.rank != null).map((r) => [r.user_id, r.rank as number])));
       getStreaks().then(setStreaks);
+      getLevels().then(setLevels);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the leaderboard.');
     } finally {
@@ -211,6 +217,7 @@ export default function LeaderboardScreen() {
                       </View>
                       <Text style={s.stepName} numberOfLines={1}>
                         {(r.name ?? 'No name').split(' ')[0]}
+                        {levels.get(r.user_id)?.icon ? ` ${levels.get(r.user_id)?.icon}` : ''}
                       </Text>
                       <Text style={s.stepPts}>
                         {fmt(r.total)}
@@ -238,6 +245,7 @@ export default function LeaderboardScreen() {
                   me={r.user_id === me}
                   move={move(r)}
                   streak={streaks.get(r.user_id) ?? 0}
+                  level={levels.get(r.user_id)?.icon ?? null}
                   onPress={() => tap(r)}
                 />
               ))}
@@ -255,6 +263,7 @@ export default function LeaderboardScreen() {
                       me={r.user_id === me}
                       move={null}
                       streak={streaks.get(r.user_id) ?? 0}
+                      level={levels.get(r.user_id)?.icon ?? null}
                       onPress={() => tap(r)}
                     />
                   ))}
@@ -291,12 +300,14 @@ function Row({
   me,
   move,
   streak,
+  level,
   onPress,
 }: {
   r: BoardRow;
   me: boolean;
   move: number | null;
   streak: number;
+  level: string | null;
   onPress: () => void;
 }) {
   return (
@@ -308,6 +319,7 @@ function Row({
       <View style={s.flex}>
         <Text style={s.name} numberOfLines={1}>
           {r.name ?? 'No name'}
+          {level ? ` ${level}` : ''}
           {me ? ' (you)' : ''}
           {streak >= 2 ? <Text style={s.fire}> 🔥{streak}</Text> : null}
         </Text>
@@ -321,6 +333,27 @@ function Row({
       ) : null}
       <Text style={s.pts}>{fmt(r.total)}</Text>
     </Pressable>
+  );
+}
+
+function LevelBar({ l }: { l: Level }) {
+  return (
+    <View style={s.level}>
+      <Text style={s.levelIcon}>{l.icon ?? '🌱'}</Text>
+      <View style={s.flex}>
+        <Text style={s.levelName}>
+          {l.name ?? 'No level yet'} · {fmt(l.lifetime)} credits in all
+        </Text>
+        <View style={s.levelTrack}>
+          <View style={[s.levelFill, { width: `${Math.round(levelProgress(l) * 100)}%` }]} />
+        </View>
+        <Text style={s.levelNext}>
+          {l.next_at != null
+            ? `${fmt(l.next_at - l.lifetime)} more to ${l.next_icon ?? ''} ${l.next_name ?? ''}`
+            : 'Top level reached!'}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -347,7 +380,7 @@ function BreakdownSheet({
   const [pts, setPts] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
-  const [badges, setBadges] = useState<{ streak: number; badges: Badge[] } | null>(null);
+  const [badges, setBadges] = useState<BadgeInfo | null>(null);
 
   useEffect(() => {
     getBadges(row.user_id).then(setBadges);
@@ -395,13 +428,23 @@ function BreakdownSheet({
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={s.sheetBody} keyboardShouldPersistTaps="handled">
+            {/* 🏅 level (all-time credits) */}
+            {!!badges?.level && <LevelBar l={badges.level} />}
             {/* 🔥 streak and 🎖 badges */}
+            {!!badges && badges.badges.length > 0 && (
+              <Text style={s.badgeHead}>
+                BADGES · {badges.badges.filter((b) => b.count > 0).length} OF {badges.badges.length}
+              </Text>
+            )}
             {!!badges && (badges.streak > 0 || badges.badges.length > 0) && (
               <View style={s.badges}>
-                {badges.streak > 0 && (
+                {(badges.streak > 0 || badges.best_streak > 0) && (
                   <View style={[s.badge, s.badgeOn]}>
                     <Text style={s.badgeIcon}>🔥</Text>
-                    <Text style={s.badgeText}>{badges.streak} days in a row</Text>
+                    <Text style={s.badgeText}>
+                      {badges.streak} days in a row
+                      {badges.best_streak > badges.streak ? `\nbest ${badges.best_streak}` : ''}
+                    </Text>
                   </View>
                 )}
                 {badges.badges.map((b) => (
@@ -513,6 +556,27 @@ function BreakdownSheet({
 
 const s = StyleSheet.create({
   fire: { fontSize: 12, fontWeight: fontWeight.bold, color: '#C2410C' },
+  level: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#FFF4D6',
+    marginBottom: 10,
+  },
+  levelIcon: { fontSize: 30 },
+  levelName: { fontSize: 14, fontWeight: fontWeight.semibold, color: colors.text },
+  levelTrack: { height: 6, borderRadius: 3, backgroundColor: 'rgba(122,75,0,0.15)', marginTop: 6, overflow: 'hidden' },
+  levelFill: { height: 6, borderRadius: 3, backgroundColor: '#E8A100' },
+  levelNext: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
+  badgeHead: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: colors.textMuted,
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
   badge: {
     width: '31.5%',

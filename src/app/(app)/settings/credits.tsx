@@ -10,6 +10,8 @@ import {
   saveCreditExtras,
   saveCreditSettings,
   DEFAULT_EXTRAS,
+  DEFAULT_MILESTONES,
+  type Milestone,
   type CreditExtras,
   type CreditKind,
   type CreditRule,
@@ -58,6 +60,10 @@ export default function CreditSettingsScreen() {
 
   const save = async () => {
     if (!s) return;
+    const ms = x.milestones;
+    if (ms.some((m) => !m.name.trim() || m.at <= 0))
+      return setError('Every milestone needs a name and credits above 0.');
+    if (new Set(ms.map((m) => m.at)).size !== ms.length) return setError('Two milestones have the same credits.');
     setSaving(true);
     setError(null);
     try {
@@ -198,13 +204,63 @@ export default function CreditSettingsScreen() {
         </View>
         <SwitchRow
           title="🎖 Badges"
-          text="💯 100 calls a day · 🎓 5 admitted a week · ⏱ 2 h talk a day · 🌅 call before 9 AM · 👑 winner"
+          text="14 badges: 💯 100 calls a day · 🎯 50 talked · ⏱ 2 h talk · 🌅 before 9 AM · ⚡ new lead in 10 min · 🆕 10 leads · 📝 30 notes · 💬 50 WhatsApp · 🎓 5 admitted a week · 🏫 5 visits · 💵 ৳50,000 a week · 🔥 7 and ☄️ 30 days in a row · 👑 winner"
           value={x.badges}
           onChange={(v) => {
             setX({ ...x, badges: v });
             setDirty(true);
           }}
         />
+      </View>
+
+      <Text style={styles.label}>🏅 MILESTONES (ALL-TIME CREDITS)</Text>
+      <Text style={styles.hint}>
+        Everyone moves up a level when their credits in all reach a milestone, and gets a notice. Up to 10 levels.
+      </Text>
+      <View style={styles.card}>
+        {x.milestones.map((m, i) => (
+          <MilestoneRow
+            key={i}
+            n={i + 1}
+            m={m}
+            onChange={(patch) => {
+              setX({ ...x, milestones: x.milestones.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
+              setDirty(true);
+            }}
+            onRemove={
+              x.milestones.length > 1
+                ? () => {
+                    setX({ ...x, milestones: x.milestones.filter((_, j) => j !== i) });
+                    setDirty(true);
+                  }
+                : undefined
+            }
+          />
+        ))}
+        <View style={styles.row}>
+          {x.milestones.length < 10 && (
+            <Text
+              style={styles.link}
+              onPress={() => {
+                const last = x.milestones[x.milestones.length - 1];
+                setX({ ...x, milestones: [...x.milestones, { at: (last?.at ?? 0) * 2 || 100, icon: '⭐', name: '' }] });
+                setDirty(true);
+              }}
+            >
+              + Add a level
+            </Text>
+          )}
+          <View style={styles.flex} />
+          <Text
+            style={styles.link}
+            onPress={() => {
+              setX({ ...x, milestones: DEFAULT_MILESTONES });
+              setDirty(true);
+            }}
+          >
+            Reset to the 10 levels
+          </Text>
+        </View>
       </View>
 
       <Text style={styles.label}>CREDITS FOR EACH KIND OF WORK</Text>
@@ -303,7 +359,7 @@ function NumField({
   useEffect(() => setText(String(value)), [value]);
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
       <TextInput
         value={text}
         onChangeText={(t) => {
@@ -316,6 +372,46 @@ function NumField({
         keyboardType={allowMinus ? 'numbers-and-punctuation' : 'number-pad'}
         style={styles.input}
       />
+    </View>
+  );
+}
+
+function MilestoneRow({
+  n,
+  m,
+  onChange,
+  onRemove,
+}: {
+  n: number;
+  m: Milestone;
+  onChange: (patch: Partial<Milestone>) => void;
+  onRemove?: () => void;
+}) {
+  return (
+    <View style={styles.msRow}>
+      <Text style={styles.msNum}>{n}</Text>
+      <TextInput
+        value={m.icon}
+        onChangeText={(t) => onChange({ icon: t.trim().slice(0, 4) })}
+        style={[styles.input, styles.msIcon]}
+        accessibilityLabel={`Level ${n} icon`}
+      />
+      <TextInput
+        value={m.name}
+        onChangeText={(t) => onChange({ name: t.slice(0, 24) })}
+        placeholder="Name"
+        placeholderTextColor={colors.textMuted}
+        style={[styles.input, styles.flex]}
+        accessibilityLabel={`Level ${n} name`}
+      />
+      <View style={styles.msAt}>
+        <NumField label="" value={m.at} onChange={(v) => onChange({ at: v })} />
+      </View>
+      {onRemove ? (
+        <Text style={styles.msX} onPress={onRemove} accessibilityLabel={`Remove level ${n}`}>
+          ✕
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -399,6 +495,12 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   error: { color: colors.danger, fontSize: fontSize.small },
+  link: { color: colors.primary, fontWeight: fontWeight.semibold, fontSize: fontSize.small, paddingVertical: 4 },
+  msRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: -spacing.sm },
+  msNum: { width: 18, fontSize: fontSize.caption, color: colors.textMuted, textAlign: 'center' },
+  msIcon: { width: 48, textAlign: 'center', paddingHorizontal: 4 },
+  msAt: { width: 92 },
+  msX: { fontSize: 16, color: colors.textMuted, paddingHorizontal: 4 },
   pick: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   pickItem: {
     paddingVertical: 6,
