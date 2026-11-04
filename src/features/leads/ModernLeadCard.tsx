@@ -28,10 +28,10 @@ const RING: Record<string, string> = { hot: colors.hot, warm: colors.warm, cold:
 
 const AVATAR = [
   [md.primaryC, md.onPrimaryC],
-  ['#FFE0D6', '#9C2E00'],
+  [md.peachC, md.onPeachC],
   [md.okC, md.onOkC],
   [md.warnC, md.onWarnC],
-  ['#F3DDF8', '#6A1B7A'],
+  [md.purpleC, md.onPurpleC],
 ];
 
 const CLOSED: Record<string, { label: string; color: string }> = {
@@ -306,8 +306,8 @@ function ModernLeadCardBase({
             )}
             <Round
               icon="chat"
-              bg="#DCF8E6"
-              fg="#128C4A"
+              bg={md.waC}
+              fg={md.onWaC}
               label={`WhatsApp ${lead.name}`}
               onPress={onWhatsApp}
               onLongPress={onTemplate ? () => onTemplate('whatsapp') : undefined}
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   },
   faded: { opacity: 0.65 },
   selected: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: md.meC,
     borderWidth: 2,
     borderColor: colors.primary,
     paddingVertical: 8,

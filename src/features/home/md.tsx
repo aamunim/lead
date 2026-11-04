@@ -17,7 +17,7 @@ import {
 // Old-architecture Android needs this for LayoutAnimation (a no-op elsewhere)
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
-import { colors, fontSize, fontWeight } from '@/shared/theme';
+import { colors, fontSize, fontWeight, isDark } from '@/shared/theme';
 
 // =====================================================================
 // 🎨 Material 3 bits for the phone (Home, tab bar): tonal colours,
@@ -27,8 +27,8 @@ import { colors, fontSize, fontWeight } from '@/shared/theme';
 
 export type MIconName = ComponentProps<typeof MaterialIcons>['name'];
 
-/** Tonal colours (container / on-container pairs) */
-export const md = {
+/** Tonal colours (container / on-container pairs) — light and 🌙 dark */
+const mdLight = {
   surface1: '#F0F2FA',
   surface2: '#E9ECF6',
   outline: '#C4C7D3',
@@ -41,7 +41,79 @@ export const md = {
   okC: '#D3F0DE',
   onOkC: '#1F6B42',
   ripple: 'rgba(53,87,212,0.12)',
+  // more tones (avatars, tiles, cards)
+  peachC: '#FFE0D6',
+  onPeachC: '#9C2E00',
+  purpleC: '#F3DDF8',
+  onPurpleC: '#6A1B7A',
+  waC: '#DCF8E6',
+  onWaC: '#128C4A',
+  skyC: '#E0F2FE',
+  onSkyC: '#0369A1',
+  /** 🏆 credits, streaks, "kept in place" */
+  goldC: '#FFF4D6',
+  onGoldC: '#7A4B00',
+  gold: '#E8A100',
+  /** your own row, a lead page header */
+  meC: '#EEF2FF',
+  heroC: '#E4E9FF',
+  /** "📞 Rahim is on a call" */
+  lockC: '#FDE7E7',
+  onLockC: '#B42318',
+  /** a search word found in a name */
+  highlight: '#FEF08A',
+  /** a WhatsApp message preview */
+  waBubble: '#DCF8C6',
+  waBubbleText: '#111B21',
+  /** text on the tonal banners */
+  warnText: '#2C1600',
+  warnSub: '#5C3A00',
+  primarySub: '#3A4A8A',
+  okText: '#0B3A22',
+  okSub: '#2D5A40',
+  fire: '#C2410C',
 };
+
+const mdDark: typeof mdLight = {
+  surface1: '#1A2236',
+  surface2: '#222B41',
+  outline: '#3A4560',
+  primaryC: '#25336A',
+  onPrimaryC: '#C9D4FF',
+  errorC: '#4A1F1A',
+  onErrorC: '#FFB4A9',
+  warnC: '#43300F',
+  onWarnC: '#FFCF8A',
+  okC: '#173A27',
+  onOkC: '#8FDCAE',
+  ripple: 'rgba(160,180,255,0.16)',
+  peachC: '#47261A',
+  onPeachC: '#FFB59C',
+  purpleC: '#3B2342',
+  onPurpleC: '#EBB5F7',
+  waC: '#163A26',
+  onWaC: '#7FE0A6',
+  skyC: '#13324A',
+  onSkyC: '#9BD3F7',
+  goldC: '#3A2E12',
+  onGoldC: '#FFD98A',
+  gold: '#E8A100',
+  meC: '#1E2949',
+  heroC: '#1C2647',
+  lockC: '#4A1F1F',
+  onLockC: '#FFB4AB',
+  highlight: '#6B5B12',
+  waBubble: '#1F3B2C',
+  waBubbleText: '#E7EBF4',
+  warnText: '#FFE2B8',
+  warnSub: '#E9C48A',
+  primarySub: '#AFC0FF',
+  okText: '#C8F0D8',
+  okSub: '#9CCFB2',
+  fire: '#FB8A5A',
+};
+
+export const md = isDark ? mdDark : mdLight;
 
 export function MIcon({ name, size = 24, color = colors.text }: { name: MIconName; size?: number; color?: string }) {
   return <MaterialIcons name={name} size={size} color={color} />;
@@ -107,10 +179,10 @@ export const card: ViewStyle = {
 export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
   const pal = [
     [md.primaryC, md.onPrimaryC],
-    ['#FFE0D6', '#9C2E00'],
+    [md.peachC, md.onPeachC],
     [md.okC, md.onOkC],
     [md.warnC, md.onWarnC],
-    ['#F3DDF8', '#6A1B7A'],
+    [md.purpleC, md.onPurpleC],
   ];
   const i = [...name].reduce((n, ch) => n + ch.charCodeAt(0), 0) % pal.length;
   return (

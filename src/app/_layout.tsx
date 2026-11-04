@@ -1,4 +1,4 @@
-import { Stack, usePathname, type ErrorBoundaryProps } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, usePathname, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -8,7 +8,8 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
 import { CrashScreen } from '@/features/feedback/CrashScreen';
 import { flushCrashes, installCrashHandler, setCrashScreen } from '@/features/feedback/crash';
-import { colors } from '@/shared/theme';
+import { colors, isDark } from '@/shared/theme';
+import { ThemeFollower } from '@/features/settings/appearance';
 import { UpdateBanner } from '@/features/updates/UpdateBanner';
 import { OfflineBanner } from '@/shared/ui/OfflineBanner';
 import { WebAlertHost, installWebAlert } from '@/shared/web/WebAlert';
@@ -28,14 +29,30 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   return <CrashScreen error={error} retry={retry} />;
 }
 
+const NAV_THEME = {
+  ...(isDark ? DarkTheme : DefaultTheme),
+  dark: isDark,
+  colors: {
+    ...(isDark ? DarkTheme : DefaultTheme).colors,
+    primary: colors.primary,
+    background: colors.background,
+    card: colors.surface,
+    text: colors.text,
+    border: colors.border,
+  },
+};
+
 export default function RootLayout() {
   return (
-    // Keeps the field you type in above the keyboard (all screens and sheets)
-    <KeyboardProvider>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
-    </KeyboardProvider>
+    // 🌙 Screens, headers and the tab bar take the app's light / dark colours
+    <ThemeProvider value={NAV_THEME}>
+      {/* Keeps the field you type in above the keyboard (all screens and sheets) */}
+      <KeyboardProvider>
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </KeyboardProvider>
+    </ThemeProvider>
   );
 }
 
@@ -62,7 +79,9 @@ function RootNavigator() {
 
   return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      {/* 🌙 "System" colours: follow the phone when it switches light / dark */}
+      <ThemeFollower />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Protected guard={status === 'loading'}>
           <Stack.Screen name="loading" />

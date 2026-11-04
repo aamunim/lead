@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-18-a',
+    date: '18 Nov 2026',
+    title: '🌙 Dark mode',
+    items: [
+      '🌗 More → Appearance: 📱 like the phone (System), ☀️ Light or 🌙 Dark',
+      '📱 “System” follows the phone: when the phone turns dark, so does the app',
+      '🖨 Exports and PDFs stay white, for printing',
+    ],
+  },
+  {
     key: '2026-11-17-b',
     date: '17 Nov 2026',
     title: '📞 Call log sync can be required',

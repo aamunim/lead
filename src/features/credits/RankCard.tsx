@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: '#FFF4D6',
+    backgroundColor: md.goldC,
     overflow: 'hidden',
   },
   cup: { fontSize: 24 },
@@ -95,5 +95,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 14, fontWeight: fontWeight.semibold, color: colors.text },
   sub: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   track: { height: 6, borderRadius: 3, backgroundColor: 'rgba(122,75,0,0.15)', marginTop: 6, overflow: 'hidden' },
-  fill: { height: 6, borderRadius: 3, backgroundColor: '#E8A100' },
+  fill: { height: 6, borderRadius: 3, backgroundColor: md.gold },
 });

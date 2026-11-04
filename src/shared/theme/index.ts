@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Appearance, Platform } from 'react-native';
 
 // ---------------------------------------------------------------------
 // Colors
@@ -81,14 +81,57 @@ export function webThemeChoice(): WebTheme {
   }
 }
 
+// ---------------------------------------------------------------------
+// 📱 Phone colour choice (More → Appearance): light / dark / system.
+//   Kept in a small file so it can be read before any screen is drawn
+//   (every screen takes its colours once, when it loads); a change
+//   restarts the app for a moment.
+// ---------------------------------------------------------------------
+export type PhoneTheme = 'light' | 'dark' | 'system';
+const PHONE_THEME_FILE = 'theme.txt';
+
+function phoneFile() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require('expo-file-system') as typeof import('expo-file-system');
+  return new fs.File(fs.Paths.document, PHONE_THEME_FILE);
+}
+
+export function phoneThemeChoice(): PhoneTheme {
+  if (Platform.OS === 'web') return 'system';
+  try {
+    const f = phoneFile();
+    const v = f.exists ? f.textSync().trim() : 'system';
+    return v === 'light' || v === 'dark' ? v : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+export function savePhoneThemeChoice(t: PhoneTheme): void {
+  try {
+    const f = phoneFile();
+    if (!f.exists) f.create();
+    f.write(t);
+  } catch {
+    // keeps the old choice
+  }
+}
+
+/** The phone's own light / dark setting right now */
+export const systemIsDark = () => Appearance.getColorScheme() === 'dark';
+
 function startsDark(): boolean {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  if (Platform.OS !== 'web') {
+    const choice = phoneThemeChoice();
+    return choice === 'system' ? systemIsDark() : choice === 'dark';
+  }
+  if (typeof window === 'undefined') return false;
   const choice = webThemeChoice();
   if (choice !== 'system') return choice === 'dark';
   return !!window.matchMedia?.('(prefers-color-scheme: dark)').matches;
 }
 
-/** True when the website is shown in dark colours (always false on the phone) */
+/** True when the app (phone or website) is shown in dark colours */
 export const isDark = startsDark();
 
 // Chosen once when the page opens (all styles are built from it); a new
