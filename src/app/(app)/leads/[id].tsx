@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { getCallSyncSettings, getDeviceId, markCallFromApp, type WhatsAppDeviceEvent } from '@/features/call-sync/api';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
+import { confirmCall } from '@/features/calls/doubleCall';
 import { contactLabel, openWhatsApp, whatsAppOnly } from '@/features/leads/contact';
 import type { TemplateChannel } from '@/features/templates/api';
 import { TemplateSheet } from '@/features/templates/TemplateSheet';
@@ -420,6 +421,8 @@ export function LeadDetailView({
   };
 
   const call = async (phone: string) => {
+    // ⚠️ Someone else talked to this lead a moment ago: ask first ("Read notes" = stay on this page)
+    if (id && !(await confirmCall(id, () => showToast('📝 The latest calls and notes are in the Timeline below')))) return;
     callStartedAt.current = Date.now();
     leftApp.current = false;
     pendingChannel.current = 'phone';
@@ -628,6 +631,8 @@ export function LeadDetailView({
         return 'Lead deleted';
       case 'restored':
         return 'Lead restored';
+      case 'double_call':
+        return `⚠️ Called anyway · ${String(d.other_name ?? 'someone').split(' ')[0]} ${d.kind === 'note' ? 'wrote a note' : d.kind === 'voice' ? 'left a voice note' : 'called'} ${Number(d.minutes ?? 0)} min before`;
       default:
         return item.action.replace(/_/g, ' ');
     }
