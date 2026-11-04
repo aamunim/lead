@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-11-a',
+    date: '11 Nov 2026',
+    title: 'Export your work',
+    items: [
+      '📤 More → Export my work: your calls, notes, changes and leads added as Excel, text or CSV',
+      '📅 Today, yesterday, this week, this month, last month or any dates you choose',
+      '👥 Admins and Team Leads: Team activity → ⬇ Export (one file for everyone, or a file for each person), or on a person’s page',
+    ],
+  },
+  {
     key: '2026-11-10-a',
     date: '10 Nov 2026',
     title: 'Double-call warning',

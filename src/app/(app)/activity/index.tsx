@@ -13,6 +13,7 @@ import {
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { WebTeamActivity } from '@/features/web/activity/WebTeamActivity';
+import { ExportWorkSheet } from '@/features/activity/ExportWorkSheet';
 import { isWeb } from '@/features/web/api';
 import {
   ACTIVITY_PERIODS,
@@ -89,6 +90,7 @@ function TeamActivityScreen() {
   const [period, setPeriod] = useState<ActivityPeriod>('today');
   const [sort, setSort] = useState<Sort>('name');
   const [rows, setRows] = useState<TeamMember[]>([]);
+  const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,7 +190,24 @@ function TeamActivityScreen() {
         />
       }
     >
-      <Stack.Screen options={{ title: 'Team activity' }} />
+      <Stack.Screen
+        options={{
+          title: 'Team activity',
+          // 📤 Everyone's work: one file, or a file for each person
+          headerRight: () =>
+            rows.length > 0 ? (
+              <Pressable onPress={() => setExporting(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Export work">
+                <Text style={styles.exportBtn}>⬇ Export</Text>
+              </Pressable>
+            ) : null,
+        }}
+      />
+      {exporting && (
+        <ExportWorkSheet
+          people={rows.map((r) => ({ id: r.user_id, name: r.name ?? 'No name' }))}
+          onClose={() => setExporting(false)}
+        />
+      )}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.noShrink} contentContainerStyle={styles.chips}>
         {ACTIVITY_PERIODS.map((p) => (
@@ -305,6 +324,7 @@ function Total({ value, label }: { value: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
+  exportBtn: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.background },

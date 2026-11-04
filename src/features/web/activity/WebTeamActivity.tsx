@@ -15,6 +15,7 @@ import {
   type TeamMember,
 } from '@/features/activity/api';
 import { writeAndShareSpreadsheet } from '@/features/import-export/excel';
+import { ExportWorkSheet } from '@/features/activity/ExportWorkSheet';
 import { CellText, Chips, Tool, WebTable, webPage, type WebCol } from '@/features/web/WebTable';
 import { colors, fontSize, fontWeight } from '@/shared/theme';
 
@@ -73,6 +74,7 @@ export function WebTeamActivity() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     getActivitySettings()
@@ -255,12 +257,16 @@ export function WebTeamActivity() {
     <View style={webPage.screen}>
       {/* the website's top bar has the name */}
       <Stack.Screen options={{ headerShown: false }} />
+      {exporting && (
+        <ExportWorkSheet people={rows.map((r) => ({ id: r.user_id, name: r.name ?? 'No name' }))} onClose={() => setExporting(false)} />
+      )}
       <View style={webPage.body}>
         <View style={webPage.titleRow}>
           <Text style={webPage.h1}>Team activity</Text>
           <View style={webPage.flex} />
           <Tool label="📜 Change log" onPress={() => router.push('/changes' as Href)} />
           <Tool label="⬇ Excel" onPress={excel} />
+          <Tool label="📤 Export work" onPress={() => setExporting(true)} />
           <Tool label="↻" onPress={load} />
         </View>
         <Chips options={ACTIVITY_PERIODS} value={period} onChange={setPeriod} />
