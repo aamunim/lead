@@ -5,6 +5,7 @@ import {
   Alert,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -27,6 +28,7 @@ import { TextField } from '@/shared/ui/TextField';
 import { ResetPasswordSheet } from '@/features/users/ResetPasswordSheet';
 import { designOf, saveListDesign, type ListDesign } from '@/features/leads/design';
 import { ListDesignPicker } from '@/features/leads/ListDesignPicker';
+import { supabase } from '@/shared/lib/supabase';
 
 type Form = {
   fullName: string;
@@ -89,6 +91,7 @@ export default function UserEditScreen() {
 
   // --- what the signed-in admin is allowed to do here ---------------
   const isSelf = me?.id === user?.id;
+  const [requireBusy, setRequireBusy] = useState(false);
   const iAmSuperAdmin = me?.role_key === 'super_admin';
   const targetIsSuperAdmin = user?.role_key === 'super_admin';
   const readOnly = targetIsSuperAdmin && !iAmSuperAdmin;
@@ -311,6 +314,41 @@ export default function UserEditScreen() {
         </View>
       )}
 
+      {/* 📞 Call log sync required: the Super Admin only */}
+      {iAmSuperAdmin && !isSelf && (
+        <View style={styles.card}>
+          <View style={styles.requireRow}>
+            <View style={styles.flex}>
+              <Text style={styles.sectionTitle}>📞 Call log sync required</Text>
+              <Text style={styles.muted}>
+                {user.call_sync_required
+                  ? 'On: their Android app opens only with call log permission and Call log sync on. Sync health shows their phone.'
+                  : 'Off: they can use the app without Call log sync.'}
+              </Text>
+            </View>
+            <Switch
+              value={!!user.call_sync_required}
+              disabled={requireBusy}
+              onValueChange={async (on) => {
+                setRequireBusy(true);
+                try {
+                  const { error: e } = await supabase.rpc('set_call_sync_required', {
+                    p_user: user.id,
+                    p_required: on,
+                  });
+                  if (e) throw new Error(e.message);
+                  setUser({ ...user, call_sync_required: on });
+                } catch (e) {
+                  Alert.alert('Could not change', e instanceof Error ? e.message : '');
+                } finally {
+                  setRequireBusy(false);
+                }
+              }}
+            />
+          </View>
+        </View>
+      )}
+
       {error && (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
@@ -411,6 +449,8 @@ const STATUS = {
 } as const;
 
 const styles = StyleSheet.create({
+  requireRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
   center: {

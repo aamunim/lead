@@ -29,6 +29,7 @@ import {
   type HealthStatus,
 } from '@/features/call-sync/health';
 import { NUDGE_MESSAGE_MAX, describeSendResult, sendSyncNudge } from '@/features/nudges/api';
+import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
@@ -49,6 +50,8 @@ export default function SyncHealthScreen() {
   const isSuperAdmin = profile?.role_key === 'super_admin';
 
   const [rows, setRows] = useState<HealthRow[]>([]);
+  // 🔒 People the Super Admin made Call log sync necessary for
+  const [required, setRequired] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +65,8 @@ export default function SyncHealthScreen() {
     try {
       setError(null);
       setRows(await listSyncHealth());
+      const { data: req } = await supabase.from('profiles').select('id').eq('call_sync_required', true);
+      setRequired(new Set((req ?? []).map((r) => r.id)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load sync health.');
     } finally {
@@ -206,6 +211,7 @@ export default function SyncHealthScreen() {
             <HealthCard
               key={`${row.userId}:${row.deviceId ?? 'none'}`}
               row={row}
+              required={required.has(row.userId)}
               canRemind={isSuperAdmin}
               onRemind={() => setRemindTo([{ userId: row.userId, userName: row.userName }])}
               onLongPress={() => forget(row)}
@@ -255,11 +261,13 @@ export default function SyncHealthScreen() {
 // =====================================================================
 function HealthCard({
   row,
+  required,
   canRemind,
   onRemind,
   onLongPress,
 }: {
   row: HealthRow;
+  required?: boolean;
   canRemind: boolean;
   onRemind: () => void;
   onLongPress: () => void;
@@ -285,6 +293,7 @@ function HealthCard({
       <View style={styles.cardTop}>
         <Text style={styles.name} numberOfLines={1}>
           {row.userName}
+          {required ? <Text style={styles.required}>  🔒 Required</Text> : null}
         </Text>
         <View style={[styles.statusPill, { backgroundColor: info.color + '1A' }]}>
           <Text style={[styles.statusText, { color: info.color }]}>
@@ -461,6 +470,7 @@ function RemindSheet({
 }
 
 const styles = StyleSheet.create({
+  required: { fontSize: 12, fontWeight: fontWeight.bold, color: colors.danger },
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
