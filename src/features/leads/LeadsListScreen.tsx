@@ -39,6 +39,7 @@ import {
 } from '@/features/board/api';
 import { LeadBoard } from '@/features/board/LeadBoard';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
+import { confirmCall } from '@/features/calls/doubleCall';
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { AddedChips } from '@/features/leads/AddedChips';
 import {
@@ -715,6 +716,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
   const call = async (lead: LeadListItem) => {
     if (!lead.phone) return;
+    // ⚠️ Someone else talked to this lead a moment ago: ask first (Settings → Double-call warning)
+    if (!(await confirmCall(lead.id, () => setPeekLead(lead)))) return;
     setCallLead(lead);
     callStartedAt.current = Date.now();
     leftApp.current = false;

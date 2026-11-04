@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-10-a',
+    date: '10 Nov 2026',
+    title: 'Double-call warning',
+    items: [
+      '⚠️ Tap Call on a lead someone else talked to a moment ago: “Rahim called 12 minutes ago. Call anyway?”',
+      '📝 “Read notes” shows the last calls and notes first',
+      '⚙️ Admins: Settings → Double-call warning (on/off, how many minutes, what counts, change log)',
+    ],
+  },
+  {
     key: '2026-11-09-build-2-7',
     date: '9 Nov 2026',
     title: 'Caller card · version 2.7',

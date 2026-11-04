@@ -186,6 +186,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/calls' as Href,
       },
       {
+        title: 'Double-call warning',
+        description: '“Rahim called 12 min ago. Call again?” before a call',
+        icon: '⚠️',
+        href: '/settings/double-call' as Href,
+      },
+      {
         title: 'Notifications',
         description: 'What sends a push, quiet hours, reminders, who can hand over leads',
         icon: '🔔',
