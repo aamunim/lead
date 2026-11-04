@@ -16,6 +16,7 @@ import { MIcon, md, type MIconName } from '@/features/home/md';
 import { countUnread } from '@/features/notifications/api';
 import { checkAndDownload, currentVersionInfo, restartWithUpdate } from '@/features/updates/api';
 import { WhatsNewSheet } from '@/features/updates/WhatsNewSheet';
+import { ExportWorkSheet } from '@/features/activity/ExportWorkSheet';
 import { countNewFeedback, isDeveloper } from '@/features/feedback/api';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
@@ -77,6 +78,7 @@ function PhoneMore() {
   const version = Constants.expoConfig?.version ?? '—';
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'ready' | 'latest'>('idle');
   const [whatsNew, setWhatsNew] = useState(false);
+  const [exportMine, setExportMine] = useState(false);
 
   // 🎨 Leads / Students list: the new design or the classic one
   const design = designOf(profile?.list_design);
@@ -299,6 +301,13 @@ function PhoneMore() {
             />
           )}
           <Row
+            icon="file-download"
+            tone="blue"
+            title="Export my work"
+            subtitle="My calls, notes, leads: Excel or text"
+            onPress={() => setExportMine(true)}
+          />
+          <Row
             icon="chat"
             tone="wa"
             title="WhatsApp calls"
@@ -470,6 +479,9 @@ function PhoneMore() {
         </Text>
       </ScrollView>
       {whatsNew && <WhatsNewSheet onClose={() => setWhatsNew(false)} />}
+      {exportMine && profile && (
+        <ExportWorkSheet people={[{ id: profile.id, name: name }]} onClose={() => setExportMine(false)} />
+      )}
     </View>
   );
 }

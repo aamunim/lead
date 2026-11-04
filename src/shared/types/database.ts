@@ -2713,6 +2713,7 @@ export type Database = {
       resubmit_admission: { Args: { p_lead: string; p_note?: string }; Returns: undefined }
       set_nu_admission_id: { Args: { p_lead: string; p_value: string }; Returns: undefined }
       set_student_ref: { Args: { p_lead: string; p_value: string }; Returns: string }
+      user_export: { Args: { p_user: string; p_from: string; p_to: string }; Returns: Json }
       recent_contact: { Args: { p_lead: string }; Returns: Json }
       log_double_call: { Args: { p_lead: string; p_other: string; p_minutes: number; p_kind: string }; Returns: undefined }
       set_list_design_all: { Args: { p_design: string }; Returns: number }

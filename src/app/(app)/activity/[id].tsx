@@ -26,6 +26,7 @@ import {
   type UserDetail,
 } from '@/features/activity/api';
 import { useActivityLookups } from '@/features/activity/useLookups';
+import { ExportWorkSheet } from '@/features/activity/ExportWorkSheet';
 import { getTemplateReport, type TemplateReport } from '@/features/reports/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Collapsible } from '@/shared/ui/Collapsible';
@@ -98,6 +99,7 @@ function lastSeen(iso: string | null): { online: boolean; text: string } {
 
 export default function UserActivityScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [exporting, setExporting] = useState(false);
   const { stages, userNames } = useActivityLookups();
 
   const [period, setPeriod] = useState<ActivityPeriod>('today');
@@ -636,7 +638,18 @@ export default function UserActivityScreen() {
 
   return (
     <View style={styles.screen}>
-      <Stack.Screen options={{ title: name }} />
+      <Stack.Screen
+        options={{
+          title: name,
+          // 📤 Calls, notes, changes… of this person as Excel / text / CSV
+          headerRight: () => (
+            <Pressable onPress={() => setExporting(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Export work">
+              <Text style={styles.exportBtn}>⬇ Export</Text>
+            </Pressable>
+          ),
+        }}
+      />
+      {exporting && <ExportWorkSheet people={[{ id: String(id), name }]} onClose={() => setExporting(false)} />}
       <ActivityFeedList
         items={showFeed ? shownItems : []}
         stages={stages}
@@ -733,6 +746,7 @@ function Spark({ values }: { values: number[] }) {
 }
 
 const styles = StyleSheet.create({
+  exportBtn: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   header: { gap: spacing.md, marginBottom: spacing.sm },
