@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-15-a',
+    date: '15 Nov 2026',
+    title: '📌 Keep in place',
+    items: [
+      '📌 After a call, WhatsApp, note or stage change the lead stays where it is in the list, and the card shows what changed',
+      '✓ A lead that no longer fits the list (e.g. “Not called” after you call) stays dimmed until you sort again',
+      '↻ Re-sort, or pull down, to sort the list again',
+      '⇅ Sort → Keep in place turns it off on your phone',
+    ],
+  },
+  {
     key: '2026-11-14-a',
     date: '14 Nov 2026',
     title: '🏅 Levels, 14 badges and your streak on Home',

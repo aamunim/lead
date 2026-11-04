@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 
 import {
@@ -36,6 +36,22 @@ export function saveLeadSort(sort: LeadSort, students = false): void {
   AsyncStorage.setItem(students ? STUDENT_SORT_KEY : SORT_KEY, sort).catch(() => undefined);
 }
 
+// 📌 Keep in place: after a call, note or change a lead stays where it is
+//   (on for everyone at first; each phone remembers its own choice)
+const KEEP_KEY = 'leads.keepInPlace';
+
+export async function loadKeepInPlace(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(KEEP_KEY)) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function saveKeepInPlace(on: boolean): void {
+  AsyncStorage.setItem(KEEP_KEY, on ? 'on' : 'off').catch(() => undefined);
+}
+
 export const sortLabel = (sort: LeadSort, students = false) =>
   optionsFor(students).find((o) => o.value === sort)?.label ?? 'Next call';
 
@@ -46,9 +62,12 @@ type Props = {
   onPick: (sort: LeadSort) => void;
   /** The Students list: its own sorts */
   students?: boolean;
+  /** 📌 Keep in place (left out = no switch) */
+  keep?: boolean;
+  onKeep?: (on: boolean) => void;
 };
 
-export function LeadSortSheet({ visible, value, onClose, onPick, students = false }: Props) {
+export function LeadSortSheet({ visible, value, onClose, onPick, students = false, keep, onKeep }: Props) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
@@ -57,6 +76,24 @@ export function LeadSortSheet({ visible, value, onClose, onPick, students = fals
           <View style={styles.handle} />
           <Text style={styles.title}>{students ? 'Sort students' : 'Sort leads'}</Text>
           <ScrollView contentContainerStyle={styles.list}>
+            {onKeep && (
+              <Pressable
+                onPress={() => onKeep(!keep)}
+                style={[styles.row, styles.keep, keep && styles.keepOn]}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: !!keep }}
+              >
+                <Text style={styles.icon}>📌</Text>
+                <View style={styles.flex}>
+                  <Text style={styles.label}>Keep in place</Text>
+                  <Text style={styles.text}>
+                    After a call, note or stage change the {students ? 'student' : 'lead'} stays where it is. Pull down
+                    or tap ↻ Re-sort to sort again.
+                  </Text>
+                </View>
+                <Switch value={!!keep} onValueChange={onKeep} />
+              </Pressable>
+            )}
             {optionsFor(students).map((o) => {
               const on = o.value === value;
               return (
@@ -124,5 +161,7 @@ const styles = StyleSheet.create({
   label: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
   labelOn: { color: colors.primary },
   text: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
+  keep: { marginBottom: spacing.sm },
+  keepOn: { borderColor: '#E8A100', backgroundColor: '#FFF8E6' },
   tick: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.primary },
 });

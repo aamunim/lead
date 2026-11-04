@@ -238,6 +238,8 @@ export type LeadQuery = {
   stageId?: string | null;
   /** Only these leads (opened from a notification about many leads) */
   ids?: string[] | null;
+  /** 📌 Only these leads, with every other rule as it is (closed leads stay hidden) */
+  onlyIds?: string[] | null;
   userId?: string;       // the signed-in user, for "mine"
   filters?: LeadFilters;
   closedMode?: ClosedMode;
@@ -312,7 +314,7 @@ export const PAGE_SIZE = 30;
 export const MAX_MARK_ALL = 2000;
 
 /** Builds the leads query with search, quick filter and the full filters */
-function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only') {
+function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids') {
   const {
     search = '',
     quick = 'all',
@@ -322,15 +324,17 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only') {
     closedMode = 'hide',
     sort = DEFAULT_SORT,
     ids = null,
+    onlyIds = null,
     students = false,
     added = null,
   } = options;
+  const idOnly = withCount === 'only' || withCount === 'ids';
 
   let query = supabase
     .from('leads')
     .select(
-      withCount === 'only' ? 'id' + filterSelect(filters) : LIST_SELECT + filterSelect(filters),
-      withCount === 'only' ? { count: 'exact', head: true } : withCount ? { count: 'exact' } : undefined,
+      idOnly ? 'id' + filterSelect(filters) : LIST_SELECT + filterSelect(filters),
+      withCount === 'only' ? { count: 'exact', head: true } : withCount === true ? { count: 'exact' } : undefined,
     )
     .is('deleted_at', null);
 
@@ -373,6 +377,7 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only') {
 
   // Closed leads (Admitted / Lost / Cancelled)
   if (ids && ids.length > 0) query = query.in('id', ids);
+  if (onlyIds) query = query.in('id', onlyIds.length > 0 ? onlyIds : ['00000000-0000-0000-0000-000000000000']);
 
   const wantsClosed = !!stageId || needsClosedLeads(filters) || !!(ids && ids.length > 0) || !!added;
   if (students) {
@@ -500,6 +505,39 @@ export async function listAllMatchingLeads(options: LeadQuery): Promise<LeadList
   const { data, error } = await buildLeadQuery(options, false).range(0, MAX_MARK_ALL - 1);
   if (error) throw toError(error);
   return cleanRows(data);
+}
+
+// =====================================================================
+// 📌 Keep in place: the order is taken once, then cards change where they are
+// =====================================================================
+/** Most leads whose order is kept (more than anyone scrolls through) */
+export const KEEP_MAX = 3000;
+
+/** The ids in list order, as the list is right now */
+export async function listLeadIds(options: LeadQuery): Promise<string[]> {
+  const { data, error } = await buildLeadQuery(options, 'ids').range(0, KEEP_MAX - 1);
+  if (error) throw toError(error);
+  return ((data ?? []) as unknown as { id: string }[]).map((r) => r.id);
+}
+
+/** These leads as list cards, in the order given (deleted ones are left out) */
+export async function listLeadsByIds(ids: string[]): Promise<LeadListItem[]> {
+  const out = new Map<string, LeadListItem>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const part = ids.slice(i, i + 100);
+    const { data, error } = await supabase.from('leads').select(LIST_SELECT).in('id', part).is('deleted_at', null);
+    if (error) throw toError(error);
+    cleanRows(data).forEach((r) => out.set(r.id, r));
+  }
+  return ids.map((id) => out.get(id)).filter(Boolean) as LeadListItem[];
+}
+
+/** Which of these leads still match the list's search, chips and filters */
+export async function matchingLeadIds(options: LeadQuery, ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const { data, error } = await buildLeadQuery({ ...options, onlyIds: ids }, 'ids').range(0, ids.length - 1);
+  if (error) throw toError(error);
+  return new Set(((data ?? []) as unknown as { id: string }[]).map((r) => r.id));
 }
 
 // =====================================================================

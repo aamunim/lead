@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation, type Href } from 'expo-router';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -55,7 +55,15 @@ import {
 } from '@/features/leads/added';
 import { canHandOver } from '@/features/settings/assignment';
 import { LeadQuickSheet, type QuickField } from '@/features/leads/LeadQuickSheet';
-import { LeadSortSheet, defaultSortFor, loadLeadSort, saveLeadSort, sortLabel } from '@/features/leads/LeadSortSheet';
+import {
+  LeadSortSheet,
+  defaultSortFor,
+  loadKeepInPlace,
+  loadLeadSort,
+  saveKeepInPlace,
+  saveLeadSort,
+  sortLabel,
+} from '@/features/leads/LeadSortSheet';
 import { StudentsSummary } from '@/features/students/StudentsSummary';
 import {
   MAX_MARK_ALL,
@@ -89,7 +97,7 @@ import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
 import { listAssignableUsers } from '@/features/leads/api';
 import { VoicePlayer } from '@/features/voice/VoiceNote';
 import { isWeb } from '@/features/web/api';
-import { countLeads } from '@/features/leads/api';
+import { countLeads, listLeadIds, listLeadsByIds, matchingLeadIds, PAGE_SIZE as LIST_PAGE } from '@/features/leads/api';
 import {
   GROUP_LABEL,
   loadGroupByTime,
@@ -311,6 +319,29 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       }
     });
   }, []);
+  // 📌 Keep in place (phone only): the order is taken when the list loads; after a
+  //   call, note or change only that card is updated, where it is
+  const [keepSetting, setKeepSetting] = useState(true);
+  useEffect(() => {
+    loadKeepInPlace().then(setKeepSetting);
+  }, []);
+  const keepOn = keepSetting && !isWeb;
+  const changeKeep = (on: boolean) => {
+    setKeepSetting(on);
+    saveKeepInPlace(on);
+  };
+  /** The ids in the order the list had when it loaded */
+  const keepOrder = useRef<string[] | null>(null);
+  /** The list (search, chips, filters, sort) that keepOrder belongs to */
+  const keepKey = useRef<string | null>(null);
+  /** ⏱ The time group each lead had when it loaded (so it does not move to another group) */
+  const keepGroup = useRef<Map<string, TimeGroup>>(new Map());
+  /** Leads opened from the list: updated when coming back */
+  const touched = useRef<Set<string>>(new Set());
+  /** No longer match the list: dimmed, they leave on the next sort */
+  const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
+  /** Something changed since the list was sorted: show ↻ Re-sort */
+  const [stale, setStale] = useState(false);
   const pickSort = (next: LeadSort) => {
     setSortSheetVisible(false);
     if (next === sort) return;
@@ -429,27 +460,42 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   }, [filters, assignmentOn]);
 
   // --- load the first page ---------------------------------------------
+  const listQuery = useMemo(
+    () => ({
+      search: debouncedSearch,
+      quick,
+      userId: profile?.id,
+      filters: effectiveFilters,
+      closedMode,
+      sort,
+      students,
+      ids: idsFilter,
+      added: addedQ,
+    }),
+    [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort, students, idsFilter, addedQ],
+  );
+  const queryKey = useMemo(() => JSON.stringify(listQuery), [listQuery]);
+
   const loadFirstPage = useCallback(async () => {
     const myRequest = ++requestId.current;
     try {
       setError(null);
-      const result = await listLeads({
-        search: debouncedSearch,
-        quick,
-        userId: profile?.id,
-        filters: effectiveFilters,
-        closedMode,
-        sort,
-        students,
-        ids: idsFilter,
-        added: addedQ,
-        page: 0,
-      });
+      const [result, order] = await Promise.all([
+        listLeads({ ...listQuery, page: 0 }),
+        keepOn ? listLeadIds(listQuery).catch(() => null) : Promise.resolve(null),
+      ]);
       if (myRequest !== requestId.current) return;
       setLeads(result.items);
       setTotal(result.total);
-      setHasMore(result.hasMore);
       setPage(0);
+      keepOrder.current = order;
+      keepKey.current = keepOn ? queryKey : null;
+      const now = new Date();
+      keepGroup.current = new Map(result.items.map((l) => [l.id, timeGroup(l.next_follow_up_at, now)]));
+      touched.current.clear();
+      setDoneIds(new Set());
+      setStale(false);
+      setHasMore(order ? order.length > result.items.length : result.hasMore);
     } catch (e) {
       if (myRequest !== requestId.current) return;
       setError(e instanceof Error ? e.message : 'Could not load leads.');
@@ -459,7 +505,33 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         setRefreshing(false);
       }
     }
-  }, [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort, idsFilter, addedQ]);
+  }, [listQuery, queryKey, keepOn]);
+
+  // 📌 Only these cards change, where they are (a lead that no longer matches is dimmed)
+  const refreshInPlace = useCallback(
+    async (ids: string[]) => {
+      const list = [...new Set(ids)];
+      if (list.length === 0) return;
+      try {
+        const [rows, still] = await Promise.all([listLeadsByIds(list), matchingLeadIds(listQuery, list)]);
+        const fresh = new Map(rows.map((r) => [r.id, r]));
+        setLeads((now) =>
+          now
+            .filter((l) => !list.includes(l.id) || fresh.has(l.id)) // deleted: gone
+            .map((l) => fresh.get(l.id) ?? l),
+        );
+        setDoneIds((now) => {
+          const next = new Set(now);
+          list.forEach((id) => (still.has(id) ? next.delete(id) : next.add(id)));
+          return next;
+        });
+        setStale(true);
+      } catch {
+        // offline or failed: the card shows the old details until the next refresh
+      }
+    },
+    [listQuery],
+  );
 
   const loadSavedFilters = useCallback(async () => {
     try {
@@ -471,9 +543,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
   useFocusEffect(
     useCallback(() => {
-      loadFirstPage();
+      // 📌 Back on the same list: only the leads opened from it are updated
+      if (keepOn && keepKey.current === queryKey) {
+        const ids = [...touched.current];
+        touched.current.clear();
+        if (ids.length > 0) refreshInPlace(ids);
+      } else loadFirstPage();
       loadSavedFilters();
-    }, [loadFirstPage, loadSavedFilters]),
+    }, [loadFirstPage, loadSavedFilters, keepOn, queryKey, refreshInPlace]),
   );
 
   // ✨ New design: the chips (Leads get Mine / Hot / Not called / Unassigned back) and how many each has
@@ -584,6 +661,21 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     if (!hasMore || loadingMore || loading) return;
     setLoadingMore(true);
     try {
+      // 📌 The next ones from the order taken when the list loaded (none twice, none missed)
+      const order = keepOn && keepKey.current === queryKey ? keepOrder.current : null;
+      if (order) {
+        const have = new Set(leads.map((l) => l.id));
+        const left = order.filter((id) => !have.has(id));
+        const part = left.slice(0, LIST_PAGE);
+        const items = await listLeadsByIds(part);
+        const now = new Date();
+        items.forEach((l) => {
+          if (!keepGroup.current.has(l.id)) keepGroup.current.set(l.id, timeGroup(l.next_follow_up_at, now));
+        });
+        setLeads((list) => [...list, ...items.filter((l) => !have.has(l.id))]);
+        setHasMore(left.length > part.length);
+        return;
+      }
       const next = page + 1;
       const result = await listLeads({
         search: debouncedSearch,
@@ -824,6 +916,13 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     loadChipCounts();
     setBoardReload((n) => n + 1);
   };
+  /** After a change to these leads: 📌 update them where they are, else load the list again */
+  const afterChange = (ids: string[]) => {
+    if (!keepOn || ids.length === 0 || ids.length > 100 || showBoard) return reloadAll();
+    refreshInPlace(ids);
+    loadChipCounts();
+    setBoardReload((n) => n + 1);
+  };
 
   // --- 🔍 search ------------------------------------------------------------
   const clearSearch = () => {
@@ -856,6 +955,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         onClose={() => setSortSheetVisible(false)}
         onPick={pickSort}
         students={students}
+        keep={keepSetting}
+        onKeep={isWeb ? undefined : changeKeep}
       />
 
       <LeadFilterSheet
@@ -881,6 +982,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           onClose={() => setPeekLead(null)}
           onOpen={() => {
             const id = peekLead.id;
+            touched.current.add(id);
             setPeekLead(null);
             router.push(`/leads/${id}` as Href);
           }}
@@ -899,7 +1001,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           onSaved={(message) => {
             setNoteFor(null);
             showToast(message);
-            reloadAll();
+            afterChange([noteFor.id]);
           }}
         />
       )}
@@ -919,7 +1021,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             const res = await recordPayment({ leadId: payFor.id, ...input });
             showToast(`💵 ${money(input.amount)} received from ${payFor.name} · ${res.receipt_no}`);
             setPayFor(null);
-            reloadAll();
+            afterChange([payFor.id]);
           }}
         />
       )}
@@ -931,11 +1033,12 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           leads={markedLeads}
           onClose={() => setSheetField(null)}
           onSaved={(message) => {
+            const ids = markedLeads.map((l) => l.id);
             setSheetField(null);
             setSelected(new Set());
             setMatchingCache([]);
             showToast(message);
-            reloadAll();
+            afterChange(ids);
           }}
         />
       )}
@@ -945,11 +1048,12 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         leads={markedLeads.map((l) => ({ id: l.id, name: l.name }))}
         onClose={() => setLostVisible(false)}
         onSaved={(message) => {
+          const ids = markedLeads.map((l) => l.id);
           setLostVisible(false);
           setSelected(new Set());
           setMatchingCache([]);
           showToast(message);
-          reloadAll();
+          afterChange(ids);
         }}
       />
 
@@ -963,8 +1067,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         }}
         onChanged={(message) => {
           if (message) showToast(message);
-          reloadAll();
-          setBoardReload((n) => n + 1);
+          if (feeFor) afterChange([feeFor.id]);
+          else reloadAll();
         }}
       />
 
@@ -990,11 +1094,15 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           lead={{ id: callLead.id, name: callLead.name, phone: callLead.phone, rating: callLead.rating }}
           estimatedSec={estimatedSec}
           channel={callChannel}
-          onClose={() => setCallSheetVisible(false)}
+          onClose={() => {
+            setCallSheetVisible(false);
+            // 📌 A call saved from the phone's call log still shows on the card
+            if (keepOn) refreshInPlace([callLead.id]);
+          }}
           onSaved={() => {
             setCallSheetVisible(false);
             showToast(callChannel === 'whatsapp' ? 'WhatsApp saved.' : 'Call saved.');
-            reloadAll();
+            afterChange([callLead.id]);
           }}
         />
       )}
@@ -1008,7 +1116,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   const rows = useMemo<ListRow[]>(() => {
     if (!grouped) return leads.map((l) => ({ type: 'lead', key: l.id, lead: l }));
     const now = new Date();
-    const groups = leads.map((l) => timeGroup(l.next_follow_up_at, now));
+    const groups = leads.map((l) =>
+      keepOn ? (keepGroup.current.get(l.id) ?? timeGroup(l.next_follow_up_at, now)) : timeGroup(l.next_follow_up_at, now),
+    );
     const sizes = new Map<TimeGroup, number>();
     groups.forEach((g) => sizes.set(g, (sizes.get(g) ?? 0) + 1));
     // A group's number is sure once the next group has started (or everything is loaded)
@@ -1024,7 +1134,35 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       out.push({ type: 'lead', key: l.id, lead: l });
     });
     return out;
-  }, [grouped, leads, hasMore]);
+  }, [grouped, leads, hasMore, keepOn]);
+
+  // 📌 Cards changed where they are: one tap sorts the list again
+  const resortBar =
+    keepOn && stale && !loading ? (
+      <Pressable
+        onPress={() => {
+          setRefreshing(true);
+          loadFirstPage();
+          loadChipCounts();
+        }}
+        style={({ pressed }) => [styles.resort, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Sort the list again"
+      >
+        <Text style={styles.resortText}>📌 Kept in place</Text>
+        <Text style={styles.resortBtn}>↻ Re-sort</Text>
+      </Pressable>
+    ) : null;
+  /** 📌 No longer matches the list: dimmed, with a short line */
+  const doneWrap = (id: string, card: ReactNode) =>
+    doneIds.has(id) ? (
+      <View style={styles.done}>
+        <View style={styles.doneDim}>{card}</View>
+        <Text style={styles.doneText}>✓ Done · leaves on refresh</Text>
+      </View>
+    ) : (
+      card
+    );
 
   if (modern) {
     const n = total ?? leads.length;
@@ -1058,6 +1196,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     const openLead = (item: LeadListItem) => {
       if (selecting) return toggleSelect(item.id);
       if (debouncedSearch.trim()) rememberSearch(debouncedSearch);
+      touched.current.add(item.id);
       router.push(`/leads/${item.id}` as Href);
     };
 
@@ -1088,7 +1227,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               : []),
             {
               icon: 'swap-vert' as const,
-              label: `Sort: ${sortLabel(sort, students)}. Change`,
+              label: `Sort: ${sortLabel(sort, students)}${keepOn ? ', kept in place' : ''}. Change`,
               onPress: () => setSortSheetVisible(true),
               on: sort !== sortDefault,
             },
@@ -1255,6 +1394,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             <Pressable onPress={() => setSortSheetVisible(true)} hitSlop={8} style={m.sortBtn} accessibilityRole="button">
               <MIcon name="schedule" size={15} color={colors.primary} />
               <Text style={m.sortText} numberOfLines={1}>
+                {keepOn ? '📌 ' : ''}
                 {sortLabel(sort, students)}
               </Text>
             </Pressable>
@@ -1329,11 +1469,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               />
             }
             ListHeaderComponent={
-              error ? (
-                <View style={styles.errorBox}>
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
-              ) : undefined
+              <>
+                {resortBar}
+                {error ? (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                ) : null}
+              </>
             }
             ListEmptyComponent={
               <View style={styles.empty}>
@@ -1360,32 +1503,35 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                 </Text>
               ) : (
                 <View style={m.cardGap}>
-                  <ModernLeadCard
-                    lead={row.lead}
-                    search={debouncedSearch}
-                    detailed={detailed}
-                    staleDays={staleDays}
-                    nameOf={nameOf}
-                    onPeek={() => setPeekLead(row.lead)}
-                    onPlayVoice={(fileId, seconds) =>
-                      setPlaying({ id: fileId, name: `Voice note · ${row.lead.name}`, duration_sec: seconds })
-                    }
-                    student={students}
-                    showAssignee={showAssignee}
-                    selecting={selecting}
-                    selected={selected.has(row.lead.id)}
-                    onPress={() => openLead(row.lead)}
-                    onLongPress={() => toggleSelect(row.lead.id)}
-                    onCall={() => call(row.lead)}
-                    onWhatsApp={() => whatsapp(row.lead)}
-                    onSms={() => sms(row.lead)}
-                    onTemplate={templates.allowed ? (ch) => setTemplateFor({ lead: row.lead, channel: ch }) : undefined}
-                    onPay={
-                      students && paySettings && row.lead.stage?.kind === 'won' && Number(row.lead.fee_due ?? 0) > 0
-                        ? () => setPayFor(row.lead)
-                        : undefined
-                    }
-                  />
+                  {doneWrap(
+                    row.lead.id,
+                    <ModernLeadCard
+                      lead={row.lead}
+                      search={debouncedSearch}
+                      detailed={detailed}
+                      staleDays={staleDays}
+                      nameOf={nameOf}
+                      onPeek={() => setPeekLead(row.lead)}
+                      onPlayVoice={(fileId, seconds) =>
+                        setPlaying({ id: fileId, name: `Voice note · ${row.lead.name}`, duration_sec: seconds })
+                      }
+                      student={students}
+                      showAssignee={showAssignee}
+                      selecting={selecting}
+                      selected={selected.has(row.lead.id)}
+                      onPress={() => openLead(row.lead)}
+                      onLongPress={() => toggleSelect(row.lead.id)}
+                      onCall={() => call(row.lead)}
+                      onWhatsApp={() => whatsapp(row.lead)}
+                      onSms={() => sms(row.lead)}
+                      onTemplate={templates.allowed ? (ch) => setTemplateFor({ lead: row.lead, channel: ch }) : undefined}
+                      onPay={
+                        students && paySettings && row.lead.stage?.kind === 'won' && Number(row.lead.fee_due ?? 0) > 0
+                          ? () => setPayFor(row.lead)
+                          : undefined
+                      }
+                    />,
+                  )}
                 </View>
               )
             }
@@ -1696,6 +1842,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           >
             <Ionicons name="swap-vertical" size={14} color={sort === sortDefault ? colors.textMuted : colors.primary} />
             <Text style={[styles.sortText, sort !== sortDefault && styles.sortTextOn]} numberOfLines={1}>
+              {keepOn ? '📌 ' : ''}
               {sortLabel(sort, students)}
             </Text>
             <Ionicons name="chevron-down" size={12} color={sort === sortDefault ? colors.textMuted : colors.primary} />
@@ -1776,11 +1923,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             />
           }
           ListHeaderComponent={
-            error ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            ) : null
+            <>
+              {resortBar}
+              {error ? (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
+            </>
           }
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -1801,37 +1951,41 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           ListFooterComponent={
             loadingMore ? <ActivityIndicator style={styles.footer} color={colors.primary} /> : null
           }
-          renderItem={({ item }) => (
-            <LeadCard
-              lead={item}
-              search={debouncedSearch}
-              detailed={detailed}
-              staleDays={staleDays}
-              nameOf={nameOf}
-              onPeek={() => setPeekLead(item)}
-              onPlayVoice={(fileId, seconds) => setPlaying({ id: fileId, name: `Voice note · ${item.name}`, duration_sec: seconds })}
-              student={students}
-              showAssignee={showAssignee}
-              selecting={selecting}
-              selected={selected.has(item.id)}
-              onPress={() => {
-                if (selecting) return toggleSelect(item.id);
-                // 🔍 A search that found what was needed: keep it in the recent ones
-                if (debouncedSearch.trim()) rememberSearch(debouncedSearch);
-                router.push(`/leads/${item.id}` as Href);
-              }}
-              onLongPress={() => toggleSelect(item.id)}
-              onCall={() => call(item)}
-              onWhatsApp={() => whatsapp(item)}
-              onSms={() => sms(item)}
-              onTemplate={templates.allowed ? (ch) => setTemplateFor({ lead: item, channel: ch }) : undefined}
-              onPay={
-                students && paySettings && item.stage?.kind === 'won' && Number(item.fee_due ?? 0) > 0
-                  ? () => setPayFor(item)
-                  : undefined
-              }
-            />
-          )}
+          renderItem={({ item }) =>
+            doneWrap(
+              item.id,
+              <LeadCard
+                lead={item}
+                search={debouncedSearch}
+                detailed={detailed}
+                staleDays={staleDays}
+                nameOf={nameOf}
+                onPeek={() => setPeekLead(item)}
+                onPlayVoice={(fileId, seconds) => setPlaying({ id: fileId, name: `Voice note · ${item.name}`, duration_sec: seconds })}
+                student={students}
+                showAssignee={showAssignee}
+                selecting={selecting}
+                selected={selected.has(item.id)}
+                onPress={() => {
+                  if (selecting) return toggleSelect(item.id);
+                  // 🔍 A search that found what was needed: keep it in the recent ones
+                  if (debouncedSearch.trim()) rememberSearch(debouncedSearch);
+                  touched.current.add(item.id);
+                  router.push(`/leads/${item.id}` as Href);
+                }}
+                onLongPress={() => toggleSelect(item.id)}
+                onCall={() => call(item)}
+                onWhatsApp={() => whatsapp(item)}
+                onSms={() => sms(item)}
+                onTemplate={templates.allowed ? (ch) => setTemplateFor({ lead: item, channel: ch }) : undefined}
+                onPay={
+                  students && paySettings && item.stage?.kind === 'won' && Number(item.fee_due ?? 0) > 0
+                    ? () => setPayFor(item)
+                    : undefined
+                }
+              />,
+            )
+          }
         />
       )}
 
@@ -1927,6 +2081,23 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 // =====================================================================
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  // 📌 Keep in place
+  resort: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: '#FFF4D6',
+  },
+  resortText: { fontSize: 13, color: '#7A4B00' },
+  resortBtn: { fontSize: 13, fontWeight: fontWeight.bold, color: '#7A4B00' },
+  done: { gap: 2 },
+  doneDim: { opacity: 0.5 },
+  doneText: { fontSize: 11.5, fontWeight: fontWeight.semibold, color: md.onOkC, marginLeft: spacing.md, marginBottom: 4 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.7 },
 
