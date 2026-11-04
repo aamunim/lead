@@ -1,12 +1,18 @@
-import { Stack } from 'expo-router';
+import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActivityTracker } from '@/features/activity/ActivityTracker';
+import { CrashScreen } from '@/features/feedback/CrashScreen';
 import { PushSetup } from '@/features/notifications/PushSetup';
 import { WhatsNewOnUpdate } from '@/features/updates/WhatsNewSheet';
 import { colors, fontWeight } from '@/shared/theme';
 import { isWeb } from '@/features/web/api';
 import { WebShell } from '@/features/web/WebShell';
+
+/** 💥 A page broke: shown in its place, the rest of the app keeps working */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  return <CrashScreen error={error} retry={retry} />;
+}
 
 export default function AppLayout() {
   // Pages outside the tabs end above the phone's ◁ ○ □ buttons (the tabs do this themselves)

@@ -437,6 +437,10 @@ export type Database = {
           replied_at: string | null
           created_at: string
           updated_at: string
+          attachments: Json
+          solved_at: string | null
+          solved_by: string | null
+          files_removed_at: string | null
         }
         Insert: never
         Update: never
@@ -2474,7 +2478,28 @@ export type Database = {
       }
       ask_app_update: { Args: { p_users: string[] }; Returns: number }
       is_developer: { Args: never; Returns: boolean }
-      send_feedback: { Args: { p_kind: string; p_message: string; p_info?: Json }; Returns: string }
+      send_feedback: {
+        Args: { p_kind: string; p_message: string; p_info?: Json; p_attachments?: Json }
+        Returns: string
+      }
+      solve_feedback: { Args: { p_id: string; p_solved?: boolean }; Returns: undefined }
+      feedback_old_files: { Args: never; Returns: { id: string; paths: string[] }[] }
+      feedback_files_removed: { Args: { p_ids: string[] }; Returns: undefined }
+      report_crash: {
+        Args: {
+          p_signature: string
+          p_name: string
+          p_message: string
+          p_stack: string
+          p_screen: string
+          p_info?: Json
+          p_fatal?: boolean
+          p_at?: string
+        }
+        Returns: undefined
+      }
+      crash_inbox: { Args: never; Returns: Json }
+      solve_crash: { Args: { p_id: string; p_solved?: boolean }; Returns: undefined }
       answer_feedback: { Args: { p_id: string; p_status: string; p_reply: string }; Returns: undefined }
       feedback_inbox: {
         Args: never
@@ -2490,6 +2515,9 @@ export type Database = {
           reply: string | null
           replied_at: string | null
           created_at: string
+          attachments: Json
+          solved_at: string | null
+          solved_by_name: string | null
         }[]
       }
       plan_visit: {

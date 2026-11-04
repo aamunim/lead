@@ -17,7 +17,16 @@ export type PlayableFile = { id: string; name: string; duration_sec?: number | n
 
 const SPEEDS = [1, 1.5, 2];
 
-export function VoicePlayerSheet({ file, onClose }: { file: PlayableFile; onClose: () => void }) {
+export function VoicePlayerSheet({
+  file,
+  onClose,
+  load,
+}: {
+  file: PlayableFile;
+  onClose: () => void;
+  /** 💬 Not a Drive file: gives a link to play (e.g. a Contact developer voice message) */
+  load?: () => Promise<string>;
+}) {
   const player = useAudioPlayer(null, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +37,7 @@ export function VoicePlayerSheet({ file, onClose }: { file: PlayableFile; onClos
   useEffect(() => {
     let live = true;
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => undefined);
-    downloadLeadFile(file)
+    (load ? load().then((uri) => ({ uri })) : downloadLeadFile(file))
       .then((f) => {
         if (!live) return;
         player.replace({ uri: f.uri });
