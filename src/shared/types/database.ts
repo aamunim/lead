@@ -446,6 +446,31 @@ export type Database = {
         Update: never
         Relationships: []
       }
+      feedback_messages: {
+        Row: {
+          id: string
+          chat_user: string
+          sender: string
+          kind: string
+          topic_id: string | null
+          reply_to: string | null
+          body: string | null
+          attachments: Json
+          reactions: Json
+          info: Json
+          created_at: string
+          deleted_at: string | null
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      feedback_reads: {
+        Row: { chat_user: string; reader: string; read_at: string }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       notification_prefs: {
         Row: { muted: string[]; user_id: string }
         Insert: { muted?: string[]; user_id: string }
@@ -2510,6 +2535,25 @@ export type Database = {
         Returns: string
       }
       solve_feedback: { Args: { p_id: string; p_solved?: boolean }; Returns: undefined }
+      chat_send: {
+        Args: {
+          p_chat_user?: string
+          p_body?: string
+          p_attachments?: Json
+          p_reply_to?: string
+          p_topic?: string
+          p_topic_kind?: string
+          p_info?: Json
+        }
+        Returns: string
+      }
+      chat_react: { Args: { p_message: string; p_emoji: string }; Returns: undefined }
+      chat_delete: { Args: { p_message: string }; Returns: undefined }
+      chat_mark_read: { Args: { p_chat_user?: string }; Returns: undefined }
+      chat_topic_status: { Args: { p_topic: string; p_status: string }; Returns: undefined }
+      chat_unread: { Args: never; Returns: number }
+      chat_inbox: { Args: never; Returns: Json }
+      chat_open_topics: { Args: never; Returns: Json }
       feedback_old_files: { Args: never; Returns: { id: string; paths: string[] }[] }
       feedback_files_removed: { Args: { p_ids: string[] }; Returns: undefined }
       report_crash: {
