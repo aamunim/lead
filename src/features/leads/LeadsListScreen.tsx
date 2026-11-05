@@ -40,6 +40,7 @@ import {
 import { LeadBoard } from '@/features/board/LeadBoard';
 import { CallResultSheet } from '@/features/calls/CallResultSheet';
 import { confirmCall } from '@/features/calls/doubleCall';
+import { getActiveLocks, type ActiveLock } from '@/features/calls/callLock';
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { AddedChips } from '@/features/leads/AddedChips';
 import {
@@ -342,6 +343,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   /** Something changed since the list was sorted: show ↻ Re-sort */
   const [stale, setStale] = useState(false);
+  // 📵 Who is on a call with a lead right now (checked every 15 seconds while the list is open)
+  const [locks, setLocks] = useState<Map<string, ActiveLock>>(new Map());
   const pickSort = (next: LeadSort) => {
     setSortSheetVisible(false);
     if (next === sort) return;
@@ -1136,6 +1139,30 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     return out;
   }, [grouped, leads, hasMore, keepOn]);
 
+  // 📵 "Rahim is on a call" on the cards
+  const leadIdsKey = leads
+    .slice(0, 300)
+    .map((l) => l.id)
+    .join(',');
+  useFocusEffect(
+    useCallback(() => {
+      if (!leadIdsKey) return;
+      let live = true;
+      const ids = leadIdsKey.split(',');
+      const tick = () =>
+        getActiveLocks(ids)
+          .then((m) => live && setLocks(m))
+          .catch(() => undefined);
+      const first = setTimeout(tick, 400);
+      const timer = setInterval(tick, 15000);
+      return () => {
+        live = false;
+        clearTimeout(first);
+        clearInterval(timer);
+      };
+    }, [leadIdsKey]),
+  );
+
   // 📌 Cards changed where they are: one tap sorts the list again
   const resortBar =
     keepOn && stale && !loading ? (
@@ -1154,8 +1181,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       </Pressable>
     ) : null;
   /** 📌 No longer matches the list: dimmed, with a short line */
-  const doneWrap = (id: string, card: ReactNode) =>
-    doneIds.has(id) ? (
+  const doneWrap = (id: string, card: ReactNode) => {
+    const inner = doneIds.has(id) ? (
       <View style={styles.done}>
         <View style={styles.doneDim}>{card}</View>
         <Text style={styles.doneText}>✓ Done · leaves on refresh</Text>
@@ -1163,6 +1190,18 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     ) : (
       card
     );
+    const lock = locks.get(id);
+    if (!lock) return inner;
+    const min = Math.max(0, Math.round((Date.now() - lock.startedAt.getTime()) / 60000));
+    return (
+      <View>
+        <Text style={styles.lockLine}>
+          {lock.channel === 'whatsapp' ? '💬' : '📞'} {lock.name} is on a call{min > 0 ? ` · ${min} min` : ''}
+        </Text>
+        {inner}
+      </View>
+    );
+  };
 
   if (modern) {
     const n = total ?? leads.length;
@@ -2096,6 +2135,19 @@ const styles = StyleSheet.create({
   resortText: { fontSize: 13, color: md.onGoldC },
   resortBtn: { fontSize: 13, fontWeight: fontWeight.bold, color: md.onGoldC },
   done: { gap: 2 },
+  lockLine: {
+    alignSelf: 'flex-start',
+    marginLeft: spacing.md,
+    marginBottom: 2,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: md.lockC,
+    color: md.onLockC,
+    fontSize: 11.5,
+    fontWeight: fontWeight.bold,
+  },
   doneDim: { opacity: 0.5 },
   doneText: { fontSize: 11.5, fontWeight: fontWeight.semibold, color: md.onOkC, marginLeft: spacing.md, marginBottom: 4 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },

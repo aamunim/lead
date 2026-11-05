@@ -12,6 +12,8 @@ import {
   shareFile,
   toCsv,
   toText,
+  toHtml,
+  sharePdf,
   toWorkbook,
   type WorkData,
   type WorkFormat,
@@ -36,11 +38,11 @@ const PERIODS: { value: Period; label: string }[] = [
   { value: 'custom', label: 'Custom' },
 ];
 
-const FORMATS: { value: WorkFormat | 'pdf'; label: string; soon?: boolean }[] = [
+const FORMATS: { value: WorkFormat; label: string; soon?: boolean }[] = [
   { value: 'xlsx', label: '📗 Excel' },
   { value: 'txt', label: '📄 Text' },
   { value: 'csv', label: '🧾 CSV (calls)' },
-  { value: 'pdf', label: '📕 PDF', soon: true },
+  { value: 'pdf', label: '📕 PDF' },
 ];
 
 const ymd = (d: Date) =>
@@ -101,6 +103,7 @@ export function ExportWorkSheet({
       const span = range.from === range.to ? range.from : `${range.from}_${range.to}`;
       const make = async (group: WorkData[], label: string) => {
         const name = `work-${safeName(label)}-${span}.${format}`;
+        if (format === 'pdf') return sharePdf(name, toHtml(group, parts, lk));
         const body =
           format === 'xlsx' ? toWorkbook(group, parts, lk) : format === 'csv' ? toCsv(group) : toText(group, parts, lk);
         await shareFile(name, body, format);

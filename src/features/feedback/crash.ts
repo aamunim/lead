@@ -133,8 +133,40 @@ export async function reportCrash(error: unknown, opts: { fatal?: boolean; scree
   }
 }
 
+/** 💥 Crashes in the Android part (2.8.0+): written down by the phone, sent here */
+async function queueNativeCrashes(): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('../../../modules/call-log') as typeof import('../../../modules/call-log');
+    const items = mod.takeNativeCrashes();
+    if (items.length === 0) return;
+    const info = appInfo();
+    const reports: Report[] = items.map((n) => {
+      const frame =
+        n.stack
+          .split('\n')
+          .map((l) => l.trim())
+          .find((l) => l.startsWith('at ')) ?? '';
+      return {
+        signature: hash(`native|${n.name}|${normalise(n.message).slice(0, 200)}|${frame.replace(/:\d+\)/, ')')}`),
+        name: `Android: ${n.name.split('.').pop() ?? n.name}`,
+        message: n.message || n.name,
+        stack: `${n.name}\nthread: ${n.thread}\n${n.stack}`.slice(0, 4000),
+        screen: 'android',
+        fatal: true,
+        info,
+        at: new Date(n.at || Date.now()).toISOString(),
+      };
+    });
+    await writeQueue([...(await readQueue()), ...reports]);
+  } catch {
+    // an older build without it
+  }
+}
+
 /** Sends what is waiting on the phone (app start, sign-in) */
 export async function flushCrashes(): Promise<void> {
+  await queueNativeCrashes();
   const queue = await readQueue();
   if (queue.length === 0) return;
   const left: Report[] = [];

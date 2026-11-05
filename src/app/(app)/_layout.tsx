@@ -3,6 +3,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActivityTracker } from '@/features/activity/ActivityTracker';
 import { CrashScreen } from '@/features/feedback/CrashScreen';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { setupNativeCallLock } from '@/features/calls/callLock';
+import { useEffect } from 'react';
 import { CallSyncGate } from '@/features/call-sync/CallSyncGate';
 import { PushSetup } from '@/features/notifications/PushSetup';
 import { WhatsNewOnUpdate } from '@/features/updates/WhatsNewSheet';
@@ -67,10 +70,20 @@ export default function AppLayout() {
     <ActivityTracker>
       {/* Phone push: token, taps, app icon number */}
       <PushSetup />
+      {/* 📵 Call lock: this phone's part (2.8.0) */}
+      <CallLockSetup />
       {/* 📞 Call log sync required by the Super Admin: no way in until it is on */}
       <CallSyncGate>{stack}</CallSyncGate>
       {/* 🆕 After an update: what changed (once) */}
       <WhatsNewOnUpdate />
     </ActivityTracker>
   );
+}
+
+function CallLockSetup() {
+  const { profile } = useAuth();
+  useEffect(() => {
+    if (profile?.id) setupNativeCallLock(profile.id);
+  }, [profile?.id]);
+  return null;
 }

@@ -1,5 +1,5 @@
 import { Stack, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -19,9 +19,11 @@ import {
   listMyFeedback,
   sendFeedback,
   solveFeedback,
+  uploadFeedbackFile,
   type Feedback,
   type FeedbackKind,
 } from '@/features/feedback/api';
+import { hasScreenShot, takePendingShot } from '@/features/feedback/screenShot';
 import { AttachmentPicker, AttachmentView, readyAttachments, stillUploading, type Picked } from '@/features/feedback/Attachments';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -38,6 +40,17 @@ export default function ContactDeveloperScreen() {
   const [text, setText] = useState('');
   // 📸 pictures and 🎙 a voice message (uploaded as soon as they are picked)
   const [files, setFiles] = useState<Picked[]>([]);
+
+  // 📸 Opened with three fingers: the screen picture is added already
+  useEffect(() => {
+    const shot = takePendingShot();
+    if (!shot) return;
+    const key = `shot-${Date.now()}`;
+    setFiles((now) => [...now, { key, kind: 'image', uri: shot }]);
+    uploadFeedbackFile(shot, 'image/jpeg')
+      .then((path) => setFiles((now) => now.map((x) => (x.key === key ? { ...x, path } : x))))
+      .catch(() => setFiles((now) => now.map((x) => (x.key === key ? { ...x, failed: true } : x))));
+  }, []);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -134,6 +147,9 @@ export default function ContactDeveloperScreen() {
         />
         <AttachmentPicker value={files} onChange={setFiles} />
         <Text style={styles.small}>Your name, the app version and your phone model are sent with it.</Text>
+        {hasScreenShot && (
+          <Text style={styles.small}>📸 Tip: on any screen, tap with three fingers to send a picture of it.</Text>
+        )}
         {error && <Text style={styles.error}>{error}</Text>}
         {sent && <Text style={styles.ok}>✅ Sent to the developer. Thank you!</Text>}
         <Button title="Send" onPress={send} loading={sending} fullWidth />

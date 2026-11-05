@@ -2,12 +2,14 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider, usePathname, type ErrorB
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
 import { CrashScreen } from '@/features/feedback/CrashScreen';
 import { flushCrashes, installCrashHandler, setCrashScreen } from '@/features/feedback/crash';
+import { onThreeFingers } from '@/features/feedback/screenShot';
+import { clearNativeCallLock } from '@/features/calls/callLock';
 import { colors, isDark } from '@/shared/theme';
 import { ThemeFollower } from '@/features/settings/appearance';
 import { UpdateBanner } from '@/features/updates/UpdateBanner';
@@ -66,6 +68,8 @@ function RootNavigator() {
   }, [pathname]);
   useEffect(() => {
     if (status === 'active' && Platform.OS !== 'web') flushCrashes().catch(() => undefined);
+    // 📵 Signed out: this phone stops marking calls for the old user
+    if (status === 'signed_out') clearNativeCallLock();
   }, [status]);
 
   useEffect(() => {
@@ -78,7 +82,8 @@ function RootNavigator() {
   }, []);
 
   return (
-    <>
+    // 📸 Three fingers anywhere (signed in): send this screen to the developer
+    <View style={styles.root} onTouchStart={status === 'active' && Platform.OS !== 'web' ? onThreeFingers : undefined}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       {/* 🌙 "System" colours: follow the phone when it switches light / dark */}
       <ThemeFollower />
@@ -111,6 +116,8 @@ function RootNavigator() {
       {/* 🔄 A new version downloaded (EAS Update) */}
       <UpdateBanner />
       {Platform.OS === 'web' && <WebAlertHost />}
-    </>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({ root: { flex: 1 } });

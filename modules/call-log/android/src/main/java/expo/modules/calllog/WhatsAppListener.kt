@@ -41,6 +41,11 @@ class WhatsAppListener : NotificationListenerService() {
   private val active = HashMap<String, ActiveCall>()
   private val handler = Handler(Looper.getMainLooper())
 
+  override fun onCreate() {
+    super.onCreate()
+    NativeCrash.install(this)
+  }
+
   override fun onNotificationPosted(sbn: StatusBarNotification?) {
     try {
       if (sbn != null) posted(sbn)
