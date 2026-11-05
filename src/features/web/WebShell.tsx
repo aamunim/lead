@@ -83,6 +83,7 @@ function pageTitle(path: string): string {
   if (path.startsWith('/scorecard')) return 'Weekly scorecard';
   if (path.startsWith('/feedback')) return 'Contact developer';
   if (path.startsWith('/settings/roles')) return 'Settings › Roles';
+  if (path.startsWith('/speed')) return 'Speed check';
   return 'Students';
 }
 
@@ -472,6 +473,16 @@ export function WebShell({ children }: { children: React.ReactNode }) {
             </Pressable>
             {menuOpen && (
               <View style={styles.dropdown}>
+                <Pressable
+                  onPress={() => {
+                    setMenuOpen(false);
+                    router.navigate('/speed' as Href);
+                  }}
+                  style={(state) => [styles.dropItem, (state as { hovered?: boolean }).hovered && styles.topHover]}
+                  accessibilityRole="link"
+                >
+                  <Text style={styles.dropText}>⏱ Speed check</Text>
+                </Pressable>
                 <Pressable
                   onPress={() => {
                     setMenuOpen(false);

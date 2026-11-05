@@ -1,4 +1,5 @@
 import { AppState } from 'react-native';
+import { recordSpeed, speedKey } from '@/shared/lib/speedLog';
 
 // =====================================================================
 // 📶 Is the server reachable?
@@ -64,12 +65,17 @@ export async function checkNow(): Promise<boolean> {
 
 /** fetch for the Supabase client: reports online / offline as requests go */
 export const trackedFetch: typeof fetch = async (input, init) => {
+  const started = Date.now();
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+  const key = speedKey(url, (init?.method ?? 'GET').toUpperCase(), init?.headers);
   try {
     const res = await fetch(input, init);
     set(true);
+    recordSpeed({ key, ms: Date.now() - started, ok: res.ok, at: started }); // ⏱ More → Speed check
     return res;
   } catch (e) {
     if (isNetworkError(e)) set(false);
+    recordSpeed({ key, ms: Date.now() - started, ok: false, at: started });
     throw e;
   }
 };
