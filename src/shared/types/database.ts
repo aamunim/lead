@@ -2550,6 +2550,14 @@ export type Database = {
         Returns: undefined
       }
       fill_section_ranges: { Args: { p_batch: string; p_start: number; p_per: number }; Returns: Json }
+      bulk_placement_preview: {
+        Args: { p_leads: string[]; p_course: string; p_batch: string; p_section: string }
+        Returns: Json
+      }
+      bulk_set_placement: {
+        Args: { p_leads: string[]; p_course: string; p_batch: string; p_section: string }
+        Returns: Json
+      }
       student_id_rules_overview: {
         Args: never
         Returns: {

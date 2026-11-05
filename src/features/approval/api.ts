@@ -265,3 +265,41 @@ export async function countWaitingApproval(): Promise<number> {
   if (error) return 0;
   return count ?? 0;
 }
+
+// ---------------------------------------------------------------------
+// 🔀 Many students to one course · batch · section (all of them, or none)
+// ---------------------------------------------------------------------
+export type BulkPlacementPreview = {
+  moving: number;
+  already_there: number;
+  skipped: number;
+  seats: { capacity: number | null; taken: number; need: number; ok: boolean };
+  id_rule: { kind: 'pattern' | 'range'; start: number | null; end: number | null; pattern: string | null; free: number | null } | null;
+  course_change: number;
+  course_fee: number | null;
+  overpaid: number;
+  problems: string[];
+  place: string;
+};
+
+export async function bulkPlacementPreview(leadIds: string[], p: Placement): Promise<BulkPlacementPreview> {
+  const { data, error } = await supabase.rpc('bulk_placement_preview', {
+    p_leads: leadIds,
+    p_course: p.courseId as string,
+    p_batch: p.batchId as string,
+    p_section: p.sectionId as string,
+  });
+  if (error) throw toError(error);
+  return data as unknown as BulkPlacementPreview;
+}
+
+export async function bulkSetPlacement(leadIds: string[], p: Placement): Promise<{ moved: number; place: string }> {
+  const { data, error } = await supabase.rpc('bulk_set_placement', {
+    p_leads: leadIds,
+    p_course: p.courseId as string,
+    p_batch: p.batchId as string,
+    p_section: p.sectionId as string,
+  });
+  if (error) throw toError(error);
+  return data as unknown as { moved: number; place: string };
+}
