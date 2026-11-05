@@ -7,6 +7,7 @@ import { signOut } from '@/features/auth/api';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { canSeeStudents, getStudentsSettings } from '@/features/students/api';
 import { canApprove, countWaitingApproval, getApprovalSettings } from '@/features/approval/api';
+import { chatUnread } from '@/features/feedback/chat';
 import { canUseWeb, getWebSettings } from '@/features/web/api';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
@@ -80,6 +81,7 @@ function pageTitle(path: string): string {
   if (path.startsWith('/settings/uploads')) return 'Settings › Upload rules';
   if (path.startsWith('/photo-studio')) return 'Photo Studio';
   if (path.startsWith('/scorecard')) return 'Weekly scorecard';
+  if (path.startsWith('/feedback')) return 'Contact developer';
   return 'Students';
 }
 
@@ -96,6 +98,22 @@ export function WebShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const theme = webThemeChoice();
+
+  // 💬 Unread messages from / to the developer
+  const [chatNew, setChatNew] = useState(0);
+  useEffect(() => {
+    let live = true;
+    const check = () =>
+      chatUnread()
+        .then((n) => live && setChatNew(n))
+        .catch(() => undefined);
+    check();
+    const t = setInterval(check, 30000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, []);
 
   // 🔔 Admission Officer: how many are ready for ITTC (badge), and a note when more come
   const [officer, setOfficer] = useState(false);
@@ -224,6 +242,14 @@ export function WebShell({ children }: { children: React.ReactNode }) {
       icon: '🏁',
       href: '/scorecard',
       match: (p: string) => p.startsWith('/scorecard'),
+    },
+    // 💬 The chat with the developer (the developer: everyone's chats)
+    {
+      label: 'Contact developer',
+      icon: '💬',
+      href: '/feedback',
+      match: (p: string) => p.startsWith('/feedback'),
+      badge: chatNew > 0 ? chatNew : undefined,
     },
     // ⚙️ Admins and the Admission Officer
     ...(isAdmin || officer

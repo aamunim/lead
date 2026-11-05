@@ -18,6 +18,7 @@ import { checkAndDownload, currentVersionInfo, restartWithUpdate } from '@/featu
 import { WhatsNewSheet } from '@/features/updates/WhatsNewSheet';
 import { ExportWorkSheet } from '@/features/activity/ExportWorkSheet';
 import { countNewFeedback, isDeveloper } from '@/features/feedback/api';
+import { chatUnread } from '@/features/feedback/chat';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
@@ -108,7 +109,8 @@ function PhoneMore() {
       isDeveloper()
         .then(async (dev) => {
           setDeveloper(dev);
-          if (dev) setNewFeedback(await countNewFeedback());
+          // 💬 unread messages: mine (the developer: everyone's)
+          setNewFeedback(await chatUnread().catch(() => countNewFeedback()));
         })
         .catch(() => setDeveloper(false));
       countDiscountsToAnswer().then(setDiscounts);
@@ -488,7 +490,8 @@ function PhoneMore() {
             icon="support-agent"
             tone="purple"
             title="Contact developer"
-            subtitle="A problem, an idea or a question"
+            subtitle="Chat: a problem, an idea or a question"
+            pill={!developer && newFeedback > 0 ? { text: `${newFeedback} new`, tone: 'orange' } : undefined}
             onPress={go('/feedback')}
           />
           {developer && (
@@ -496,7 +499,7 @@ function PhoneMore() {
               icon="inbox"
               tone="blue"
               title="Feedback inbox"
-              subtitle="Messages from everyone"
+              subtitle="Chats with everyone, topics, crashes"
               pill={newFeedback > 0 ? { text: `${newFeedback} new`, tone: 'orange' } : undefined}
               onPress={go('/feedback/inbox')}
             />

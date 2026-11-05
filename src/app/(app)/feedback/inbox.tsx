@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
-import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { Stack, router, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,45 +10,51 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
+import { useAuth } from '@/features/auth/AuthProvider';
 import {
   KINDS,
-  STATUS,
-  answerFeedback,
   cleanupOldFiles,
   dayTime,
   isDeveloper,
   listCrashes,
-  listInbox,
   solveCrash,
-  solveFeedback,
   type Crash,
-  type Feedback,
-  type FeedbackStatus,
 } from '@/features/feedback/api';
-import { AttachmentView } from '@/features/feedback/Attachments';
+import { Avatar, ChatView, StatusPill } from '@/features/feedback/ChatView';
+import { chatInbox, openTopics, shortWhen, type ChatRow, type OpenTopic } from '@/features/feedback/chat';
+import { PersonInfo } from '@/features/feedback/PersonInfo';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
-import { Button } from '@/shared/ui/Button';
 
 // =====================================================================
-// 📥 More → Feedback inbox (the developer only): every message, newest
-//   "new" ones first; open one to set its status and answer.
+// 📥 More → Feedback inbox (the developer only), like Messenger:
+//   💬 Chats: one row per person (newest first, unread ●, open topics)
+//   🗂 Topics: every open problem / idea / question, by status
+//   💥 Crashes: errors the app sent by itself
+//   🌐 A wide screen shows the chat next to the list.
 // =====================================================================
 
-type Filter = 'open' | 'all' | 'crashes' | FeedbackStatus;
-const OPEN: FeedbackStatus[] = ['new', 'seen', 'working'];
+type Tab = 'chats' | 'topics' | 'crashes';
 
 export default function FeedbackInboxScreen() {
-  const [allowed, setAllowed] = useState<boolean | null>(null);
-  const [rows, setRows] = useState<Feedback[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { profile } = useAuth();
   const params = useLocalSearchParams<{ tab?: string }>();
-  const [filter, setFilter] = useState<Filter>(params.tab === 'crashes' ? 'crashes' : 'open');
-  // 💥 crash reports, and whether solved ones show too
+  const { width } = useWindowDimensions();
+  const wide = width >= 960;
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [tab, setTab] = useState<Tab>(params.tab === 'crashes' ? 'crashes' : 'chats');
+  const [chats, setChats] = useState<ChatRow[] | null>(null);
+  const [topics, setTopics] = useState<OpenTopic[] | null>(null);
+  const [showClosed, setShowClosed] = useState(false);
   const [crashes, setCrashes] = useState<Crash[] | null>(null);
   const [showSolvedCrashes, setShowSolvedCrashes] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [picked, setPicked] = useState<ChatRow | null>(null);
+  const [info, setInfo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -56,21 +62,58 @@ export default function FeedbackInboxScreen() {
     setAllowed(ok);
     if (!ok) return;
     try {
-      const [msgs, cr] = await Promise.all([listInbox(), listCrashes().catch(() => [] as Crash[])]);
-      setRows(msgs);
+      const [c, t, cr] = await Promise.all([chatInbox(), openTopics(), listCrashes().catch(() => [] as Crash[])]);
+      setChats(c);
+      setTopics(t);
       setCrashes(cr);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load.');
     }
-    cleanupOldFiles(); // 🧹 files of messages solved 90+ days ago
+    cleanupOldFiles(); // 🧹 files of topics solved 90+ days ago
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       load();
+      const t = setInterval(load, 20000);
+      return () => clearInterval(t);
     }, [load]),
   );
+
+  const openChat = (c: { chatUser: string; name: string | null; avatarUrl?: string | null }) => {
+    if (wide) {
+      const row = chats?.find((x) => x.chatUser === c.chatUser);
+      setPicked(
+        row ?? {
+          chatUser: c.chatUser,
+          name: c.name,
+          role: null,
+          avatarUrl: c.avatarUrl ?? null,
+          lastBody: null,
+          lastKind: 'text',
+          lastFiles: 0,
+          lastSender: '',
+          lastAt: new Date(),
+          unread: 0,
+          open: { bug: 0, idea: 0, question: 0 },
+        },
+      );
+      setChats((now) => (now ?? []).map((x) => (x.chatUser === c.chatUser ? { ...x, unread: 0 } : x)));
+    } else router.push(`/feedback/chat?u=${c.chatUser}` as Href);
+  };
+
+  const shownChats = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (chats ?? []).filter(
+      (c) => !q || (c.name ?? '').toLowerCase().includes(q) || (c.lastBody ?? '').toLowerCase().includes(q),
+    );
+  }, [chats, search]);
+  const shownTopics = (topics ?? []).filter((t) => showClosed || !['done', 'wont'].includes(t.status));
+  const shownCrashes = (crashes ?? []).filter((c) => showSolvedCrashes || c.status === 'open');
+  const unread = (chats ?? []).reduce((n, c) => n + c.unread, 0);
+  const openCount = (topics ?? []).filter((t) => !['done', 'wont'].includes(t.status)).length;
+  const crashCount = (crashes ?? []).filter((c) => c.status === 'open').length;
 
   if (allowed === false)
     return (
@@ -80,17 +123,7 @@ export default function FeedbackInboxScreen() {
       </View>
     );
 
-  const shown = (rows ?? []).filter((r) =>
-    filter === 'all' ? true : filter === 'open' ? OPEN.includes(r.status) : r.status === filter,
-  );
-  const count = (f: Filter) =>
-    f === 'crashes'
-      ? (crashes ?? []).filter((c) => c.status === 'open').length
-      : (rows ?? []).filter((r) => (f === 'all' ? true : f === 'open' ? OPEN.includes(r.status) : r.status === f))
-          .length;
-  const shownCrashes = (crashes ?? []).filter((c) => showSolvedCrashes || c.status === 'open');
-
-  return (
+  const list = (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -106,33 +139,138 @@ export default function FeedbackInboxScreen() {
         />
       }
     >
-      <Stack.Screen options={{ title: 'Feedback inbox' }} />
       {error && <Text style={styles.error}>{error}</Text>}
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {(['open', 'crashes', 'working', 'done', 'wont', 'all'] as Filter[]).map((f) => (
+      <View style={styles.tabs}>
+        {(
+          [
+            ['chats', `💬 Chats${unread ? ` · ${unread}` : ''}`],
+            ['topics', `🗂 Topics · ${openCount}`],
+            ['crashes', `💥 Crashes · ${crashCount}`],
+          ] as const
+        ).map(([k, label]) => (
           <Pressable
-            key={f}
-            onPress={() => setFilter(f)}
-            style={[styles.chip, filter === f && styles.chipOn]}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: filter === f }}
+            key={k}
+            onPress={() => setTab(k)}
+            style={[styles.tab, tab === k && styles.tabOn]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === k }}
           >
-            <Text style={[styles.chipText, filter === f && styles.chipTextOn]}>
-              {f === 'open'
-                ? 'Open'
-                : f === 'all'
-                  ? 'All'
-                  : f === 'crashes'
-                    ? '💥 Crashes'
-                    : `${STATUS[f].icon} ${STATUS[f].label}`}{' '}
-              · {count(f)}
-            </Text>
+            <Text style={[styles.tabText, tab === k && styles.tabTextOn]}>{label}</Text>
           </Pressable>
         ))}
-      </ScrollView>
+      </View>
 
-      {filter === 'crashes' ? (
+      {tab === 'chats' && (
+        <>
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="🔍 Search people or messages"
+            placeholderTextColor={colors.textMuted}
+            style={styles.search}
+          />
+          {chats === null ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : shownChats.length === 0 ? (
+            <Text style={styles.muted}>No chats yet.</Text>
+          ) : (
+            shownChats.map((c) => (
+              <Pressable
+                key={c.chatUser}
+                onPress={() => openChat(c)}
+                style={({ pressed }) => [
+                  styles.chatRow,
+                  picked?.chatUser === c.chatUser && wide && styles.chatRowOn,
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+              >
+                <Avatar name={c.name ?? '?'} url={c.avatarUrl} size={46} />
+                <View style={styles.flex}>
+                  <View style={styles.chatTop}>
+                    <Text style={[styles.chatName, c.unread > 0 && styles.bold]} numberOfLines={1}>
+                      {c.name ?? 'Someone'}
+                      {c.role ? <Text style={styles.small}> · {c.role}</Text> : null}
+                    </Text>
+                    <Text style={[styles.when, c.unread > 0 && styles.whenOn]}>{shortWhen(c.lastAt)}</Text>
+                  </View>
+                  <View style={styles.chatTop}>
+                    <Text style={[styles.last, c.unread > 0 && styles.lastOn]} numberOfLines={1}>
+                      {c.lastSender === profile?.id ? 'You: ' : ''}
+                      {c.lastKind === 'status'
+                        ? '🗂 Topic status changed'
+                        : (c.lastBody ?? (c.lastFiles ? '📎 File' : ''))}
+                    </Text>
+                    {c.unread > 0 && (
+                      <View style={styles.dot}>
+                        <Text style={styles.dotText}>{c.unread}</Text>
+                      </View>
+                    )}
+                  </View>
+                  {c.open.bug + c.open.idea + c.open.question > 0 && (
+                    <Text style={styles.openLine}>
+                      {[
+                        c.open.bug ? `🐞${c.open.bug}` : null,
+                        c.open.idea ? `💡${c.open.idea}` : null,
+                        c.open.question ? `❓${c.open.question}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join('  ')}{' '}
+                      open
+                    </Text>
+                  )}
+                </View>
+              </Pressable>
+            ))
+          )}
+        </>
+      )}
+
+      {tab === 'topics' && (
+        <>
+          <Pressable
+            onPress={() => setShowClosed(!showClosed)}
+            style={styles.toggle}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: showClosed }}
+          >
+            <Text style={styles.small}>{showClosed ? '☑' : '☐'} Show solved / won’t do too</Text>
+          </Pressable>
+          {topics === null ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : shownTopics.length === 0 ? (
+            <Text style={styles.muted}>Nothing open. 🎉</Text>
+          ) : (
+            shownTopics.map((t) => {
+              const k = KINDS.find((x) => x.kind === t.kind);
+              return (
+                <Pressable
+                  key={t.id}
+                  onPress={() => openChat({ chatUser: t.chatUser, name: t.name })}
+                  style={({ pressed }) => [styles.topicRow, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.chatTop}>
+                    <Text style={styles.topicKind}>
+                      {k?.icon} {k?.label} · {t.name ?? 'Someone'}
+                    </Text>
+                    <StatusPill s={t.status} />
+                  </View>
+                  <Text style={styles.topicText} numberOfLines={2}>
+                    {t.message}
+                  </Text>
+                  <Text style={styles.small}>
+                    {dayTime(t.createdAt)} · {t.replies} repl{t.replies === 1 ? 'y' : 'ies'} · updated{' '}
+                    {shortWhen(t.updatedAt)}
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
+        </>
+      )}
+
+      {tab === 'crashes' && (
         <>
           <Pressable
             onPress={() => setShowSolvedCrashes(!showSolvedCrashes)}
@@ -158,131 +296,58 @@ export default function FeedbackInboxScreen() {
             ))
           )}
         </>
-      ) : rows === null ? (
-        <ActivityIndicator color={colors.primary} />
-      ) : shown.length === 0 ? (
-        <Text style={styles.muted}>Nothing here.</Text>
-      ) : (
-        shown.map((f) => (
-          <Item
-            key={f.id}
-            f={f}
-            open={openId === f.id}
-            onToggle={() => setOpenId(openId === f.id ? null : f.id)}
-            onSaved={load}
-          />
-        ))
       )}
     </ScrollView>
   );
-}
 
-function Item({
-  f,
-  open,
-  onToggle,
-  onSaved,
-}: {
-  f: Feedback;
-  open: boolean;
-  onToggle: () => void;
-  onSaved: () => void;
-}) {
-  const k = KINDS.find((x) => x.kind === f.kind);
-  const s = STATUS[f.status];
-  const [status, setStatus] = useState<FeedbackStatus>(f.status === 'new' ? 'seen' : f.status);
-  const [reply, setReply] = useState(f.reply ?? '');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  if (!wide) {
+    return (
+      <>
+        <Stack.Screen options={{ title: 'Feedback inbox' }} />
+        {list}
+      </>
+    );
+  }
 
-  const save = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      await answerFeedback(f.id, status, reply);
-      onSaved();
-      onToggle();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const info = Object.entries(f.info)
-    .filter(([key]) => key !== 'update_at')
-    .map(([key, v]) => `${key}: ${v}`)
-    .join(' · ');
-
+  // 🌐 Wide: the list on the left, the chat on the right
   return (
-    <View style={[styles.item, f.status === 'new' && styles.itemNew]}>
-      <Pressable onPress={onToggle} accessibilityRole="button" style={styles.gap}>
-        <View style={styles.itemHead}>
-          <Text style={styles.itemKind}>
-            {k?.icon} {f.sender ?? 'Someone'}
-            {f.role ? <Text style={styles.small}> · {f.role}</Text> : null}
-          </Text>
-          <Text style={styles.statusText}>
-            {s.icon} {s.label}
-          </Text>
-        </View>
-        <Text style={styles.message} numberOfLines={open ? undefined : 3}>
-          {f.message}
-        </Text>
-        <AttachmentView files={f.attachments} />
-        <Text style={styles.small}>
-          {dayTime(f.createdAt)}
-          {f.solvedAt ? ` · ✅ ${f.solvedBy ? `${f.solvedBy} · ` : ''}${dayTime(f.solvedAt)}` : ''}
-        </Text>
-        {!!info && <Text style={styles.small}>📱 {info}</Text>}
-        {!open && !!f.reply && (
-          <Text style={styles.small} numberOfLines={1}>
-            💬 {f.reply}
-          </Text>
-        )}
-      </Pressable>
-
-      <View style={styles.quick}>
-        <QuickButton
-          label={f.status === 'done' ? '↩ Open again' : '✅ Solved'}
-          done={f.status !== 'done'}
-          onPress={async () => {
-            await solveFeedback(f.id, f.status !== 'done');
-            onSaved();
-          }}
-        />
-      </View>
-
-      {open && (
-        <View style={styles.answer}>
-          <View style={styles.statusRow}>
-            {(['seen', 'working', 'done', 'wont'] as FeedbackStatus[]).map((st) => (
-              <Pressable
-                key={st}
-                onPress={() => setStatus(st)}
-                style={[styles.chip, status === st && styles.chipOn]}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: status === st }}
-              >
-                <Text style={[styles.chipText, status === st && styles.chipTextOn]}>
-                  {STATUS[st].icon} {STATUS[st].label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <TextInput
-            value={reply}
-            onChangeText={setReply}
-            placeholder="Answer (the sender sees it and gets a notification)"
-            placeholderTextColor={colors.textMuted}
-            multiline
-            style={styles.input}
-            textAlignVertical="top"
+    <View style={styles.split}>
+      <Stack.Screen options={{ title: 'Feedback inbox' }} />
+      <View style={styles.left}>{list}</View>
+      <View style={styles.flex}>
+        {picked && profile?.id ? (
+          <ChatView
+            key={picked.chatUser}
+            chatUser={picked.chatUser}
+            me={profile.id}
+            isDev
+            otherName={picked.name ?? 'Someone'}
+            otherAvatar={picked.avatarUrl}
+            headerRight={
+              <View style={styles.headBtns}>
+                <Pressable onPress={() => setInfo(true)} hitSlop={8} accessibilityRole="button">
+                  <Text style={styles.headBtn}>ℹ️ Phone & app</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => router.push(`/users/${picked.chatUser}` as Href)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.headBtn}>👤 Open</Text>
+                </Pressable>
+              </View>
+            }
           />
-          {error && <Text style={styles.error}>{error}</Text>}
-          <Button title="Save" onPress={save} loading={saving} fullWidth />
-        </View>
-      )}
+        ) : (
+          <View style={styles.center}>
+            <Text style={styles.bigIcon}>💬</Text>
+            <Text style={styles.muted}>Choose a chat on the left.</Text>
+          </View>
+        )}
+        {info && picked && (
+          <PersonInfo chatUser={picked.chatUser} name={picked.name ?? ''} onClose={() => setInfo(false)} />
+        )}
+      </View>
     </View>
   );
 }
@@ -322,7 +387,17 @@ function QuickButton({ label, onPress, done }: { label: string; onPress: () => P
 // ---------------------------------------------------------------------
 // 💥 One kind of crash: how often, how many people, which versions
 // ---------------------------------------------------------------------
-function CrashItem({ c, open, onToggle, onSaved }: { c: Crash; open: boolean; onToggle: () => void; onSaved: () => void }) {
+function CrashItem({
+  c,
+  open,
+  onToggle,
+  onSaved,
+}: {
+  c: Crash;
+  open: boolean;
+  onToggle: () => void;
+  onSaved: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   const info = Object.entries(c.info)
     .filter(([key]) => key !== 'update_at')
@@ -330,7 +405,14 @@ function CrashItem({ c, open, onToggle, onSaved }: { c: Crash; open: boolean; on
     .join(' · ');
   const copy = async () => {
     await Clipboard.setStringAsync(
-      [`${c.name}: ${c.message}`, `Screen: ${c.screen ?? '?'}`, `Versions: ${c.versions.join(', ')}`, info, '', c.stack ?? '']
+      [
+        `${c.name}: ${c.message}`,
+        `Screen: ${c.screen ?? '?'}`,
+        `Versions: ${c.versions.join(', ')}`,
+        info,
+        '',
+        c.stack ?? '',
+      ]
         .filter((x) => x !== undefined)
         .join('\n'),
     );
@@ -388,8 +470,77 @@ function CrashItem({ c, open, onToggle, onSaved }: { c: Crash; open: boolean; on
 }
 
 const styles = StyleSheet.create({
+  split: { flex: 1, flexDirection: 'row', backgroundColor: colors.background },
+  left: { width: 400, borderRightWidth: 1, borderRightColor: colors.border },
+  flex: { flex: 1 },
+  pressed: { opacity: 0.7 },
+  bold: { fontWeight: fontWeight.bold },
+  bigIcon: { fontSize: 48 },
+  tabs: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    padding: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+  },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: radius.pill },
+  tabOn: { backgroundColor: colors.primary },
+  tabText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
+  tabTextOn: { color: colors.textOnPrimary },
+  search: {
+    height: 42,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontSize: fontSize.body,
+  },
+  chatRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: radius.md,
+  },
+  chatRowOn: { backgroundColor: colors.primarySoft },
+  chatTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chatName: { flex: 1, fontSize: fontSize.body, color: colors.text, fontWeight: fontWeight.semibold },
+  when: { fontSize: fontSize.caption, color: colors.textMuted },
+  whenOn: { color: colors.primary, fontWeight: fontWeight.bold },
+  last: { flex: 1, fontSize: fontSize.small, color: colors.textMuted },
+  lastOn: { color: colors.text, fontWeight: fontWeight.semibold },
+  dot: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  dotText: { fontSize: 11, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
+  openLine: { fontSize: fontSize.caption, color: colors.warning, fontWeight: fontWeight.semibold, marginTop: 2 },
+  topicRow: {
+    gap: 4,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  topicKind: { flex: 1, fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.textMuted },
+  topicText: { fontSize: fontSize.body, color: colors.text },
+  headBtns: { flexDirection: 'row', gap: spacing.md },
+  headBtn: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
   quick: { flexDirection: 'row', justifyContent: 'flex-end' },
-  quickBtn: { minWidth: 96, alignItems: 'center', paddingVertical: 6, paddingHorizontal: spacing.md, borderRadius: radius.pill },
+  quickBtn: {
+    minWidth: 96,
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+  },
   quickSolve: { backgroundColor: colors.successSoft },
   quickOpen: { borderWidth: 1, borderColor: colors.border },
   quickText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },

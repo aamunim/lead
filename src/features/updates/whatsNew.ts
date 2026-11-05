@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-23-a',
+    date: '23 Nov 2026',
+    title: '💬 Contact developer is now a chat',
+    items: [
+      '💬 One chat with the developer, like Messenger: write any time, answers come at once',
+      '＋ Start a 🐞 problem, 💡 idea or ❓ question: it becomes a card with its own status (👀 🔧 ✅)',
+      '🗂 The topics sit on top of the chat: tap one to see only its messages',
+      '↪ Swipe a message to reply · press and hold for 👍❤️😂😮😢🙏, copy, delete (5 minutes)',
+      '🖼 Pictures, 🎙 voice, ✓✓ seen and “typing…”; your old messages are in the chat too',
+    ],
+  },
+  {
     key: '2026-11-22-a',
     date: '22 Nov 2026',
     title: '🏛 Submitted Online → Received by ITTC',
