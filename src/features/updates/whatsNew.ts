@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-26-a',
+    date: '26 Nov 2026',
+    title: '⚡ Faster screens',
+    items: [
+      '⚡ Leads and Students open with about half as many requests to the server',
+      '🔢 The chip numbers come in one request (Students used to send 14)',
+      '🏠 Coming back to Home within 30 seconds shows what it has at once',
+      '📱 The cards draw again only when they change, so scrolling and tapping stay smooth',
+    ],
+  },
+  {
     key: '2026-11-25-b',
     date: '25 Nov 2026',
     title: '⏱ Speed check',

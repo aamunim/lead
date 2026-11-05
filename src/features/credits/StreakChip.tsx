@@ -1,4 +1,5 @@
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { router, type Href } from 'expo-router';
+import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
@@ -13,7 +14,7 @@ export function StreakChip() {
   const { profile } = useAuth();
   const [me, setMe] = useState<Me | null>(null);
 
-  useFocusEffect(
+  useFocusRefresh(
     useCallback(() => {
       if (!profile?.id) return;
       getMe()

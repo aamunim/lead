@@ -1,4 +1,5 @@
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { router, type Href } from 'expo-router';
+import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -23,7 +24,7 @@ export function StudentsHomeCard() {
   const [allowed, setAllowed] = useState(false);
   const [s, setS] = useState<StudentsSummaryData | null>(null);
 
-  useFocusEffect(
+  useFocusRefresh(
     useCallback(() => {
       getStudentsSettings().then((st) => {
         const ok = canSeeStudents(st, profile, isAdmin);

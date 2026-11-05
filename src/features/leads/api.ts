@@ -344,7 +344,7 @@ export const PAGE_SIZE = 30;
 export const MAX_MARK_ALL = 2000;
 
 /** Builds the leads query with search, quick filter and the full filters */
-function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' | 'paid') {
+function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' | 'paid' | 'chips') {
   const {
     search = '',
     quick = 'all',
@@ -365,7 +365,9 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' 
   let query = supabase
     .from('leads')
     .select(
-      withCount === 'paid'
+      withCount === 'chips'
+        ? CHIP_COLUMNS + filterSelect(filters)
+        : withCount === 'paid'
         ? 'id, fee_paid' + filterSelect(filters)
         : idOnly
           ? 'id' + filterSelect(filters)
@@ -546,6 +548,86 @@ export async function listLeads(
 export async function countLeads(options: LeadQuery): Promise<number | null> {
   const { count, error } = await buildLeadQuery(options, 'only');
   return error ? null : (count ?? null);
+}
+
+// ---------------------------------------------------------------------
+// ⚡ The chip numbers in one request: the matching leads' few columns are
+//   read once and counted here (it used to be one count per chip: up to 14)
+// ---------------------------------------------------------------------
+const CHIP_COLUMNS =
+  'id, assigned_to, rating, last_contacted_at, closed_at, fee_due, fee_next_due, papers_missing, admitted_at, submitted_at, received_at, admission_fee_ok, nu_admission_id, admitted_section_id';
+const CHIP_MAX = 3000;
+
+type ChipRow = {
+  assigned_to: string | null;
+  rating: string | null;
+  last_contacted_at: string | null;
+  fee_due: number | null;
+  fee_next_due: string | null;
+  papers_missing: number | null;
+  admitted_at: string | null;
+  submitted_at: string | null;
+  received_at: string | null;
+  admission_fee_ok: boolean | null;
+  nu_admission_id: string | null;
+  admitted_section_id: string | null;
+};
+
+/** The same rules as the quick filters in buildLeadQuery (null = can't tell here) */
+function chipMatch(key: QuickFilter, r: ChipRow, userId: string | undefined): boolean | null {
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
+  switch (key) {
+    case 'all':
+      return true;
+    case 'mine':
+      return !!userId && r.assigned_to === userId;
+    case 'hot':
+      return r.rating === 'hot';
+    case 'new':
+      return r.last_contacted_at == null;
+    case 'unassigned':
+      return r.assigned_to == null;
+    case 'due':
+      return Number(r.fee_due ?? 0) > 0;
+    case 'overdue':
+      return Number(r.fee_due ?? 0) > 0 && !!r.fee_next_due && r.fee_next_due < todayIso;
+    case 'paid':
+      return r.fee_due != null && Number(r.fee_due) === 0;
+    case 'papers':
+      return Number(r.papers_missing ?? 0) > 0;
+    case 'new_students':
+      return !!r.admitted_at && new Date(r.admitted_at).getTime() >= monthStart;
+    case 'not_submitted':
+      return !r.submitted_at;
+    case 'submitted':
+      return !!r.submitted_at && !r.received_at;
+    case 'ittc_ready':
+      return !!r.submitted_at && !r.received_at && r.admission_fee_ok === true;
+    case 'received':
+      return !!r.received_at;
+    case 'no_nu_id':
+      return !r.nu_admission_id;
+    case 'no_section':
+      return !r.admitted_section_id;
+    default:
+      return null;
+  }
+}
+
+/** 🔢 How many leads each chip has, with one request (falls back to one count per chip) */
+export async function countChips(options: LeadQuery, keys: QuickFilter[]): Promise<Map<string, number | null>> {
+  const canHere = keys.every((k) => k !== 'closed' && chipMatch(k, {} as ChipRow, options.userId) !== null);
+  if (canHere) {
+    const { data, error } = await buildLeadQuery({ ...options, quick: 'all' }, 'chips').range(0, CHIP_MAX - 1);
+    if (!error && data && data.length < CHIP_MAX) {
+      const rows = data as unknown as ChipRow[];
+      return new Map(keys.map((k) => [k, rows.filter((r) => chipMatch(k, r, options.userId)).length]));
+    }
+  }
+  const list = await Promise.all(keys.map((k) => countLeads({ ...options, quick: k }).catch(() => null)));
+  return new Map(keys.map((k, i) => [k, list[i]]));
 }
 
 /** 💵 Students: how much the matching students paid in all (refunds taken off) */

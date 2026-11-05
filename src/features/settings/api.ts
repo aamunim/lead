@@ -269,18 +269,51 @@ export async function deleteHoliday(id: string): Promise<void> {
 // =====================================================================
 // App settings (key → JSON value)
 // =====================================================================
-export async function getSetting<T = Json>(key: string): Promise<T | null> {
-  const { data, error } = await supabase
-    .from('app_settings')
-    .select('value')
-    .eq('key', key)
-    .maybeSingle();
+// ⚡ Settings change rarely: all of them are read in one request and kept
+//   for a minute (each screen used to ask for its own, again and again)
+const SETTINGS_FRESH_MS = 60_000;
+let settingsCache: { at: number; values: Map<string, Json> } | null = null;
+let settingsLoading: Promise<Map<string, Json>> | null = null;
 
-  if (error) throw toError(error);
-  return (data?.value as T) ?? null;
+async function allSettings(): Promise<Map<string, Json>> {
+  if (settingsCache && Date.now() - settingsCache.at < SETTINGS_FRESH_MS) return settingsCache.values;
+  if (!settingsLoading) {
+    settingsLoading = (async () => {
+      const { data, error } = await supabase.from('app_settings').select('key, value');
+      if (error) throw toError(error);
+      const values = new Map<string, Json>((data ?? []).map((r) => [r.key as string, r.value as Json]));
+      settingsCache = { at: Date.now(), values };
+      return values;
+    })().finally(() => {
+      settingsLoading = null;
+    });
+  }
+  return settingsLoading;
+}
+
+/** Read the settings again next time (e.g. after the app was away a while) */
+export function forgetSettings() {
+  settingsCache = null;
+}
+// Another person signs in: their own settings, not the last person's
+supabase.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') forgetSettings();
+});
+
+export async function getSetting<T = Json>(key: string): Promise<T | null> {
+  try {
+    const values = await allSettings();
+    return ((values.get(key) as T | undefined) ?? null) as T | null;
+  } catch {
+    // one setting by itself, as before
+    const { data, error } = await supabase.from('app_settings').select('value').eq('key', key).maybeSingle();
+    if (error) throw toError(error);
+    return (data?.value as T) ?? null;
+  }
 }
 
 export async function updateSetting(key: string, value: Json): Promise<void> {
   const { error } = await supabase.from('app_settings').update({ value }).eq('key', key);
   if (error) throw toError(error);
+  settingsCache?.values.set(key, value);
 }

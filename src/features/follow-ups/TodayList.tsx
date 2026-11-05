@@ -1,4 +1,5 @@
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { router, type Href } from 'expo-router';
+import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, LayoutAnimation, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -62,7 +63,7 @@ export function TodayList() {
   }, [scope, profile?.id, assignmentOn, canSeeOthers]);
 
   // Reload every time Home comes back into view (e.g. after a call)
-  useFocusEffect(
+  useFocusRefresh(
     useCallback(() => {
       load();
     }, [load]),

@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation, type Href } from 'expo-router';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -78,6 +78,7 @@ import {
   type LeadSort,
   type QuickFilter,
   STUDENT_FLOW_CHIPS,
+  countChips,
   sumLeadPaid,
   type PaidRange,
 } from '@/features/leads/api';
@@ -105,7 +106,7 @@ import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
 import { listAssignableUsers } from '@/features/leads/api';
 import { VoicePlayer } from '@/features/voice/VoiceNote';
 import { isWeb } from '@/features/web/api';
-import { countLeads, listLeadIds, listLeadsByIds, matchingLeadIds, PAGE_SIZE as LIST_PAGE } from '@/features/leads/api';
+import { listLeadIds, listLeadsByIds, matchingLeadIds, PAGE_SIZE as LIST_PAGE } from '@/features/leads/api';
 import {
   GROUP_LABEL,
   loadGroupByTime,
@@ -640,12 +641,16 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       const cached = CHIP_CACHE.get(key);
       if (cached) setChipCounts(cached.counts);
       if (cached && !force && Date.now() - cached.at < CHIP_FRESH_MS) return;
-      Promise.all(modernChips.map((c) => countLeads({ ...base, quick: c.key }).catch(() => null))).then((list) => {
-        const counts = new Map(modernChips.map((c, i) => [c.key as string, list[i]]));
-        CHIP_CACHE.set(key, { at: Date.now(), counts });
-        if (mine !== countsId.current) return;
-        setChipCounts(counts);
-      });
+      countChips(
+        base,
+        modernChips.map((c) => c.key),
+      )
+        .then((counts) => {
+          CHIP_CACHE.set(key, { at: Date.now(), counts });
+          if (mine !== countsId.current) return;
+          setChipCounts(counts);
+        })
+        .catch(() => undefined);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [modern, debouncedSearch, profile?.id, effectiveFilters, closedMode, students, idsFilter, addedQ, chipKeys, paidQ],
@@ -1307,27 +1312,43 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       </Pressable>
     ) : null;
   /** 📌 No longer matches the list: dimmed, with a short line */
-  const doneWrap = (id: string, card: ReactNode) => {
-    const inner = doneIds.has(id) ? (
-      <View style={styles.done}>
-        <View style={styles.doneDim}>{card}</View>
-        <Text style={styles.doneText}>✓ Done · leaves on refresh</Text>
-      </View>
-    ) : (
-      card
-    );
-    const lock = locks.get(id);
-    if (!lock) return inner;
-    const min = Math.max(0, Math.round((Date.now() - lock.startedAt.getTime()) / 60000));
-    return (
-      <View>
-        <Text style={styles.lockLine}>
-          {lock.channel === 'whatsapp' ? '💬' : '📞'} {lock.name} is on a call{min > 0 ? ` · ${min} min` : ''}
-        </Text>
-        {inner}
-      </View>
-    );
+  // ⚡ The cards get the same functions every time, so a card draws again only
+  //   when its own lead changes (not when a count, a total or a lock arrives)
+  const latest = useRef<CardHandlers | null>(null);
+  latest.current = {
+    open: (lead) => {
+      if (selected.size > 0) return toggleSelect(lead.id);
+      // 🔍 A search that found what was needed: keep it in the recent ones
+      if (debouncedSearch.trim()) rememberSearch(debouncedSearch);
+      touched.current.add(lead.id);
+      router.push(`/leads/${lead.id}` as Href);
+    },
+    select: (id) => toggleSelect(id),
+    peek: (lead) => setPeekLead(lead),
+    play: (lead, fileId, seconds) => setPlaying({ id: fileId, name: `Voice note · ${lead.name}`, duration_sec: seconds }),
+    call: (lead) => call(lead),
+    whatsapp: (lead) => whatsapp(lead),
+    sms: (lead) => sms(lead),
+    template: (lead, channel) => setTemplateFor({ lead, channel }),
+    pay: (lead) => setPayFor(lead),
   };
+  const cardHandlers = useMemo<CardHandlers>(
+    () => ({
+      open: (l) => latest.current?.open(l),
+      select: (id) => latest.current?.select(id),
+      peek: (l) => latest.current?.peek(l),
+      play: (l, f, sec) => latest.current?.play(l, f, sec),
+      call: (l) => latest.current?.call(l),
+      whatsapp: (l) => latest.current?.whatsapp(l),
+      sms: (l) => latest.current?.sms(l),
+      template: (l, ch) => latest.current?.template(l, ch),
+      pay: (l) => latest.current?.pay(l),
+    }),
+    [],
+  );
+  const canPayFor = (lead: LeadListItem) =>
+    students && !!paySettings && lead.stage?.kind === 'won' && Number(lead.fee_due ?? 0) > 0;
+
 
   if (modern) {
     const n = total ?? leads.length;
@@ -1653,6 +1674,10 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             data={rows}
             keyExtractor={(r) => r.key}
             extraData={selected}
+            // ⚡ the first screenful first; the rest as you scroll
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            windowSize={7}
             contentContainerStyle={[m.list, { paddingBottom: selecting ? 230 : 100 }]}
             onEndReached={loadMore}
             onEndReachedThreshold={0.4}
@@ -1701,35 +1726,23 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                 </Text>
               ) : (
                 <View style={m.cardGap}>
-                  {doneWrap(
-                    row.lead.id,
-                    <ModernLeadCard
-                      lead={row.lead}
-                      search={debouncedSearch}
-                      detailed={detailed}
-                      staleDays={staleDays}
-                      nameOf={nameOf}
-                      onPeek={() => setPeekLead(row.lead)}
-                      onPlayVoice={(fileId, seconds) =>
-                        setPlaying({ id: fileId, name: `Voice note · ${row.lead.name}`, duration_sec: seconds })
-                      }
-                      student={students}
-                      showAssignee={showAssignee}
-                      selecting={selecting}
-                      selected={selected.has(row.lead.id)}
-                      onPress={() => openLead(row.lead)}
-                      onLongPress={() => toggleSelect(row.lead.id)}
-                      onCall={() => call(row.lead)}
-                      onWhatsApp={() => whatsapp(row.lead)}
-                      onSms={() => sms(row.lead)}
-                      onTemplate={templates.allowed ? (ch) => setTemplateFor({ lead: row.lead, channel: ch }) : undefined}
-                      onPay={
-                        students && paySettings && row.lead.stage?.kind === 'won' && Number(row.lead.fee_due ?? 0) > 0
-                          ? () => setPayFor(row.lead)
-                          : undefined
-                      }
-                    />,
-                  )}
+                  <CardRow
+                    modern
+                    lead={row.lead}
+                    h={cardHandlers}
+                    search={debouncedSearch}
+                    detailed={detailed}
+                    staleDays={staleDays}
+                    nameOf={nameOf}
+                    student={students}
+                    showAssignee={showAssignee}
+                    selecting={selecting}
+                    selected={selected.has(row.lead.id)}
+                    canTemplate={templates.allowed}
+                    canPay={canPayFor(row.lead)}
+                    done={doneIds.has(row.lead.id)}
+                    lock={locks.get(row.lead.id) ?? null}
+                  />
                 </View>
               )
             }
@@ -2135,6 +2148,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           data={leads}
           keyExtractor={(l) => l.id}
           extraData={selected}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
           contentContainerStyle={[styles.list, selecting && styles.listSelecting, { paddingBottom: 96 }]}
           onEndReached={loadMore}
           onEndReachedThreshold={0.4}
@@ -2176,41 +2192,25 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           ListFooterComponent={
             loadingMore ? <ActivityIndicator style={styles.footer} color={colors.primary} /> : null
           }
-          renderItem={({ item }) =>
-            doneWrap(
-              item.id,
-              <LeadCard
-                lead={item}
-                search={debouncedSearch}
-                detailed={detailed}
-                staleDays={staleDays}
-                nameOf={nameOf}
-                onPeek={() => setPeekLead(item)}
-                onPlayVoice={(fileId, seconds) => setPlaying({ id: fileId, name: `Voice note · ${item.name}`, duration_sec: seconds })}
-                student={students}
-                showAssignee={showAssignee}
-                selecting={selecting}
-                selected={selected.has(item.id)}
-                onPress={() => {
-                  if (selecting) return toggleSelect(item.id);
-                  // 🔍 A search that found what was needed: keep it in the recent ones
-                  if (debouncedSearch.trim()) rememberSearch(debouncedSearch);
-                  touched.current.add(item.id);
-                  router.push(`/leads/${item.id}` as Href);
-                }}
-                onLongPress={() => toggleSelect(item.id)}
-                onCall={() => call(item)}
-                onWhatsApp={() => whatsapp(item)}
-                onSms={() => sms(item)}
-                onTemplate={templates.allowed ? (ch) => setTemplateFor({ lead: item, channel: ch }) : undefined}
-                onPay={
-                  students && paySettings && item.stage?.kind === 'won' && Number(item.fee_due ?? 0) > 0
-                    ? () => setPayFor(item)
-                    : undefined
-                }
-              />,
-            )
-          }
+          renderItem={({ item }) => (
+            <CardRow
+              modern={false}
+              lead={item}
+              h={cardHandlers}
+              search={debouncedSearch}
+              detailed={detailed}
+              staleDays={staleDays}
+              nameOf={nameOf}
+              student={students}
+              showAssignee={showAssignee}
+              selecting={selecting}
+              selected={selected.has(item.id)}
+              canTemplate={templates.allowed}
+              canPay={canPayFor(item)}
+              done={doneIds.has(item.id)}
+              lock={locks.get(item.id) ?? null}
+            />
+          )}
         />
       )}
 
@@ -2307,6 +2307,97 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 // =====================================================================
 // One lead card
 // =====================================================================
+// ---------------------------------------------------------------------
+// ⚡ One card in the list: drawn again only when its own things change
+// ---------------------------------------------------------------------
+type CardHandlers = {
+  open: (lead: LeadListItem) => void;
+  select: (id: string) => void;
+  peek: (lead: LeadListItem) => void;
+  play: (lead: LeadListItem, fileId: string, seconds: number | null) => void;
+  call: (lead: LeadListItem) => void;
+  whatsapp: (lead: LeadListItem) => void;
+  sms: (lead: LeadListItem) => void;
+  template: (lead: LeadListItem, channel: TemplateChannel) => void;
+  pay: (lead: LeadListItem) => void;
+};
+
+type CardLock = { name: string; channel: string; startedAt: Date };
+
+const CardRow = memo(function CardRow({
+  modern,
+  lead,
+  h,
+  search,
+  detailed,
+  staleDays,
+  nameOf,
+  student,
+  showAssignee,
+  selecting,
+  selected,
+  canTemplate,
+  canPay,
+  done,
+  lock,
+}: {
+  modern: boolean;
+  lead: LeadListItem;
+  h: CardHandlers;
+  search: string;
+  detailed: boolean;
+  staleDays: number;
+  nameOf: (id: string | null) => string | null;
+  student: boolean;
+  showAssignee: boolean;
+  selecting: boolean;
+  selected: boolean;
+  canTemplate: boolean;
+  canPay: boolean;
+  done: boolean;
+  lock: CardLock | null;
+}) {
+  const props = {
+    lead,
+    search,
+    detailed,
+    staleDays,
+    nameOf,
+    onPeek: () => h.peek(lead),
+    onPlayVoice: (fileId: string, seconds: number | null) => h.play(lead, fileId, seconds),
+    student,
+    showAssignee,
+    selecting,
+    selected,
+    onPress: () => h.open(lead),
+    onLongPress: () => h.select(lead.id),
+    onCall: () => h.call(lead),
+    onWhatsApp: () => h.whatsapp(lead),
+    onSms: () => h.sms(lead),
+    onTemplate: canTemplate ? (ch: TemplateChannel) => h.template(lead, ch) : undefined,
+    onPay: canPay ? () => h.pay(lead) : undefined,
+  };
+  const card = modern ? <ModernLeadCard {...props} /> : <LeadCard {...props} />;
+  const inner = done ? (
+    <View style={styles.done}>
+      <View style={styles.doneDim}>{card}</View>
+      <Text style={styles.doneText}>✓ Done · leaves on refresh</Text>
+    </View>
+  ) : (
+    card
+  );
+  if (!lock) return inner;
+  const min = Math.max(0, Math.round((Date.now() - lock.startedAt.getTime()) / 60000));
+  return (
+    <View>
+      <Text style={styles.lockLine}>
+        {lock.channel === 'whatsapp' ? '💬' : '📞'} {lock.name} is on a call{min > 0 ? ` · ${min} min` : ''}
+      </Text>
+      {inner}
+    </View>
+  );
+});
+
 const styles = StyleSheet.create({
   paidBtnText: { fontSize: 19, fontWeight: fontWeight.bold, color: colors.text },
   paidLine: { fontSize: fontSize.caption, color: colors.textMuted },
