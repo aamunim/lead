@@ -1966,6 +1966,8 @@ export type Database = {
           role_key: string
           team_lead_id: string | null
           updated_at: string
+          call_sync_required?: boolean
+          call_sync_required_at?: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -2775,6 +2777,7 @@ export type Database = {
       current_credit_rules: { Args: never; Returns: Json }
       save_credit_rules: { Args: { p_rules: Json; p_enabled: boolean; p_retro: boolean }; Returns: undefined }
       set_leaderboard_hidden: { Args: { p_user: string; p_hidden: boolean }; Returns: undefined }
+      set_call_sync_required: { Args: { p_user: string; p_required: boolean }; Returns: undefined }
       add_credit_adjustment: { Args: { p_user: string; p_points: number; p_reason: string }; Returns: undefined }
       user_export: { Args: { p_user: string; p_from: string; p_to: string }; Returns: Json }
       recent_contact: { Args: { p_lead: string }; Returns: Json }

@@ -33,6 +33,7 @@ import {
   type TemplateSettings,
 } from '@/features/templates/api';
 import { forgetTemplateSettings } from '@/features/templates/useTemplateAccess';
+import { md } from '@/features/home/md';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
@@ -655,8 +656,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
   },
   varText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.primary },
-  preview: { padding: spacing.md, borderRadius: radius.md, backgroundColor: '#DCF8C6' },
-  previewText: { fontSize: fontSize.body, lineHeight: 22, color: '#111B21' },
+  preview: { padding: spacing.md, borderRadius: radius.md, backgroundColor: md.waBubble },
+  previewText: { fontSize: fontSize.body, lineHeight: 22, color: md.waBubbleText },
   field: { gap: 4 },
   fieldLabel: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.textMuted },
   input: {

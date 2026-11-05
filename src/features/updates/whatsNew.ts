@@ -8,6 +8,26 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-18-a',
+    date: '18 Nov 2026',
+    title: '🌙 Dark mode',
+    items: [
+      '🌗 More → Appearance: 📱 like the phone (System), ☀️ Light or 🌙 Dark',
+      '📱 “System” follows the phone: when the phone turns dark, so does the app',
+      '🖨 Exports and PDFs stay white, for printing',
+    ],
+  },
+  {
+    key: '2026-11-17-b',
+    date: '17 Nov 2026',
+    title: '📞 Call log sync can be required',
+    items: [
+      '🔒 The Super Admin can make Call log sync necessary for a person (Users → the person)',
+      '📞 Then the app opens only after call log permission is given and Call log sync is on: the app shows the steps',
+      '🩺 Sync health shows 🔒 Required next to those people',
+    ],
+  },
+  {
     key: '2026-11-17-a',
     date: '17 Nov 2026',
     title: '📲 App 2.8.0',

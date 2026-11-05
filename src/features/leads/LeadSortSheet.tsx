@@ -9,6 +9,7 @@ import {
   STUDENT_SORT_OPTIONS,
   type LeadSort,
 } from '@/features/leads/api';
+import { md } from '@/features/home/md';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -162,6 +163,6 @@ const styles = StyleSheet.create({
   labelOn: { color: colors.primary },
   text: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
   keep: { marginBottom: spacing.sm },
-  keepOn: { borderColor: '#E8A100', backgroundColor: '#FFF8E6' },
+  keepOn: { borderColor: md.gold, backgroundColor: md.goldC },
   tick: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.primary },
 });

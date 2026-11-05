@@ -304,9 +304,9 @@ function PhoneHome() {
 }
 
 const TONES = {
-  warn: { bg: md.warnC, fg: md.onWarnC, text: '#2C1600', sub: '#5C3A00' },
-  primary: { bg: md.primaryC, fg: md.onPrimaryC, text: md.onPrimaryC, sub: '#3A4A8A' },
-  ok: { bg: md.okC, fg: md.onOkC, text: '#0B3A22', sub: '#2D5A40' },
+  warn: { bg: md.warnC, fg: md.onWarnC, text: md.warnText, sub: md.warnSub },
+  primary: { bg: md.primaryC, fg: md.onPrimaryC, text: md.onPrimaryC, sub: md.primarySub },
+  ok: { bg: md.okC, fg: md.onOkC, text: md.okText, sub: md.okSub },
 };
 
 /** A Material banner card: icon, two lines, a text button */

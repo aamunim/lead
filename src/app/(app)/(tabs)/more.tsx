@@ -22,6 +22,7 @@ import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
 import { designOf, saveListDesign, type ListDesign } from '@/features/leads/design';
+import { APPEARANCE, currentAppearance, setAppearance } from '@/features/settings/appearance';
 import { colors, fontWeight } from '@/shared/theme';
 
 // =====================================================================
@@ -41,8 +42,8 @@ const TONE = {
   green: [md.okC, md.onOkC],
   orange: [md.warnC, md.onWarnC],
   red: [md.errorC, md.onErrorC],
-  purple: ['#F3DDF8', '#6A1B7A'],
-  wa: ['#DCF8E6', '#128C4A'],
+  purple: [md.purpleC, md.onPurpleC],
+  wa: [md.waC, md.onWaC],
   grey: [md.surface2, colors.text],
 } as const;
 type Tone = keyof typeof TONE;
@@ -83,6 +84,8 @@ function PhoneMore() {
   // 🎨 Leads / Students list: the new design or the classic one
   const design = designOf(profile?.list_design);
   const [designBusy, setDesignBusy] = useState(false);
+  // 🌗 Light / dark / system on this phone
+  const [appearance, setAppearanceState] = useState(currentAppearance());
   const pickDesign = async (next: ListDesign) => {
     if (!profile?.id || next === design) return;
     setDesignBusy(true);
@@ -412,6 +415,31 @@ function PhoneMore() {
               })}
             </View>
           </Row>
+          {/* 🌗 Light / dark (this phone) */}
+          {!isWeb && (
+            <Row icon="dark-mode" tone="purple" title="Appearance" subtitle="Light, dark or like the phone">
+              <View style={styles.seg}>
+                {APPEARANCE.map((a) => {
+                  const on = appearance === a.value;
+                  return (
+                    <Pressable
+                      key={a.value}
+                      onPress={() => {
+                        setAppearanceState(a.value);
+                        setAppearance(a.value);
+                      }}
+                      style={[styles.segItem, on && styles.segOn]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: on }}
+                      accessibilityLabel={a.label}
+                    >
+                      <Text style={[styles.segText, on && styles.segTextOn]}>{a.icon}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </Row>
+          )}
           <Row
             icon="new-releases"
             tone="orange"

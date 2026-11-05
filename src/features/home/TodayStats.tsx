@@ -113,7 +113,7 @@ export function TodayStats({ onOpenCalls }: { onOpenCalls?: () => void }) {
     { icon: 'call', fg: md.onPrimaryC, value: v(s?.calls), label: 'Calls due', onPress: onOpenCalls },
     {
       icon: 'timer',
-      fg: '#6A1B7A',
+      fg: md.onPurpleC,
       value: v(s?.talkMin, minutes),
       label: 'Call time',
       // Team activity is for the people who may see the team

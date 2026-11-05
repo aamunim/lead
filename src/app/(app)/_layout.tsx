@@ -6,6 +6,7 @@ import { CrashScreen } from '@/features/feedback/CrashScreen';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { setupNativeCallLock } from '@/features/calls/callLock';
 import { useEffect } from 'react';
+import { CallSyncGate } from '@/features/call-sync/CallSyncGate';
 import { PushSetup } from '@/features/notifications/PushSetup';
 import { WhatsNewOnUpdate } from '@/features/updates/WhatsNewSheet';
 import { colors, fontWeight } from '@/shared/theme';
@@ -71,7 +72,8 @@ export default function AppLayout() {
       <PushSetup />
       {/* 📵 Call lock: this phone's part (2.8.0) */}
       <CallLockSetup />
-      {stack}
+      {/* 📞 Call log sync required by the Super Admin: no way in until it is on */}
+      <CallSyncGate>{stack}</CallSyncGate>
       {/* 🆕 After an update: what changed (once) */}
       <WhatsNewOnUpdate />
     </ActivityTracker>
