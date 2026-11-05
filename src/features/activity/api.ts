@@ -323,6 +323,10 @@ export function describeChange(
       return { text: `Course + ${q(d.course)}`, warn: false };
     case 'course_removed':
       return { text: `Course − ${q(d.course)}`, warn: false };
+    case 'pipeline_course_set':
+      return { text: `🧭 Pipeline: ${q(d.course)}`, warn: false };
+    case 'pipeline_course_changed':
+      return { text: `🧭 Stage → ${q(d.to_stage)} (course ${q(d.course)})`, warn: false };
     case 'call_logged':
       if (d.channel === 'whatsapp') {
         const what = d.media === 'message' ? 'message' : d.media === 'video' ? 'video call' : 'call';

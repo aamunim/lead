@@ -625,6 +625,10 @@ export function LeadDetailView({
         return `🎓 Course added: ${d.course ?? ''}`;
       case 'course_removed':
         return `🎓 Course removed: ${d.course ?? ''}`;
+      case 'pipeline_course_set':
+        return `🧭 Pipeline follows ${d.course ?? ''}`;
+      case 'pipeline_course_changed':
+        return `🧭 ${d.course ? `${d.course}: ` : ''}stage ${d.from_stage ?? ''} → ${d.to_stage ?? ''} (not used for this course)`;
       case 'note_edited':
         return '📝 Notes edited';
       case 'fields_changed': {

@@ -25,6 +25,9 @@ export type PipelineStage = {
   noteRequired: boolean;
   /** Ask for a date & time when moving here (e.g. Campus visit) */
   askDate: boolean;
+  /** 🎓 only for these courses (null = every course; closed / system stages: always) */
+  courseIds?: string[] | null;
+  isSystem?: boolean;
   /** What the date is called, e.g. "Visit date & time" */
   dateLabel: string | null;
 };
@@ -168,7 +171,7 @@ export async function canCancelAdmission(): Promise<boolean> {
 // Stages
 // =====================================================================
 const STAGE_COLUMNS =
-  'id, key, name, color, kind, sort_order, is_active, follow_up_days, note_required, ask_date, date_label';
+  'id, key, name, color, kind, sort_order, is_active, follow_up_days, note_required, ask_date, date_label, is_system, course_ids';
 
 type RawStage = {
   id: string;
@@ -182,6 +185,8 @@ type RawStage = {
   note_required: boolean | null;
   ask_date: boolean | null;
   date_label: string | null;
+  is_system?: boolean | null;
+  course_ids?: string[] | null;
 };
 
 const toStage = (s: RawStage): PipelineStage => ({
@@ -196,7 +201,36 @@ const toStage = (s: RawStage): PipelineStage => ({
   noteRequired: !!s.note_required,
   askDate: !!s.ask_date,
   dateLabel: s.date_label ?? null,
+  courseIds: s.course_ids ?? null,
+  isSystem: !!s.is_system,
 });
+
+/** Is this stage used for a course? (closed and system stages: always) */
+export function stageForCourse(s: { kind: string; isSystem?: boolean; courseIds?: string[] | null }, courseId: string | null) {
+  if (s.kind !== 'open' || s.isSystem || !s.courseIds) return true;
+  return !!courseId && s.courseIds.includes(courseId);
+}
+
+/** The stages a lead with this pipeline course can be in */
+export const stagesFor = <T extends { kind: string; isSystem?: boolean; courseIds?: string[] | null }>(
+  stages: T[],
+  courseId: string | null,
+) => stages.filter((s) => stageForCourse(s, courseId));
+
+/** 🎓 A stage only for some courses (null = every course) */
+export async function setStageCourses(stageId: string, courseIds: string[] | null): Promise<void> {
+  const { error } = await supabase.rpc('set_stage_courses', {
+    p_stage: stageId,
+    p_course_ids: courseIds && courseIds.length ? courseIds : null,
+  });
+  if (error) throw toError(error);
+}
+
+/** ✏️ Which of the lead's courses its pipeline follows */
+export async function setPipelineCourse(leadId: string, courseId: string): Promise<void> {
+  const { error } = await supabase.rpc('set_pipeline_course', { p_lead: leadId, p_course: courseId });
+  if (error) throw toError(error);
+}
 
 /** Stages in pipeline order (open first, then Admitted / Lost / Cancelled) */
 export async function listPipelineStages(includeInactive = false): Promise<PipelineStage[]> {

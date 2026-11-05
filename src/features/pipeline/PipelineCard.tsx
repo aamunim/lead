@@ -24,6 +24,8 @@ import {
   listPipelineStages,
   moveLeadStage,
   openStages,
+  setPipelineCourse,
+  stagesFor,
   reopenLead,
   type PipelineStage,
 } from '@/features/pipeline/api';
@@ -74,7 +76,23 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
   const [moveStage, setMoveStage] = useState<PipelineStage | null>(null);
 
   const kind = lead.stage?.kind ?? 'open';
-  const open = useMemo(() => openStages(stages), [stages]);
+  // 🎓 The stages of this lead's pipeline course
+  const pipelineCourse = lead.pipeline_course_id ?? null;
+  const open = useMemo(() => stagesFor(openStages(stages), pipelineCourse), [stages, pipelineCourse]);
+  const leadCourses = lead.lead_courses.map((c) => c.course).filter(Boolean) as { id: string; name: string }[];
+  const [courseBusy, setCourseBusy] = useState(false);
+  const pickCourse = async (courseId: string) => {
+    if (courseId === pipelineCourse || courseBusy) return;
+    setCourseBusy(true);
+    try {
+      await setPipelineCourse(lead.id, courseId);
+      onChanged('🎓 The pipeline follows the new course.');
+    } catch (e) {
+      Alert.alert('Could not change', e instanceof Error ? e.message : '');
+    } finally {
+      setCourseBusy(false);
+    }
+  };
   const current = stages.find((s) => s.id === lead.stage_id) ?? null;
 
   useEffect(() => {
@@ -160,6 +178,25 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
             <Text style={styles.title}>Pipeline</Text>
             {current && <Text style={[styles.currentText, { color: current.color }]}>{current.name}</Text>}
           </View>
+
+          {/* 🎓 Which course's stages (a lead with more than one course) */}
+          {leadCourses.length > 1 && (
+            <View style={styles.courseRow}>
+              <Text style={styles.courseLabel}>🎓 Stages of</Text>
+              {leadCourses.map((c) => (
+                <Pressable
+                  key={c.id}
+                  onPress={() => pickCourse(c.id)}
+                  disabled={courseBusy}
+                  style={[styles.courseChip, c.id === pipelineCourse && styles.courseChipOn]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: c.id === pipelineCourse }}
+                >
+                  <Text style={[styles.courseChipText, c.id === pipelineCourse && styles.courseChipTextOn]}>{c.name}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           {/* Step bar */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.steps}>
@@ -536,6 +573,18 @@ function ErrorBox({ text }: { text: string }) {
 }
 
 const styles = StyleSheet.create({
+  courseRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs },
+  courseLabel: { fontSize: fontSize.caption, color: colors.textMuted, fontWeight: fontWeight.semibold },
+  courseChip: {
+    paddingVertical: 3,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  courseChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  courseChipText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.text },
+  courseChipTextOn: { color: colors.textOnPrimary },
   flex: { flex: 1 },
   pressed: { opacity: 0.8 },
   card: {

@@ -1,13 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
@@ -25,7 +17,13 @@ import {
 } from '@/features/leads/api';
 import { handOverLeads } from '@/features/notifications/api';
 import { MoveStageSheet } from '@/features/pipeline/MoveStageSheet';
-import { bulkMoveLeadStage, listPipelineStages, openStages, type PipelineStage } from '@/features/pipeline/api';
+import {
+  bulkMoveLeadStage,
+  listPipelineStages,
+  openStages,
+  stageForCourse,
+  type PipelineStage,
+} from '@/features/pipeline/api';
 import { createItem, listHolidays, listItems, type Holiday } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -124,7 +122,10 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
       setLoading(true);
       try {
         if (field === 'stage') {
-          const stg = openStages(await listPipelineStages());
+          // 🎓 only the stages every marked lead's pipeline course has
+          const stg = openStages(await listPipelineStages()).filter((st) =>
+            leads.every((l) => stageForCourse(st, l.pipeline_course_id ?? null)),
+          );
           setStages(stg);
           setOptions(stg.map((s) => ({ value: s.id, label: s.name, color: s.color })));
         } else if (field === 'tags') {
@@ -217,9 +218,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
   const applyFollowUp = (date: Date | null) =>
     run(async () => {
       for (let i = 0; i < ids.length; i += 5) {
-        await Promise.all(
-          ids.slice(i, i + 5).map((id) => (date ? scheduleFollowUp(id, date) : cancelFollowUp(id))),
-        );
+        await Promise.all(ids.slice(i, i + 5).map((id) => (date ? scheduleFollowUp(id, date) : cancelFollowUp(id))));
       }
       return count;
     });
@@ -366,7 +365,10 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
                 onPress={() => pickStage(s.value)}
               />
             ))}
-            <Text style={styles.hint}>Admitted and Lost are set from the lead page.</Text>
+            <Text style={styles.hint}>
+              Admitted and Lost are set from the lead page. Stages of only some courses show when every marked lead
+              follows that course.
+            </Text>
           </View>
         );
 
@@ -439,12 +441,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
             <View style={styles.pickerRow}>
               <DateTimePickerButton disabled={saving} onPick={pickFollowUpDate} />
             </View>
-            <Row
-              label="Remove next call"
-              color={colors.danger}
-              disabled={saving}
-              onPress={() => applyFollowUp(null)}
-            />
+            <Row label="Remove next call" color={colors.danger} disabled={saving} onPress={() => applyFollowUp(null)} />
           </View>
         );
 
@@ -515,7 +512,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
                 {options.map((t) => {
                   const mark = tagMarks.get(t.value);
                   const on = single ? tagSet.has(t.value) : !!mark;
-                  const tint = mark === 'remove' ? colors.danger : t.color ?? colors.primary;
+                  const tint = mark === 'remove' ? colors.danger : (t.color ?? colors.primary);
                   return (
                     <Pressable
                       key={t.value}
@@ -543,10 +540,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
   return (
     <>
       <Modal visible={visible && !moveStage} transparent animationType="slide" onRequestClose={onClose}>
-        <KeyboardAvoidingView
-          style={styles.backdrop}
-          behavior="padding"
-        >
+        <KeyboardAvoidingView style={styles.backdrop} behavior="padding">
           <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
 
           <View style={styles.sheet}>
@@ -566,7 +560,9 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
                   <Text style={styles.errorText}>{error}</Text>
                 </View>
               )}
-              {saving && field !== 'tags' && field !== 'note' && field !== 'assign' && <ActivityIndicator color={colors.primary} />}
+              {saving && field !== 'tags' && field !== 'note' && field !== 'assign' && (
+                <ActivityIndicator color={colors.primary} />
+              )}
             </ScrollView>
           </View>
         </KeyboardAvoidingView>

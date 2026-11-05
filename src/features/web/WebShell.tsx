@@ -82,6 +82,7 @@ function pageTitle(path: string): string {
   if (path.startsWith('/photo-studio')) return 'Photo Studio';
   if (path.startsWith('/scorecard')) return 'Weekly scorecard';
   if (path.startsWith('/feedback')) return 'Contact developer';
+  if (path.startsWith('/settings/roles')) return 'Settings › Roles';
   return 'Students';
 }
 

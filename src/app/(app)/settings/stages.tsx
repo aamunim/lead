@@ -25,9 +25,11 @@ import {
     reorderOpenStages,
     stageLeadCounts,
     updateStage,
+    setStageCourses,
     type PipelineStage,
     type StageInput,
 } from '@/features/pipeline/api';
+import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
@@ -221,8 +223,22 @@ export default function StagesScreen() {
 // =====================================================================
 // Small badges under a stage name
 // =====================================================================
+function CourseChip({ text, on, onPress }: { text: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.chip, on && styles.chipOn]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+    >
+      <Text style={[styles.chipText, on && styles.chipTextOn]}>{text}</Text>
+    </Pressable>
+  );
+}
+
 function StageBadges({ stage, count }: { stage: PipelineStage; count: number }) {
   const parts: string[] = [`${count} ${count === 1 ? 'lead' : 'leads'}`];
+  if (stage.courseIds) parts.push(`🎓 ${stage.courseIds.length} course${stage.courseIds.length === 1 ? '' : 's'}`);
   if (stage.askDate) parts.push(`📅 asks ${stage.dateLabel?.toLowerCase() || 'date & time'}`);
   else if (stage.followUpDays != null) parts.push(`⏰ next call ${daysLabel(stage.followUpDays).toLowerCase()}`);
   if (stage.noteRequired) parts.push('✎ note');
@@ -278,6 +294,19 @@ function StageSheet({
     dateLabel: stage?.dateLabel ?? '',
   });
   const [active, setActive] = useState(stage?.isActive ?? true);
+  // 🎓 every course, or only some
+  const [courseIds, setCourseIds] = useState<string[] | null>(stage?.courseIds ?? null);
+  const [courses, setCourses] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    supabase
+      .from('courses')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('sort_order')
+      .order('name')
+      .then(({ data }) => setCourses(data ?? []));
+  }, []);
+  const perCourse = !isFinal && !stage?.isSystem;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -295,15 +324,23 @@ function StageSheet({
       setError(`${leadCount} leads are in this stage. Move them first before switching it off.`);
       return;
     }
+    if (courseIds && courseIds.length === 0) {
+      setError('Choose at least one course, or “Every course”.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
+      let id = stage?.id ?? null;
       if (isNew) {
-        await createStage(form);
+        id = (await createStage(form)).id;
       } else if (isFinal) {
         await updateStage(stage.id, { name: form.name, color: form.color });
       } else {
         await updateStage(stage.id, { ...form, isActive: active });
+      }
+      if (perCourse && id && JSON.stringify(courseIds) !== JSON.stringify(stage?.courseIds ?? null)) {
+        await setStageCourses(id, courseIds);
       }
       onSaved();
     } catch (e) {
@@ -440,6 +477,36 @@ function StageSheet({
                   </View>
                   <Switch value={form.noteRequired} onValueChange={(v) => set('noteRequired', v)} />
                 </View>
+
+                {/* 🎓 Which courses use this stage */}
+                {perCourse && (
+                  <View style={styles.courseBox}>
+                    <Text style={styles.rowTitleSmall}>🎓 For which courses</Text>
+                    <View style={styles.chipRow}>
+                      <CourseChip text="Every course" on={courseIds === null} onPress={() => setCourseIds(null)} />
+                      <CourseChip text="Only some" on={courseIds !== null} onPress={() => setCourseIds(courseIds ?? [])} />
+                    </View>
+                    {courseIds !== null && (
+                      <View style={styles.chipRow}>
+                        {courses.map((c) => (
+                          <CourseChip
+                            key={c.id}
+                            text={c.name}
+                            on={courseIds.includes(c.id)}
+                            onPress={() =>
+                              setCourseIds(
+                                courseIds.includes(c.id) ? courseIds.filter((x) => x !== c.id) : [...courseIds, c.id],
+                              )
+                            }
+                          />
+                        ))}
+                      </View>
+                    )}
+                    <Text style={styles.rowText}>
+                      A lead follows the stages of its pipeline course (its first course; it can be changed on the lead).
+                    </Text>
+                  </View>
+                )}
 
                 {/* On / off */}
                 {!isNew && (
@@ -582,6 +649,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  courseBox: { gap: spacing.sm },
   chipText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
   chipTextOn: { color: colors.textOnPrimary },
 });

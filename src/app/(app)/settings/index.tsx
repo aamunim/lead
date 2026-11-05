@@ -186,6 +186,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/users' as Href,
       },
       {
+        title: 'Roles',
+        description: 'New roles, what each may do, which courses it sees (Super Admin)',
+        icon: '👥',
+        href: '/settings/roles' as Href,
+      },
+      {
         title: 'Lead assignment',
         description: 'Who gets new leads, who sees which leads',
         icon: '🧭',

@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-24-a',
+    date: '24 Nov 2026',
+    title: '👥 Roles, courses and course pipelines',
+    items: [
+      '👥 Settings → Roles (Super Admin): new roles, what each may do, and the courses it sees',
+      '🎓 A role, or one person, can see only some courses; leads with no course are for admins',
+      '🧭 Pipeline stages can be for some courses only; a lead follows its first course (change it on the lead)',
+      '🗂 The board can show one course’s own pipeline',
+      '📚 Admins: Leads → mark → Course gives a course to the leads that have none',
+    ],
+  },
+  {
     key: '2026-11-23-a',
     date: '23 Nov 2026',
     title: '💬 Contact developer is now a chat',

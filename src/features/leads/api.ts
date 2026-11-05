@@ -73,6 +73,8 @@ export type LeadListItem = Pick<
   | 'admission_fee_need'
   | 'admission_fee_ok'
   | 'fee_last_paid_at'
+  // 🎓 whose stages the lead follows
+  | 'pipeline_course_id'
   // Papers (counts kept up to date by the database)
   | 'papers_required'
   | 'papers_received'
@@ -265,6 +267,8 @@ export type LeadQuery = {
   added?: AddedQuery | null;
   /** 💵 Students: paid between (৳, refunds taken off), or paid since a day */
   paid?: PaidRange | null;
+  /** 🎓 Only leads following this course's pipeline (the board's course) */
+  pipelineCourseId?: string | null;
 };
 
 /** 💵 Paid so far: min / max in ৳ (either may be left out), and "paid since" (ISO) */
@@ -305,7 +309,7 @@ function toError(error: { message: string }): Error {
 const LIST_SELECT = `
   id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, created_by, assigned_to, stage_id, closed_at, student_ref,
   alt_phone, guardian_name, guardian_phone, email, area,
-  nu_admission_id, admitted_section_id, submitted_at, received_at, admission_fee_need, admission_fee_ok, fee_last_paid_at,
+  nu_admission_id, admitted_section_id, submitted_at, received_at, admission_fee_need, admission_fee_ok, fee_last_paid_at, pipeline_course_id,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
   fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, admitted_at, admitted_by,
@@ -354,6 +358,7 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' 
     students = false,
     added = null,
     paid = null,
+    pipelineCourseId = null,
   } = options;
   const idOnly = withCount === 'only' || withCount === 'ids';
 
@@ -439,6 +444,7 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' 
   else if (closedMode === 'hide' && !wantsClosed) query = query.is('closed_at', null);
 
   if (stageId) query = query.eq('stage_id', stageId);
+  if (pipelineCourseId) query = query.eq('pipeline_course_id', pipelineCourseId);
 
   // Full filters
   query = applyLeadFilters(query, filters);
@@ -632,12 +638,23 @@ function leadColumns(input: LeadInput) {
 
 async function replaceLinks(leadId: string, courseIds?: string[], tagIds?: string[]) {
   if (courseIds) {
-    const { error: delError } = await supabase.from('lead_courses').delete().eq('lead_id', leadId);
-    if (delError) throw toError(delError);
-    if (courseIds.length > 0) {
-      const { error } = await supabase
-        .from('lead_courses')
-        .insert(courseIds.map((course_id) => ({ lead_id: leadId, course_id })));
+    // Only what changed: the pipeline course stays, and courses this person
+    // can't see (another role's) are never removed
+    const [{ data: now, error: readError }, { data: mine }] = await Promise.all([
+      supabase.from('lead_courses').select('course_id').eq('lead_id', leadId),
+      supabase.rpc('my_course_ids'),
+    ]);
+    if (readError) throw toError(readError);
+    const visible = (mine as string[] | null) ?? null;
+    const have = (now ?? []).map((r) => r.course_id as string);
+    const remove = have.filter((id) => !courseIds.includes(id) && (!visible || visible.includes(id)));
+    const add = courseIds.filter((id) => !have.includes(id));
+    if (remove.length > 0) {
+      const { error } = await supabase.from('lead_courses').delete().eq('lead_id', leadId).in('course_id', remove);
+      if (error) throw toError(error);
+    }
+    if (add.length > 0) {
+      const { error } = await supabase.from('lead_courses').insert(add.map((course_id) => ({ lead_id: leadId, course_id })));
       if (error) throw toError(error);
     }
   }
