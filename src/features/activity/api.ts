@@ -226,7 +226,8 @@ export type ChangeKind =
   | 'papers'
   | 'fee'
   | 'deleted'
-  | 'lead';
+  | 'lead'
+  | 'merge';
 
 export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; actions: string[] }[] = [
   { kind: 'stage', label: 'Stage', icon: '🚩', actions: ['stage_changed'] },
@@ -278,6 +279,7 @@ export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; acti
     actions: ['call_deleted', 'call_note_deleted', 'note_deleted', 'entry_restored'],
   },
   { kind: 'lead', label: 'Added / deleted', icon: '➕', actions: ['created', 're_enquiry', 'deleted', 'restored'] },
+  { kind: 'merge', label: 'Merged', icon: '🔗', actions: ['merged', 'merged_away', 'unmerged'] },
 ];
 
 export function kindOf(action: string) {
@@ -474,6 +476,14 @@ export function describeChange(
       return { text: 'Lead deleted', warn: true };
     case 'restored':
       return { text: 'Lead restored', warn: false };
+    case 'merged': {
+      const names = Array.isArray(d.names) ? (d.names as string[]) : [];
+      return { text: `🔗 Merged with ${names.length > 0 ? names.join(', ') : `${q(d.count)} lead(s)`}`, warn: false };
+    }
+    case 'merged_away':
+      return { text: `🔗 Merged into ${q(d.into_name)}`, warn: false };
+    case 'unmerged':
+      return { text: '↩ Merge undone', warn: true };
     case 'call_deleted': {
       const what =
         d.channel === 'whatsapp' ? (d.media === 'message' ? 'WhatsApp message' : 'WhatsApp call') : 'Call';

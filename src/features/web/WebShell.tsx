@@ -69,6 +69,7 @@ export const SHORTCUTS: [string, string][] = [
 ];
 
 function pageTitle(path: string): string {
+  if (path.startsWith('/leads/merge')) return 'Leads › Merge leads';
   if (path.startsWith('/leads/edit/new')) return 'Leads › New lead';
   if (path.startsWith('/leads/edit/')) return 'Leads › Edit';
   if (path.startsWith('/leads/')) return 'Leads › Lead';

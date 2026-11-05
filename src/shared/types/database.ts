@@ -1636,6 +1636,9 @@ export type Database = {
           custom_fields: Json
           deleted_at: string | null
           email: string | null
+          extra_phone_hashes: string[]
+          extra_phones: string[]
+          extra_phones_text: string | null
           guardian_name: string | null
           guardian_phone: string | null
           guardian_relation: string | null
@@ -1647,6 +1650,8 @@ export type Database = {
           lost_by: string | null
           lost_note: string | null
           lost_reason_id: string | null
+          merged_at: string | null
+          merged_into: string | null
           name: string
           next_follow_up_at: string | null
           notes: string | null
@@ -1716,6 +1721,9 @@ export type Database = {
           custom_fields?: Json
           deleted_at?: string | null
           email?: string | null
+          extra_phone_hashes?: string[]
+          extra_phones?: string[]
+          extra_phones_text?: string | null
           guardian_name?: string | null
           guardian_phone?: string | null
           guardian_relation?: string | null
@@ -1727,6 +1735,8 @@ export type Database = {
           lost_by?: string | null
           lost_note?: string | null
           lost_reason_id?: string | null
+          merged_at?: string | null
+          merged_into?: string | null
           name: string
           next_follow_up_at?: string | null
           notes?: string | null
@@ -1796,6 +1806,9 @@ export type Database = {
           custom_fields?: Json
           deleted_at?: string | null
           email?: string | null
+          extra_phone_hashes?: string[]
+          extra_phones?: string[]
+          extra_phones_text?: string | null
           guardian_name?: string | null
           guardian_phone?: string | null
           guardian_relation?: string | null
@@ -1807,6 +1820,8 @@ export type Database = {
           lost_by?: string | null
           lost_note?: string | null
           lost_reason_id?: string | null
+          merged_at?: string | null
+          merged_into?: string | null
           name?: string
           next_follow_up_at?: string | null
           notes?: string | null

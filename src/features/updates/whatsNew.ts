@@ -8,6 +8,19 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-30-a',
+    date: '30 Nov 2026',
+    title: '🔗 Merge leads',
+    items: [
+      '🔗 The same person as two leads (two numbers)? Merge them: lead page → “Merge with another lead”, or mark 2+ leads → Merge',
+      '✋ Choose the lead that stays and, where they differ, which name, stage, person, source… to keep',
+      '📞 Calls, notes, next calls, visits, files, papers and fees all move to one lead; every number and course is kept',
+      '☎ A lead can have more numbers now (Edit → Other contact → More numbers); search, duplicate check and the caller card know them',
+      '↩ An admin can undo a merge for 30 days (Change log)',
+      '🔔 The lead’s person gets a notification',
+    ],
+  },
+  {
     key: '2026-11-29-a',
     date: '29 Nov 2026',
     title: '➕ New "Add lead" form',
