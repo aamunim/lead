@@ -131,8 +131,8 @@ const EXPORT_SELECT = `
   name, phone, whatsapp_number, whatsapp_username, alt_phone, email, area,
   guardian_name, guardian_phone, guardian_relation,
   rating, notes, referred_by, created_at, created_by, import_batch_id, next_follow_up_at,
-  student_ref, approval_status, approval_by, approval_at, nu_admission_id,
-  registration_status, registration_by, registration_at, section:batch_sections(name), last_contacted_at, visit_status, visit_at,
+  student_ref, nu_admission_id, submitted_at, submitted_by, received_at, received_by, fee_last_paid_at,
+  admission_fee_need, section:batch_sections(name), last_contacted_at, visit_status, visit_at,
   fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due,
   stage:pipeline_stages(name),
   source:lead_sources(name),
@@ -161,13 +161,13 @@ type ExportLead = {
   created_by: string | null;
   import_batch_id: string | null;
   student_ref: string | null;
-  approval_status: string | null;
-  approval_by: string | null;
-  approval_at: string | null;
+  submitted_at: string | null;
+  submitted_by: string | null;
+  received_at: string | null;
+  received_by: string | null;
+  fee_last_paid_at: string | null;
+  admission_fee_need: number | null;
   nu_admission_id: string | null;
-  registration_status: string | null;
-  registration_by: string | null;
-  registration_at: string | null;
   section: { name: string } | null;
   next_follow_up_at: string | null;
   last_contacted_at: string | null;
@@ -194,11 +194,10 @@ const EXPORT_HEADERS = [
   'Courses', 'Stage', 'Rating', 'Source', 'Campaign', 'Referred by', 'Lead type', 'Tags',
   'Assigned to', 'Created', 'Created by', 'Next follow-up', 'Last contacted', 'Campus visit',
   'Fee status', 'Full fee', 'Discount', 'To pay', 'Paid', 'Due', 'Notes',
-  'College ID', 'NU Admission ID', 'Admission approval', 'Approved by', 'Approved on',
-  'Section', 'Registration', 'Registered by', 'Registered on',
+  'College ID', 'NU Admission ID', 'Section', 'Last paid on', 'Admission fee',
+  'Submitted Online', 'Submitted by', 'Received by ITTC', 'Received by (staff)',
 ];
 
-const APPROVAL: Record<string, string> = { waiting: 'Waiting', approved: 'Approved', returned: 'Sent back' };
 
 const FEE_STATUS: Record<string, string> = {
   negotiating: 'Negotiating',
@@ -308,13 +307,13 @@ export async function exportLeads(filters: ExportFilters, userId: string): Promi
     l.notes,
     l.student_ref,
     l.nu_admission_id,
-    l.approval_status ? (APPROVAL[l.approval_status] ?? l.approval_status) : '',
-    l.approval_status === 'approved' && l.approval_by ? (nameOf.get(l.approval_by) ?? '') : '',
-    l.approval_status === 'approved' ? dateText(l.approval_at) : '',
     l.section?.name ?? '',
-    l.registration_status ? (APPROVAL[l.registration_status] ?? l.registration_status) : '',
-    l.registration_status === 'approved' && l.registration_by ? (nameOf.get(l.registration_by) ?? '') : '',
-    l.registration_status === 'approved' ? dateText(l.registration_at) : '',
+    dateText(l.fee_last_paid_at),
+    num(l.admission_fee_need),
+    dateText(l.submitted_at),
+    l.submitted_by ? (nameOf.get(l.submitted_by) ?? '') : '',
+    dateText(l.received_at),
+    l.received_by ? (nameOf.get(l.received_by) ?? '') : '',
   ]);
 
   // Record the export first (so it is logged even if sharing is cancelled)

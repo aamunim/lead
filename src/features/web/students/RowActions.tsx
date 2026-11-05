@@ -10,21 +10,18 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
 // 🌐 ⋯ on a Students row: the everyday work without opening the student
-//   payment · note · upload a paper · list / approve / register / send
-//   back · section, NU ID, College ID · fee · papers · all notes
+//   payment · note · upload a paper · 📤 submitted / 🏛 received (and
+//   undo) · section, NU ID, College ID · fee · papers · all notes
 // =====================================================================
 
 export type RowAction =
   | 'pay'
   | 'note'
   | 'upload'
-  | 'list'
-  | 'approve'
-  | 'return'
-  | 'resubmit'
-  | 'reg_approve'
-  | 'reg_return'
-  | 'reg_resubmit'
+  | 'submit'
+  | 'receive'
+  | 'undo_submit'
+  | 'undo_receive'
   | 'place'
   | 'nu'
   | 'ref'
@@ -44,50 +41,37 @@ export function RowMenu({
   row: LeadListItem;
   officer: boolean;
   canPay: boolean;
-  mins: { admission: number; registration: number };
+  /** (old) */
+  mins?: { admission: number; registration: number };
   onPick: (a: RowAction) => void;
   onClose: () => void;
 }) {
   const paid = Number(r.fee_paid ?? 0);
   const won = r.stage?.kind === 'won';
-  const reg = r.approval_status === 'approved' ? (r.registration_status ?? 'waiting') : null;
+  const need = Number(r.admission_fee_need ?? mins?.admission ?? 0);
   const items: { a: RowAction; label: string; hint?: string; off?: boolean }[] = [];
 
   if (canPay && won && Number(r.fee_due ?? 0) > 0)
     items.push({ a: 'pay', label: '💵 Take payment', hint: `${money(Number(r.fee_due))} due` });
   items.push({ a: 'note', label: '📝 Add note' });
   items.push({ a: 'upload', label: '📎 Upload a paper' });
-  if (officer && won && r.approval_status) {
-    if (r.approval_status === 'waiting') {
+  if (officer && won && r.admitted_at) {
+    if (!r.submitted_at) items.push({ a: 'submit', label: '📤 Submitted Online', hint: 'NU Admission ID' });
+    if (r.submitted_at && !r.received_at) {
       items.push({
-        a: 'list',
-        label: r.listed_at ? '📋 Listed (no pay): change' : '📋 List without pay',
-        hint: 'section + NU ID',
+        a: 'receive',
+        label: '🏛 Received by ITTC',
+        off: paid < need,
+        hint: paid < need ? `admission fee ${money(need)}: ${money(need - paid)} more` : undefined,
       });
-      items.push({
-        a: 'approve',
-        label: '✅ Approve admission',
-        off: paid < mins.admission,
-        hint: paid < mins.admission ? `needs ${money(mins.admission)} paid` : undefined,
-      });
-      items.push({ a: 'return', label: '↩ Send the admission back' });
+      items.push({ a: 'undo_submit', label: '↩ Undo Submitted Online' });
     }
-    if (reg === 'waiting') {
-      items.push({
-        a: 'reg_approve',
-        label: '📝 Approve registration',
-        off: paid < mins.registration,
-        hint: paid < mins.registration ? `needs ${money(mins.registration)} in total` : undefined,
-      });
-      items.push({ a: 'reg_return', label: '↩ Send the registration back' });
-    }
-    if (r.approval_status === 'approved') items.push({ a: 'place', label: '🏫 Course · batch · section' });
+    if (r.received_at) items.push({ a: 'undo_receive', label: '↩ Undo Received by ITTC' });
+    items.push({ a: 'place', label: '🏫 Course · batch · section' });
     items.push({ a: 'nu', label: r.nu_admission_id ? '🆔 Change NU Admission ID' : '🆔 Add NU Admission ID' });
     items.push({ a: 'ref', label: '✏️ College ID' });
     items.push({ a: 'fee', label: '💰 Change fee (discount / final)' });
   }
-  if (won && r.approval_status === 'returned') items.push({ a: 'resubmit', label: 'Fixed: send the admission again' });
-  if (won && reg === 'returned') items.push({ a: 'reg_resubmit', label: 'Fixed: send the registration again' });
   items.push({ a: 'papers', label: '📄 Papers' });
   items.push({ a: 'notes', label: '🕘 All calls & notes' });
   items.push({ a: 'open', label: '↗ Open the student' });

@@ -1,16 +1,6 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
 import {
@@ -24,8 +14,10 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
 // =====================================================================
-// ⚙️ Settings → Admission approval: on/off and who approves (the
-//   Admission Officer). Admins always may. Admitted students only.
+// ⚙️ Settings → Admission flow: who marks 📤 Submitted Online and
+//   🏛 Received by ITTC (the Admission Officer), and the default admission
+//   fee (a course can have its own: Settings → Courses → the course).
+//   Admins always may. Admitted students only.
 // =====================================================================
 
 export default function ApprovalSettingsScreen() {
@@ -72,7 +64,7 @@ export default function ApprovalSettingsScreen() {
     setSaving(true);
     setError(null);
     try {
-      await saveApprovalSettings(settings);
+      await saveApprovalSettings({ ...settings, enabled: true });
       setDirty(false);
       Alert.alert('Saved', 'It applies the next time a student page is opened.');
     } catch (e) {
@@ -85,7 +77,7 @@ export default function ApprovalSettingsScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Admission approval' }} />
+        <Stack.Screen options={{ title: 'Admission flow' }} />
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -93,86 +85,72 @@ export default function ApprovalSettingsScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Stack.Screen options={{ title: 'Admission approval' }} />
+      <Stack.Screen options={{ title: 'Admission flow' }} />
       <View style={styles.card}>
-        <View style={styles.switchRow}>
-          <View style={styles.flex}>
-            <Text style={styles.rowTitle}>🎓 Admission approval</Text>
-            <Text style={styles.rowText}>
-              {settings.enabled
-                ? 'On. After Mark admitted the Admission Officer approves the admission (choosing the section), then the registration. Either can be sent back.'
-                : 'Off. Admitted students need no approval (admins can still use it).'}
-            </Text>
+        <Text style={styles.rowTitle}>🏛 Submitted Online → Received by ITTC</Text>
+        <Text style={styles.rowText}>
+          After Mark admitted: 📤 Submitted Online needs only the NU Admission ID (no money). Then 🏛 Received by ITTC
+          opens once the course's admission fee is paid. Both can be undone with a reason.
+        </Text>
+        <>
+          <View style={styles.divider} />
+          <Text style={styles.label}>WHO DOES IT (ADMISSION OFFICER)</Text>
+          <View style={styles.chips}>
+            {(
+              [
+                ['all', 'Everyone'],
+                ['roles', 'Some roles'],
+                ['users', 'Some people'],
+              ] as const
+            ).map(([m, label]) => (
+              <Chip
+                key={m}
+                text={label}
+                on={settings.who.mode === m}
+                onPress={() => set({ ...settings, who: { ...settings.who, mode: m } })}
+              />
+            ))}
           </View>
-          <Switch value={settings.enabled} onValueChange={(v) => set({ ...settings, enabled: v })} />
-        </View>
-
-        {settings.enabled && (
-          <>
-            <View style={styles.divider} />
-            <Text style={styles.label}>WHO APPROVES (ADMISSION OFFICER)</Text>
+          {settings.who.mode === 'roles' && (
             <View style={styles.chips}>
-              {(
-                [
-                  ['all', 'Everyone'],
-                  ['roles', 'Some roles'],
-                  ['users', 'Some people'],
-                ] as const
-              ).map(([m, label]) => (
+              {roles.map((r) => (
                 <Chip
-                  key={m}
-                  text={label}
-                  on={settings.who.mode === m}
-                  onPress={() => set({ ...settings, who: { ...settings.who, mode: m } })}
+                  key={r.key}
+                  text={r.name}
+                  on={settings.who.roles.includes(r.key)}
+                  onPress={() => toggle('roles', r.key)}
                 />
               ))}
             </View>
-            {settings.who.mode === 'roles' && (
-              <View style={styles.chips}>
-                {roles.map((r) => (
-                  <Chip
-                    key={r.key}
-                    text={r.name}
-                    on={settings.who.roles.includes(r.key)}
-                    onPress={() => toggle('roles', r.key)}
-                  />
-                ))}
-              </View>
-            )}
-            {settings.who.mode === 'users' && (
-              <View style={styles.chips}>
-                {users.map((u) => (
-                  <Chip
-                    key={u.id}
-                    text={u.full_name ?? 'No name'}
-                    on={settings.who.user_ids.includes(u.id)}
-                    onPress={() => toggle('user_ids', u.id)}
-                  />
-                ))}
-              </View>
-            )}
-            <Text style={styles.hint}>
-              Admins always may. They get a notification for each new admission; the person who admitted the student is
-              told when it is approved or sent back.
-            </Text>
-            <View style={styles.divider} />
-            <Text style={styles.label}>MONEY NEEDED (TOTAL PAID)</Text>
-            <MoneyRow
-              title="Admission approval"
-              value={settings.admission_min_paid}
-              onChange={(n) => set({ ...settings, admission_min_paid: n })}
-            />
-            <MoneyRow
-              title="Registration approval"
-              value={settings.registration_min_paid}
-              onChange={(n) => set({ ...settings, registration_min_paid: n })}
-            />
-            <Text style={styles.hint}>
-              Approve stays locked until the student has paid this much in total (refunds taken off). Registration comes
-              after the admission is approved.
-            </Text>
-          </>
-        )}
+          )}
+          {settings.who.mode === 'users' && (
+            <View style={styles.chips}>
+              {users.map((u) => (
+                <Chip
+                  key={u.id}
+                  text={u.full_name ?? 'No name'}
+                  on={settings.who.user_ids.includes(u.id)}
+                  onPress={() => toggle('user_ids', u.id)}
+                />
+              ))}
+            </View>
+          )}
+          <Text style={styles.hint}>
+            Admins always may. They are told when a submitted student pays the admission fee (ready for ITTC); the
+            person who admitted the student, and whoever has the lead, are told at each step.
+          </Text>
+          <View style={styles.divider} />
+          <Text style={styles.label}>ADMISSION FEE (DEFAULT)</Text>
+          <MoneyRow
+            title="For courses without their own"
+            value={settings.admission_min_paid}
+            onChange={(n) => set({ ...settings, admission_min_paid: n })}
+          />
+          <Text style={styles.hint}>
+            Received by ITTC stays locked until the student has paid this much (refunds taken off). Each course can set
+            its own in Settings → Courses → the course.
+          </Text>
+        </>
       </View>
 
       {error && <Text style={styles.error}>{error}</Text>}

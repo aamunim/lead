@@ -97,14 +97,14 @@ export function WebShell({ children }: { children: React.ReactNode }) {
   const [themeOpen, setThemeOpen] = useState(false);
   const theme = webThemeChoice();
 
-  // 🔔 Admission Officer: how many wait for approval (badge), and a note when more come
+  // 🔔 Admission Officer: how many are ready for ITTC (badge), and a note when more come
   const [officer, setOfficer] = useState(false);
   const [waiting, setWaiting] = useState<number | null>(null);
   const [newOnes, setNewOnes] = useState(0);
   const lastWaiting = useRef<number | null>(null);
   useEffect(() => {
     getApprovalSettings()
-      .then((s) => setOfficer(s.enabled && canApprove(s, profile, isAdmin)))
+      .then((s) => setOfficer(canApprove(s, profile, isAdmin)))
       .catch(() => setOfficer(false));
   }, [profile, isAdmin]);
   useEffect(() => {
@@ -472,16 +472,16 @@ export function WebShell({ children }: { children: React.ReactNode }) {
 
       {help && <ShortcutsDialog onClose={() => setHelp(false)} />}
 
-      {/* 🔔 New admissions to approve (Admission Officer) */}
+      {/* 🔔 More students ready for ITTC (Admission Officer) */}
       {newOnes > 0 && (
         <View style={styles.notice}>
           <Text style={styles.noticeText}>
-            🎓 {newOnes} new admission{newOnes > 1 ? 's' : ''} waiting for approval
+            🏛 {newOnes} more student{newOnes > 1 ? 's' : ''} ready for ITTC (admission fee paid)
           </Text>
           <Pressable
             onPress={() => {
               setNewOnes(0);
-              router.navigate({ pathname: '/students', params: { quick: 'approval_waiting' } } as Href);
+              router.navigate({ pathname: '/students', params: { quick: 'ittc_ready' } } as Href);
             }}
             style={styles.noticeBtn}
             accessibilityRole="button"

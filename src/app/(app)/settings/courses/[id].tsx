@@ -25,6 +25,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
 import { SectionsEditor } from '@/features/approval/SectionsEditor';
+import { setCourseAdmissionFee } from '@/features/approval/api';
 
 type FeeRow = { key: string; id?: string; name: string; amount: string };
 
@@ -36,6 +37,8 @@ type CourseForm = {
   duration: string;
   description: string;
   isActive: boolean;
+  /** 🏛 ৳ paid before "Received by ITTC" ('' = the default in Settings → Admission flow) */
+  admissionFee: string;
 };
 
 const EMPTY_COURSE: CourseForm = {
@@ -45,6 +48,7 @@ const EMPTY_COURSE: CourseForm = {
   duration: '',
   description: '',
   isActive: true,
+  admissionFee: '',
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -85,6 +89,7 @@ export default function CourseEditScreen() {
         duration: course.duration ?? '',
         description: course.description ?? '',
         isActive: course.is_active,
+        admissionFee: course.admission_fee != null ? String(Number(course.admission_fee)) : '',
       });
       setFees(
         course.course_fees.map((f) => ({
@@ -142,6 +147,12 @@ export default function CourseEditScreen() {
       }
     }
 
+    const admissionFee = form.admissionFee.trim() === '' ? null : Number(form.admissionFee);
+    if (admissionFee != null && (Number.isNaN(admissionFee) || admissionFee < 0)) {
+      setError('The admission fee needs a valid amount (or leave it empty for the default).');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
@@ -159,6 +170,7 @@ export default function CourseEditScreen() {
         saved.id,
         filled.map((f) => ({ id: f.id, name: f.name, amount: Number(f.amount) })),
       );
+      await setCourseAdmissionFee(saved.id, admissionFee);
 
       if (isNew) {
         // Open the saved course so batches can be added
@@ -226,6 +238,13 @@ export default function CourseEditScreen() {
             value={form.description}
             onChangeText={(v) => setField('description', v)}
             multiline
+          />
+          <TextField
+            label="🏛 Admission fee (for Received by ITTC)"
+            value={form.admissionFee}
+            onChangeText={(v) => setField('admissionFee', v.replace(/[^\d]/g, ''))}
+            placeholder="Empty = the default (Settings → Admission flow)"
+            keyboardType="number-pad"
           />
           <View style={styles.switchRow}>
             <View style={styles.switchText}>

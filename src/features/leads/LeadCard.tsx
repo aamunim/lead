@@ -145,7 +145,7 @@ export function LeadCard({
 
   // 💰 Negotiating / ⏳ Discount / 💰 −৳3,500
   const fee = kind === 'open' || kind === 'won' ? feeBadge(lead) : null;
-  const approval = student && kind === 'won' ? stageBadge(lead.approval_status, lead.registration_status, lead.listed_at) : null;
+  const approval = student && kind === 'won' ? stageBadge(lead.submitted_at, lead.received_at, lead.admission_fee_ok) : null;
   const approvalColor =
     approval?.color === 'good' ? colors.success : approval?.color === 'bad' ? colors.danger : colors.warning;
 

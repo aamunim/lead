@@ -1,24 +1,25 @@
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { canApprove, countWaitingApproval, getApprovalSettings } from '@/features/approval/api';
+import { canApprove, countIttcWork, getApprovalSettings } from '@/features/approval/api';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { MIcon, Tap, md } from '@/features/home/md';
+import { MIcon, Tap, md, type MIconName } from '@/features/home/md';
 import { fontSize, fontWeight } from '@/shared/theme';
 
-// 🎓 Home: the Admission Officer's "waiting for approval" (only when some wait)
+// 🏛 Home: the Admission Officer's work (only when there is some)
+//   📤 not submitted yet · 🏛 admission fee paid, ready for ITTC
 export function ApprovalHomeCard() {
   const { profile, hasPermission } = useAuth();
   const isAdmin = hasPermission('settings.manage');
-  const [waiting, setWaiting] = useState(0);
+  const [work, setWork] = useState({ notSubmitted: 0, ready: 0 });
 
   useFocusEffect(
     useCallback(() => {
       let live = true;
       getApprovalSettings()
-        .then((s) => (s.enabled && canApprove(s, profile, isAdmin) ? countWaitingApproval() : 0))
-        .then((n) => live && setWaiting(n))
+        .then((s) => (canApprove(s, profile, isAdmin) ? countIttcWork() : { notSubmitted: 0, ready: 0 }))
+        .then((n) => live && setWork(n))
         .catch(() => undefined);
       return () => {
         live = false;
@@ -26,16 +27,34 @@ export function ApprovalHomeCard() {
     }, [profile, isAdmin]),
   );
 
-  if (waiting === 0) return null;
+  if (work.notSubmitted === 0 && work.ready === 0) return null;
+  const open = (quick: string) => router.push({ pathname: '/students', params: { quick } } as unknown as Href);
   return (
-    <Tap
-      onPress={() => router.push({ pathname: '/students', params: { quick: 'approval_waiting' } } as unknown as Href)}
-      style={styles.line}
-      label={`${waiting} waiting for approval. Review`}
-    >
-      <MIcon name="pending-actions" size={20} color={md.onWarnC} />
+    <View>
+      {work.ready > 0 && (
+        <Line
+          icon="account-balance"
+          text={`${work.ready} ready for ITTC (admission fee paid)`}
+          onPress={() => open('ittc_ready')}
+        />
+      )}
+      {work.notSubmitted > 0 && (
+        <Line
+          icon="upload"
+          text={`${work.notSubmitted} not submitted online yet`}
+          onPress={() => open('not_submitted')}
+        />
+      )}
+    </View>
+  );
+}
+
+function Line({ icon, text, onPress }: { icon: MIconName; text: string; onPress: () => void }) {
+  return (
+    <Tap onPress={onPress} style={styles.line} label={`${text}. Review`}>
+      <MIcon name={icon} size={20} color={md.onWarnC} />
       <Text style={styles.text} numberOfLines={1}>
-        {waiting} {waiting === 1 ? 'student' : 'students'} waiting for approval
+        {text}
       </Text>
       <Text style={styles.action}>Review</Text>
     </Tap>

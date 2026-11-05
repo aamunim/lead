@@ -13,7 +13,6 @@ import {
 } from '@/features/approval/api';
 import {
   ApprovalActionSheet,
-  admissionChecks,
   type ApprovalLead,
   type ApprovalSheetKind,
 } from '@/features/approval/ApprovalCard';
@@ -166,15 +165,18 @@ export function WebStudentLayout({
   }, [lead.id, lead.updated_at]);
 
   const paid = Number(lead.fee_paid ?? 0);
-  const reg = lead.approval_status === 'approved' ? (lead.registration_status ?? 'waiting') : null;
-  const stepNow: ApprovalSheetKind | null =
-    officer && lead.approval_status === 'waiting' && paid >= settings.admission_min_paid
-      ? 'approve'
-      : officer && reg === 'waiting' && paid >= settings.registration_min_paid
-        ? 'reg_approve'
+  const need = Number(lead.admission_fee_need ?? settings.admission_min_paid);
+  const submitted = !!lead.submitted_at;
+  const received = !!lead.received_at;
+  const stepNow: ApprovalSheetKind | null = !officer || !admitted
+    ? null
+    : !submitted
+      ? 'submit'
+      : !received && paid >= need
+        ? 'receive'
         : null;
 
-  // ⌨ Full page: N note · A approve / register · Esc back to the list
+  // ⌨ Full page: N note · A the next step (submitted / received) · Esc back to the list
   useEffect(() => {
     if (mode !== 'full') return;
     return onKey((e) => {
@@ -195,39 +197,27 @@ export function WebStudentLayout({
   // ── Next steps ──
   type Step = { tone: 'warn' | 'bad' | 'info'; text: string; action?: { label: string; run: () => void } };
   const steps: Step[] = [];
-  if (admitted && settings.enabled && lead.approval_status) {
-    // 📋 No money yet: list without pay (section + NU Admission ID)
-    const toList = lead.approval_status === 'waiting' && !lead.listed_at;
-    if (toList) {
+  if (admitted) {
+    if (!submitted) {
       steps.push({
         tone: 'info',
-        text: 'Not listed yet: section + NU Admission ID (no money needed)',
-        action: officer ? { label: '📋 List', run: () => setSheet('list') } : undefined,
+        text: 'Not submitted online yet (NU Admission ID, no money needed)',
+        action: officer ? { label: '📤 Submitted', run: () => setSheet('submit') } : undefined,
       });
-    }
-    if (lead.approval_status === 'waiting') {
-      if (paid < settings.admission_min_paid) {
-        steps.push({
-          tone: 'warn',
-          text: `Admission approval needs ${money(settings.admission_min_paid)} paid (paid ${money(paid)})`,
-          action: { label: 'Take payment', run: () => setTab('fee') },
-        });
-      } else {
-        steps.push({
-          tone: 'info',
-          text: 'Admission waiting for approval',
-          action: officer ? { label: '✅ Approve', run: () => setSheet('approve') } : undefined,
-        });
-      }
-    }
-    if (lead.approval_status === 'returned') {
+    } else if (!received && paid < need) {
       steps.push({
-        tone: 'bad',
-        text: `Admission sent back${lead.approval_note ? `: “${lead.approval_note}”` : ''}`,
-        action: { label: 'Send again', run: () => setSheet('resubmit') },
+        tone: 'warn',
+        text: `Received by ITTC needs the admission fee ${money(need)} (${money(need - paid)} more)`,
+        action: { label: 'Take payment', run: () => setTab('fee') },
+      });
+    } else if (!received) {
+      steps.push({
+        tone: 'info',
+        text: 'Admission fee paid: ready for ITTC',
+        action: officer ? { label: '🏛 Received', run: () => setSheet('receive') } : undefined,
       });
     }
-    if (lead.approval_status === 'approved' && !lead.admitted_section_id) {
+    if (!lead.admitted_section_id) {
       steps.push({
         tone: 'warn',
         text: 'No section yet',
@@ -239,35 +229,6 @@ export function WebStudentLayout({
         tone: 'warn',
         text: 'No College ID',
         action: officer ? { label: 'Add', run: () => setSheet('ref') } : undefined,
-      });
-    }
-    if (!lead.nu_admission_id && !toList) {
-      steps.push({
-        tone: 'warn',
-        text: 'No NU Admission ID',
-        action: officer ? { label: 'Add', run: () => setSheet('nu') } : undefined,
-      });
-    }
-    if (reg === 'waiting') {
-      if (paid < settings.registration_min_paid) {
-        steps.push({
-          tone: 'warn',
-          text: `Registration needs ${money(settings.registration_min_paid - paid)} more (${money(settings.registration_min_paid)} in total)`,
-          action: { label: 'Take payment', run: () => setTab('fee') },
-        });
-      } else {
-        steps.push({
-          tone: 'info',
-          text: 'Registration waiting for approval',
-          action: officer ? { label: '📝 Register', run: () => setSheet('reg_approve') } : undefined,
-        });
-      }
-    }
-    if (reg === 'returned') {
-      steps.push({
-        tone: 'bad',
-        text: `Registration sent back${lead.registration_note ? `: “${lead.registration_note}”` : ''}`,
-        action: { label: 'Send again', run: () => setSheet('reg_resubmit') },
       });
     }
   }
@@ -323,7 +284,7 @@ export function WebStudentLayout({
         .filter(Boolean)
         .join(' · ')
     : '';
-  const badge = admitted ? stageBadge(lead.approval_status, lead.registration_status, lead.listed_at) : null;
+  const badge = admitted ? stageBadge(lead.submitted_at, lead.received_at, lead.admission_fee_ok) : null;
   const due = Number(lead.fee_due ?? 0);
   const compact = mode === 'panel' || !wide;
 
@@ -386,7 +347,7 @@ export function WebStudentLayout({
           {stepNow && (
             <Action
               primary
-              label={stepNow === 'approve' ? '✅ Approve admission' : '📝 Approve registration'}
+              label={stepNow === 'submit' ? '📤 Submitted Online' : '🏛 Received by ITTC'}
               onPress={() => setSheet(stepNow)}
             />
           )}
@@ -449,7 +410,6 @@ export function WebStudentLayout({
           minute: '2-digit',
         })
       : '';
-  const sectionName = places?.sections.find((x) => x.id === lead.admitted_section_id)?.name;
   const journeyRows: {
     icon: string;
     label: string;
@@ -460,84 +420,39 @@ export function WebStudentLayout({
   }[] = admitted
     ? [
         { icon: '🎓', label: 'Admitted', who: nameOf(lead.admitted_by), at: lead.admitted_at },
-        ...(lead.listed_at
-          ? [
-              {
-                icon: '📋',
-                label: 'Listed (no pay)',
-                who: nameOf(lead.listed_by),
-                at: lead.listed_at,
-                note: [
-                  sectionName ? `Section ${sectionName}` : null,
-                  lead.nu_admission_id ? `NU ${lead.nu_admission_id}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · '),
-              },
-            ]
-          : []),
-        lead.approval_status === 'approved'
+        lead.submitted_at
           ? {
-              icon: '✅',
-              label: 'Admission approved',
-              who: nameOf(lead.approval_by),
-              at: lead.approval_at,
-              note: lead.approval_note,
+              icon: '📤',
+              label: 'Submitted Online',
+              who: nameOf(lead.submitted_by),
+              at: lead.submitted_at,
+              note: lead.nu_admission_id ? `NU ${lead.nu_admission_id}` : null,
             }
-          : lead.approval_status === 'returned'
-            ? {
-                icon: '↩',
-                label: 'Admission sent back',
-                who: nameOf(lead.approval_by),
-                at: lead.approval_at,
-                note: lead.approval_note,
-                tone: 'bad' as const,
-              }
-            : {
-                icon: '⏳',
-                label: 'Admission approval',
-                who: null,
-                at: null,
-                note:
-                  paid < settings.admission_min_paid
-                    ? `needs ${money(settings.admission_min_paid - paid)} more`
-                    : 'waiting',
-                tone: 'off' as const,
-              },
-        reg === 'approved'
+          : { icon: '📤', label: 'Submitted Online', who: null, at: null, note: 'not yet', tone: 'off' as const },
+        lead.received_at
           ? {
-              icon: '📝',
-              label: 'Registered',
-              who: nameOf(lead.registration_by),
-              at: lead.registration_at,
-              note: lead.registration_note,
+              icon: '🏛',
+              label: 'Received by ITTC',
+              who: nameOf(lead.received_by),
+              at: lead.received_at,
+              note: null,
             }
-          : reg === 'returned'
-            ? {
-                icon: '↩',
-                label: 'Registration sent back',
-                who: nameOf(lead.registration_by),
-                at: lead.registration_at,
-                note: lead.registration_note,
-                tone: 'bad' as const,
-              }
-            : {
-                icon: '📝',
-                label: 'Registration',
-                who: null,
-                at: null,
-                note:
-                  reg !== 'waiting'
-                    ? 'after the admission'
-                    : paid < settings.registration_min_paid
-                      ? `needs ${money(settings.registration_min_paid - paid)} more`
-                      : 'waiting',
-                tone: 'off' as const,
-              },
+          : {
+              icon: '🏛',
+              label: 'Received by ITTC',
+              who: null,
+              at: null,
+              note: !submitted
+                ? 'after Submitted'
+                : paid < need
+                  ? `admission fee ${money(need)}: ${money(need - paid)} more`
+                  : 'ready',
+              tone: 'off' as const,
+            },
       ]
     : [];
   const journey =
-    admitted && settings.enabled ? (
+    admitted ? (
       <View style={styles.card}>
         <Text style={styles.cardTitle}>🧭 Journey</Text>
         {journeyRows.map((j, i) => (
@@ -641,9 +556,7 @@ export function WebStudentLayout({
       {sheet && (
         <ApprovalActionSheet
           kind={sheet}
-          lead={lead as unknown as ApprovalLead}
-          warnings={admissionChecks(lead).filter((c) => !c.ok).length}
-          checks={admissionChecks(lead)}
+          lead={{ ...(lead as unknown as ApprovalLead), admission_fee_need: need }}
           onClose={() => setSheet(null)}
           onDone={(message) => {
             setSheet(null);

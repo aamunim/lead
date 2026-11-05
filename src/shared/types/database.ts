@@ -902,6 +902,7 @@ export type Database = {
         Row: {
           category: string | null
           code?: string | null
+          admission_fee?: number | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -1580,6 +1581,14 @@ export type Database = {
           registration_note: string | null
           listed_at: string | null
           listed_by: string | null
+          submitted_at: string | null
+          submitted_by: string | null
+          received_at: string | null
+          received_by: string | null
+          admission_fee_need: number | null
+          admission_fee_ok: boolean | null
+          fee_paid_total: number | null
+          fee_last_paid_at: string | null
           admission_note: string | null
           admitted_at: string | null
           admitted_batch_id: string | null
@@ -1654,6 +1663,12 @@ export type Database = {
           registration_note?: string | null
           listed_at?: string | null
           listed_by?: string | null
+          submitted_at?: string | null
+          submitted_by?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          admission_fee_need?: number | null
+          fee_last_paid_at?: string | null
           admission_note?: string | null
           admitted_at?: string | null
           admitted_batch_id?: string | null
@@ -1728,6 +1743,12 @@ export type Database = {
           registration_note?: string | null
           listed_at?: string | null
           listed_by?: string | null
+          submitted_at?: string | null
+          submitted_by?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          admission_fee_need?: number | null
+          fee_last_paid_at?: string | null
           admission_note?: string | null
           admitted_at?: string | null
           admitted_batch_id?: string | null
@@ -2558,6 +2579,12 @@ export type Database = {
         Args: { p_leads: string[]; p_course: string; p_batch: string; p_section: string }
         Returns: Json
       }
+      submit_online: { Args: { p_lead: string; p_nu_admission_id: string; p_note?: string }; Returns: undefined }
+      mark_received: { Args: { p_lead: string; p_note?: string }; Returns: undefined }
+      undo_ittc_step: { Args: { p_lead: string; p_step: string; p_reason: string }; Returns: undefined }
+      bulk_mark_received: { Args: { p_leads: string[]; p_dry?: boolean }; Returns: Json }
+      set_course_admission_fee: { Args: { p_course: string; p_amount: number | null }; Returns: undefined }
+      course_admission_fee: { Args: { p_course: string }; Returns: number }
       student_id_rules_overview: {
         Args: never
         Returns: {

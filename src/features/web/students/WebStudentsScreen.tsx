@@ -22,6 +22,8 @@ import {
 } from '@/features/approval/api';
 import { ApprovalActionSheet, admissionChecks, type ApprovalSheetKind } from '@/features/approval/ApprovalCard';
 import { BulkPlacementSheet } from '@/features/approval/BulkPlacementSheet';
+import { BulkReceivedSheet } from '@/features/approval/BulkReceivedSheet';
+import { PaidSheet, paidRangeLabel } from '@/features/students/PaidSheet';
 import {
   LEAD_BULK,
   LeadRowMenu,
@@ -50,6 +52,9 @@ import {
   type LeadListItem,
   type LeadSort,
   type QuickFilter,
+  STUDENT_FLOW_CHIPS,
+  sumLeadPaid,
+  type PaidRange,
 } from '@/features/leads/api';
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { countActiveFilters, type LeadFilters } from '@/features/leads/filters';
@@ -71,6 +76,7 @@ type ColKey =
   | 'phone'
   | 'course'
   | 'fee'
+  | 'paid'
   | 'next_due'
   | 'papers'
   | 'approval'
@@ -91,18 +97,7 @@ type ColKey =
 
 type PopupKind = 'menu' | RowAction;
 
-const APPROVAL_KINDS: ApprovalSheetKind[] = [
-  'list',
-  'approve',
-  'return',
-  'resubmit',
-  'reg_approve',
-  'reg_return',
-  'reg_resubmit',
-  'place',
-  'nu',
-  'ref',
-];
+const APPROVAL_KINDS: ApprovalSheetKind[] = ['submit', 'receive', 'undo_submit', 'undo_receive', 'place', 'nu', 'ref'];
 
 /** What a row's cells can open */
 type Act = {
@@ -131,9 +126,10 @@ const COLS: Col[] = [
   { key: 'course', label: 'Course · Batch', flex: 1 },
   { key: 'section', label: 'Section', width: 96 },
   { key: 'fee', label: 'Fee', width: 150, sorts: ['due_most'] },
+  { key: 'paid', label: 'Paid', width: 120, sorts: ['paid_most', 'paid_least', 'last_paid'] },
   { key: 'next_due', label: 'Next installment', width: 130, sorts: ['next_due'] },
   { key: 'papers', label: 'Papers', width: 120, sorts: ['papers_missing'] },
-  { key: 'approval', label: 'Approval', width: 230 },
+  { key: 'approval', label: 'Submitted · ITTC', width: 190 },
   { key: 'nu', label: 'NU Admission ID', width: 136 },
   { key: 'last', label: 'Last call / note', flex: 1.4 },
   { key: 'admitted', label: 'Admitted', width: 112, sorts: ['admitted_newest', 'admitted_oldest'] },
@@ -158,6 +154,7 @@ const MODE_COLS: Record<Mode, ColKey[]> = {
     'course',
     'section',
     'fee',
+    'paid',
     'next_due',
     'papers',
     'approval',
@@ -181,8 +178,8 @@ const MODE_COLS: Record<Mode, ColKey[]> = {
   ],
 };
 const MODE_DEFAULT: Record<Mode, ColKey[]> = {
-  // (v3: Section shown by default)
-  students: ['ref', 'name', 'phone', 'course', 'section', 'fee', 'papers', 'approval', 'nu', 'last', 'admitted'],
+  // (v4: Paid shown by default)
+  students: ['ref', 'name', 'phone', 'course', 'section', 'fee', 'paid', 'papers', 'approval', 'nu', 'last', 'admitted'],
   leads: ['name', 'phone', 'stage', 'rating', 'interest', 'assignee', 'follow', 'last', 'created'],
 };
 const MODE_PANEL: Record<Mode, ColKey[]> = {
@@ -190,7 +187,7 @@ const MODE_PANEL: Record<Mode, ColKey[]> = {
   leads: ['name', 'stage', 'follow'],
 };
 const MODE_KEYS: Record<Mode, { cols: string; sort: string; dense: string; view: string }> = {
-  students: { cols: 'web_students_cols_v3', sort: 'web_students_sort', dense: 'web_students_compact', view: '' },
+  students: { cols: 'web_students_cols_v4', sort: 'web_students_sort', dense: 'web_students_compact', view: '' },
   leads: { cols: 'web_leads_cols_v1', sort: 'web_leads_sort', dense: 'web_leads_compact', view: 'web_leads_view' },
 };
 
@@ -248,17 +245,15 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   const seesOthers = sharedMode || hasPermission('leads.view_all') || hasPermission('leads.view_team');
 
   const [approval, setApproval] = useState<ApprovalSettings>(DEFAULT_APPROVAL_SETTINGS);
-  const [approvalOn, setApprovalOn] = useState(false);
   useEffect(() => {
-    getApprovalSettings().then((s) => {
-      setApproval(s);
-      setApprovalOn(s.enabled);
-    });
+    getApprovalSettings().then(setApproval);
   }, []);
   // 🎓 The Admission Officer (or an admin): approve from the row, change the fee
   const officer = canApprove(approval, profile, hasPermission('settings.manage'));
   // 🔀 Move ticked students to another course · batch · section
   const [moveOpen, setMoveOpen] = useState(false);
+  // 🏛 Mark the ticked (ready) ones Received by ITTC
+  const [receivedOpen, setReceivedOpen] = useState(false);
   // A popup opened from a row
   const [popup, setPopup] = useState<{ kind: PopupKind; row: LeadListItem } | null>(null);
   // 💵 Payments from the row (Settings → Fee: who takes payments)
@@ -297,17 +292,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
         { key: 'overdue', label: '⚠ Overdue' },
         { key: 'paid', label: '✓ Paid' },
         { key: 'papers', label: '📄 Papers missing' },
-        ...(approvalOn
-          ? [
-              { key: 'approval_waiting' as QuickFilter, label: '⏳ Admission waiting' },
-              { key: 'listed' as QuickFilter, label: '📋 Listed' },
-              { key: 'registration_waiting' as QuickFilter, label: '📝 Registration waiting' },
-              { key: 'registered' as QuickFilter, label: '✅ Registered' },
-              { key: 'approval_returned' as QuickFilter, label: '↩ Sent back' },
-              { key: 'no_section' as QuickFilter, label: '🏫 No section' },
-              { key: 'no_nu_id' as QuickFilter, label: '🆔 No NU ID' },
-            ]
-          : []),
+        ...STUDENT_FLOW_CHIPS,
       ];
 
   const [quick, setQuick] = useState<QuickFilter>((params.quick as QuickFilter) || 'all');
@@ -361,18 +346,39 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   }, []);
   const nameOf = useCallback((id: string | null | undefined) => (id ? (names.get(id) ?? null) : null), [names]);
 
+  // 💵 Students: paid between / since (instead of the lead filters)
+  const [paidRange, setPaidRange] = useState<PaidRange | null>(null);
+  const [paidOpen, setPaidOpen] = useState(false);
+
   const query = useMemo(
     () => ({
       search: debounced,
       quick,
-      filters,
+      filters: leadsMode ? filters : {},
       sort,
       students: !leadsMode,
       userId: profile?.id,
       closedMode: leadsMode ? ('hide' as const) : ('show' as const),
+      paid: leadsMode ? null : paidRange,
     }),
-    [debounced, quick, filters, sort, profile?.id, leadsMode],
+    [debounced, quick, filters, sort, profile?.id, leadsMode, paidRange],
   );
+
+  // 💵 Paid in all, for the students in the list
+  const [paidSum, setPaidSum] = useState<{ total: number; count: number; paying: number } | null>(null);
+  useEffect(() => {
+    if (leadsMode) return;
+    let live = true;
+    const t = setTimeout(() => {
+      sumLeadPaid(query)
+        .then((r) => live && setPaidSum(r))
+        .catch(() => live && setPaidSum(null));
+    }, 400);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [leadsMode, query]);
 
   // Latest request wins (typing fast sends many)
   const reqNo = useRef(0);
@@ -550,6 +556,18 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
       }}
     />
   ) : null;
+  const receivedSheet = receivedOpen ? (
+    <BulkReceivedSheet
+      ids={rows.filter((r) => ticked.has(r.id)).map((r) => r.id)}
+      onClose={() => setReceivedOpen(false)}
+      onDone={(message) => {
+        setReceivedOpen(false);
+        setTicked(new Set());
+        showToast(message);
+        load(true);
+      }}
+    />
+  ) : null;
   const popupDone = (message: string) => {
     setPopup(null);
     showToast(message);
@@ -691,11 +709,29 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
                 </View>
               </>
             )}
-            <ToolButton
-              label={nFilters ? `⚙ Filters · ${nFilters}` : '⚙ Filters'}
-              on={nFilters > 0}
-              onPress={() => setFilterOpen(true)}
-            />
+            {!leadsMode && paidSum && paidSum.count > 0 && (
+              <Text style={styles.muted} numberOfLines={1}>
+                💵 {money(paidSum.total)} paid
+                {paidSum.paying > 0
+                  ? ` · avg ${money(Math.round(paidSum.total / paidSum.paying))} (${paidSum.paying} paid)`
+                  : ''}
+              </Text>
+            )}
+            {leadsMode ? (
+              <ToolButton
+                label={nFilters ? `⚙ Filters · ${nFilters}` : '⚙ Filters'}
+                on={nFilters > 0}
+                onPress={() => setFilterOpen(true)}
+              />
+            ) : (
+              <ToolButton
+                label={paidRange ? `💵 ${paidRangeLabel(paidRange)}` : '💵 Paid'}
+                a11y="Filter by paid"
+                on={!!paidRange}
+                onPress={() => setPaidOpen(true)}
+              />
+            )}
+            {!leadsMode && !!paidRange && <ToolButton label="✕" a11y="Clear paid" onPress={() => setPaidRange(null)} />}
             {view === 'table' && <ToolButton label="▦ Columns" onPress={() => setColsOpen(true)} />}
             <ToolButton
               label={dense ? '☰ Compact' : '☰ Comfortable'}
@@ -767,6 +803,11 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
               {!leadsMode && officer && (
                 <Pressable onPress={() => setMoveOpen(true)} style={styles.bulkBtn} accessibilityRole="button">
                   <Text style={styles.bulkBtnText}>🔀 Course · Batch · Section</Text>
+                </Pressable>
+              )}
+              {!leadsMode && officer && (
+                <Pressable onPress={() => setReceivedOpen(true)} style={styles.bulkBtn} accessibilityRole="button">
+                  <Text style={styles.bulkBtnText}>🏛 Received by ITTC</Text>
                 </Pressable>
               )}
               <Pressable onPress={doExport} style={styles.bulkBtn} accessibilityRole="button">
@@ -986,6 +1027,17 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
       )}
 
       {moveSheet}
+      {receivedSheet}
+      {paidOpen && (
+        <PaidSheet
+          value={paidRange}
+          onClose={() => setPaidOpen(false)}
+          onApply={(r) => {
+            setPaidOpen(false);
+            setPaidRange(r);
+          }}
+        />
+      )}
 
       {toast && (
         <View style={styles.toast} pointerEvents="none">
@@ -1185,6 +1237,21 @@ function Cell({
         body
       );
     }
+    case 'paid': {
+      const paid = Number(r.fee_paid ?? 0);
+      return (
+        <View>
+          <Text style={[styles.text, !paid && styles.dim]} numberOfLines={1}>
+            {paid ? money(paid) : '৳0'}
+          </Text>
+          {!!r.fee_last_paid_at && (
+            <Text style={styles.smallMuted} numberOfLines={1}>
+              {day(r.fee_last_paid_at)}
+            </Text>
+          )}
+        </View>
+      );
+    }
     case 'next_due':
       return (
         <Text style={[styles.text, !r.fee_next_due && styles.dim]}>{r.fee_next_due ? day(r.fee_next_due) : '—'}</Text>
@@ -1202,84 +1269,35 @@ function Cell({
       );
     }
     case 'approval': {
-      const b = admitted ? stageBadge(r.approval_status, r.registration_status, r.listed_at) : null;
+      const b = admitted ? stageBadge(r.submitted_at, r.received_at, r.admission_fee_ok) : null;
       if (!b) return <Text style={styles.dim}>—</Text>;
       const paid = Number(r.fee_paid ?? 0);
-      // ✅ The Admission Officer approves (or sends back) right here:
-      //    the admission first (৳ needed), then the registration (৳ needed in total)
-      const step =
-        r.approval_status === 'waiting'
-          ? { approve: 'approve' as const, back: 'return' as const, label: 'Approve', need: act.mins.admission }
-          : r.approval_status === 'approved' && (r.registration_status ?? 'waiting') === 'waiting'
-            ? {
-                approve: 'reg_approve' as const,
-                back: 'reg_return' as const,
-                label: 'Register',
-                need: act.mins.registration,
-              }
-            : null;
-      if (act.officer && step) {
-        const ready = paid >= step.need;
-        // 📋 No money yet: list without pay (section + NU ID) right here
-        if (step.approve === 'approve' && !ready && !r.listed_at) {
-          return (
-            <View>
-              <View style={styles.approveRow}>
-                <Pressable
-                  onPress={() => act.open('list', r)}
-                  style={(state) => [styles.listBtn, (state as { hovered?: boolean }).hovered && styles.approveHover]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`List ${r.name} without pay`}
-                >
-                  <Text style={styles.listText}>📋 List</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => act.open('return', r)}
-                  style={(state) => [styles.returnBtn, (state as { hovered?: boolean }).hovered && styles.returnHover]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Send ${r.name} back`}
-                >
-                  <Text style={styles.returnText}>↩</Text>
-                </Pressable>
-              </View>
-              <Text style={styles.needText} numberOfLines={1}>
-                Approve needs {money(step.need)} · paid {money(paid)}
-              </Text>
-            </View>
-          );
-        }
+      const need = Number(r.admission_fee_need ?? act.mins.admission);
+      // 📤 / 🏛 The Admission Officer does the next step right here
+      if (act.officer && !r.received_at) {
+        const submitted = !!r.submitted_at;
+        const ready = !submitted || paid >= need;
         return (
           <View>
-            <View style={styles.approveRow}>
-              <Pressable
-                onPress={ready ? () => act.open(step.approve, r) : undefined}
-                disabled={!ready}
-                style={(state) => [
-                  styles.approveBtn,
-                  !ready && styles.approveOff,
-                  ready && (state as { hovered?: boolean }).hovered && styles.approveHover,
-                ]}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !ready }}
-                accessibilityLabel={`${step.label} ${r.name}`}
-              >
-                <Text style={[styles.approveText, !ready && styles.approveOffText]}>
-                  {ready ? (step.approve === 'approve' ? '✅ ' : '📝 ') : '🔒 '}
-                  {step.label}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => act.open(step.back, r)}
-                style={(state) => [styles.returnBtn, (state as { hovered?: boolean }).hovered && styles.returnHover]}
-                accessibilityRole="button"
-                accessibilityLabel={`Send ${r.name} back`}
-              >
-                <Text style={styles.returnText}>↩</Text>
-              </Pressable>
-            </View>
-            {!ready && (
+            <Pressable
+              onPress={ready ? () => act.open(submitted ? 'receive' : 'submit', r) : undefined}
+              disabled={!ready}
+              style={(state) => [
+                submitted ? styles.approveBtn : styles.listBtn,
+                !ready && styles.approveOff,
+                ready && (state as { hovered?: boolean }).hovered && styles.approveHover,
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !ready }}
+              accessibilityLabel={`${submitted ? 'Received by ITTC' : 'Submitted Online'}: ${r.name}`}
+            >
+              <Text style={[submitted ? styles.approveText : styles.listText, !ready && styles.approveOffText]}>
+                {submitted ? (ready ? '🏛 Received' : '🔒 Received') : '📤 Submitted'}
+              </Text>
+            </Pressable>
+            {submitted && !ready && (
               <Text style={styles.needText} numberOfLines={1}>
-                Needs {money(step.need)} · paid {money(paid)}
+                Fee {money(need)} · paid {money(paid)}
               </Text>
             )}
           </View>
@@ -1299,7 +1317,7 @@ function Cell({
         <Text style={styles.text} numberOfLines={1}>
           {r.admitted_section.name}
         </Text>
-      ) : admitted && r.approval_status ? (
+      ) : admitted ? (
         <Text style={[styles.text, styles.warn]}>⚠ none</Text>
       ) : (
         <Text style={styles.dim}>—</Text>
@@ -1421,10 +1439,6 @@ function approvalLead(r: LeadListItem) {
   return {
     id: r.id,
     student_ref: r.student_ref,
-    approval_status: r.approval_status,
-    approval_by: null,
-    approval_at: null,
-    approval_note: null,
     nu_admission_id: r.nu_admission_id,
     papers_required: r.papers_required,
     papers_missing: r.papers_missing,
@@ -1433,10 +1447,9 @@ function approvalLead(r: LeadListItem) {
     admitted_course_id: r.admitted_course?.id ?? null,
     admitted_batch_id: r.admitted_batch?.id ?? null,
     admitted_section_id: r.admitted_section_id,
-    registration_status: r.registration_status,
-    registration_by: null,
-    registration_at: null,
-    registration_note: null,
+    submitted_at: r.submitted_at,
+    received_at: r.received_at,
+    admission_fee_need: r.admission_fee_need,
   };
 }
 
@@ -1458,12 +1471,14 @@ function cellText(col: ColKey, r: LeadListItem, nameOf: (id: string | null) => s
       return [r.admitted_course?.name, r.admitted_batch?.name].filter(Boolean).join(' · ');
     case 'fee':
       return r.fee_due == null ? null : Number(r.fee_due);
+    case 'paid':
+      return Number(r.fee_paid ?? 0);
     case 'next_due':
       return r.fee_next_due ? day(r.fee_next_due) : null;
     case 'papers':
       return r.papers_required ? `${r.papers_missing ?? 0} missing of ${r.papers_required}` : null;
     case 'approval':
-      return stageBadge(r.approval_status, r.registration_status, r.listed_at)?.text.replace(/^\S+\s/, '') ?? null;
+      return stageBadge(r.submitted_at, r.received_at, r.admission_fee_ok)?.text.replace(/^\S+\s/, '') ?? null;
     case 'section':
       return r.admitted_section?.name ?? null;
     case 'nu':

@@ -427,6 +427,15 @@ export function describeChange(
       return { text: '🎓 Sent for approval again', warn: false };
     case 'nu_id_set':
       return { text: `🆔 NU Admission ID: ${d.to ? q(d.to) : 'removed'}`, warn: false };
+    case 'submitted_online':
+      return { text: `📤 Submitted Online${d.nu_admission_id ? ` · NU ${q(d.nu_admission_id)}` : ''}`, warn: false };
+    case 'received_by_ittc':
+      return { text: '🏛 Received by ITTC', warn: false };
+    case 'ittc_undone':
+      return {
+        text: `↩ ${d.step === 'received' ? 'Received by ITTC' : 'Submitted Online'} undone${d.reason ? `: ${q(d.reason)}` : ''}`,
+        warn: true,
+      };
     case 'admission_listed':
       return { text: `📋 Listed without pay${d.nu_admission_id ? ` · NU ${q(d.nu_admission_id)}` : ''}`, warn: false };
     case 'placement_changed':
