@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-30-b',
+    date: '30 Nov 2026',
+    title: '🕘 Recent: your own calls',
+    items: [
+      '🕘 Recent now shows only the leads you called yourself (WhatsApp calls too)',
+      '📅 Two chips: Today and Yesterday',
+      '🏠 Home: “Called today” shows your last calls',
+    ],
+  },
+  {
     key: '2026-11-29-a',
     date: '29 Nov 2026',
     title: '➕ New "Add lead" form',

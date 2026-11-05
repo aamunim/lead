@@ -2,41 +2,63 @@ import { supabase } from '@/shared/lib/supabase';
 
 // =====================================================================
 // 🔎 Finding a lead again
-//   🕘 Recent: the leads I worked on (calls, notes, changes, opened)
+//   🕘 Recent: the leads I called myself, today or yesterday
 //   ⭐ Starred: my own short list
 // =====================================================================
 
 export type RecentRow = { leadId: string; at: Date; kind: string; detail: Record<string, unknown> };
-export type RecentRange = { day: 'today' } | { day: 'custom'; from: string; to: string };
+export type RecentRange = { day: 'today' } | { day: 'yesterday' };
 
 const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-const parseDay = (s: string) => {
-  const [y, m, d] = s.split('-').map(Number);
-  return new Date(y, (m ?? 1) - 1, d ?? 1);
-};
 
-/** The time span of a choice: today, or the chosen days (whole days) */
+/** The time span of a choice: today so far, or all of yesterday */
 export function recentSpan(r: RecentRange): { from: Date; to: Date } {
-  if (r.day === 'today') return { from: dayStart(new Date()), to: new Date() };
-  const to = parseDay(r.to);
-  to.setDate(to.getDate() + 1);
-  return { from: parseDay(r.from), to };
+  const today = dayStart(new Date());
+  if (r.day === 'today') return { from: today, to: new Date(Date.now() + 60_000) };
+  const y = new Date(today);
+  y.setDate(y.getDate() - 1);
+  return { from: y, to: today };
 }
 
+/**
+ * 📞 The leads I called in that span (WhatsApp calls too, not messages), the latest call first.
+ * Deleted calls and leads I can't see are left out by the security rules.
+ */
 export async function listRecent(r: RecentRange, limit = 200): Promise<RecentRow[]> {
   const { from, to } = recentSpan(r);
-  const { data, error } = await supabase.rpc(
-    'my_recent_leads' as never,
-    {
-      p_from: from.toISOString(),
-      p_to: to.toISOString(),
-      p_limit: limit,
-    } as never,
-  );
+  const { data: session } = await supabase.auth.getSession();
+  const me = session.session?.user.id;
+  if (!me) return [];
+  const { data, error } = await supabase
+    .from('call_logs')
+    .select('lead_id, called_at, outcome, duration_sec, channel')
+    .eq('user_id', me)
+    .neq('outcome', 'message')
+    .gte('called_at', from.toISOString())
+    .lt('called_at', to.toISOString())
+    .order('called_at', { ascending: false })
+    .limit(500);
   if (error) throw new Error(error.message);
-  return ((data ?? []) as { lead_id: string; at: string; kind: string; detail: Record<string, unknown> | null }[]).map(
-    (x) => ({ leadId: x.lead_id, at: new Date(x.at), kind: x.kind, detail: x.detail ?? {} }),
-  );
+  const seen = new Set<string>();
+  const out: RecentRow[] = [];
+  for (const c of (data ?? []) as {
+    lead_id: string;
+    called_at: string;
+    outcome: string;
+    duration_sec: number | null;
+    channel: string | null;
+  }[]) {
+    if (seen.has(c.lead_id)) continue;
+    seen.add(c.lead_id);
+    out.push({
+      leadId: c.lead_id,
+      at: new Date(c.called_at),
+      kind: 'call',
+      detail: { outcome: c.outcome, sec: c.duration_sec ?? 0, channel: c.channel },
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 /** "📞 Call · 3m", "📝 Note", "🔀 Stage", "👀 Opened" */

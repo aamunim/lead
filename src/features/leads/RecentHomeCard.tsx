@@ -47,7 +47,7 @@ export function RecentHomeCard() {
       id="recent"
       icon="history"
       tint={{ bg: md.skyC, fg: md.onPrimaryC }}
-      title="Worked on today"
+      title="Called today"
       summary={`${rows.length}${rows.length >= 5 ? '+' : ''} · last: ${rows[0].name}`}
       defaultOpen
     >
@@ -72,7 +72,7 @@ export function RecentHomeCard() {
           hitSlop={8}
           accessibilityRole="button"
         >
-          <Text style={styles.all}>See all recent ›</Text>
+          <Text style={styles.all}>See all ›</Text>
         </Pressable>
       </View>
     </Fold>

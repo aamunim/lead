@@ -10,8 +10,6 @@ import {
   type RecentRange,
   type RecentRow,
 } from '@/features/leads/find';
-import { RangeSheet } from '@/features/leads/AddedChips';
-import { rangeText } from '@/features/leads/added';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation, type Href } from 'expo-router';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -228,7 +226,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         // 🎓 Admission approval (Settings → Admission approval)
         ...STUDENT_FLOW_CHIPS,
       ]
-    : // Leads: "All", 🕘 Recent, ⭐ Starred, then who added them and when (➕ chips below)
+    : // Leads: "All", 🕘 Recent (my calls), ⭐ Starred, then who added them and when (➕ chips below)
       [
         { key: 'all', label: 'All' },
         { key: 'recent', label: '🕘 Recent' },
@@ -505,12 +503,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   }, [filters, assignmentOn]);
 
   // --- load the first page ---------------------------------------------
-  // 🔎 🕘 Recent (what I worked on) and ⭐ Starred: their leads, in their own order
+  // 🔎 🕘 Recent (the leads I called) and ⭐ Starred: their leads, in their own order
   const special = !students && !debouncedSearch && (quick === 'recent' || quick === 'starred') ? quick : null;
   const [recentRange, setRecentRange] = useState<RecentRange>({ day: 'today' });
   const [recentRows, setRecentRows] = useState<RecentRow[] | null>(null);
   const [starIds, setStarIds] = useState<string[] | null>(null);
-  const [rangeOpen, setRangeOpen] = useState(false);
   const loadSpecial = useCallback(async () => {
     if (students) return;
     const [r, st] = await Promise.all([
@@ -1513,41 +1510,32 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   const canPayFor = (lead: LeadListItem) =>
     students && !!paySettings && lead.stage?.kind === 'won' && Number(lead.fee_due ?? 0) > 0;
 
+  // 🕘 Recent: my calls today, or yesterday
   const rangeRow = (
     <View style={styles.rangeRow}>
-      <Pressable
-        onPress={() => {
-          setLoading(true);
-          setRecentRange({ day: 'today' });
-        }}
-        style={[styles.rangeChip, recentRange.day === 'today' && styles.rangeChipOn]}
-        accessibilityRole="radio"
-        accessibilityState={{ selected: recentRange.day === 'today' }}
-      >
-        <Text style={[styles.rangeText, recentRange.day === 'today' && styles.rangeTextOn]}>Today</Text>
-      </Pressable>
-      <Pressable
-        onPress={() => setRangeOpen(true)}
-        style={[styles.rangeChip, recentRange.day === 'custom' && styles.rangeChipOn]}
-        accessibilityRole="radio"
-        accessibilityState={{ selected: recentRange.day === 'custom' }}
-      >
-        <Text style={[styles.rangeText, recentRange.day === 'custom' && styles.rangeTextOn]}>
-          📅 {recentRange.day === 'custom' ? rangeText(recentRange.from, recentRange.to) : 'Choose days'}
-        </Text>
-      </Pressable>
-      {rangeOpen && (
-        <RangeSheet
-          from={recentRange.day === 'custom' ? recentRange.from : undefined}
-          to={recentRange.day === 'custom' ? recentRange.to : undefined}
-          onClose={() => setRangeOpen(false)}
-          onPick={(from, to) => {
-            setRangeOpen(false);
-            setLoading(true);
-            setRecentRange({ day: 'custom', from, to });
-          }}
-        />
-      )}
+      {(
+        [
+          ['today', 'Today'],
+          ['yesterday', 'Yesterday'],
+        ] as const
+      ).map(([day, label]) => {
+        const on = recentRange.day === day;
+        return (
+          <Pressable
+            key={day}
+            onPress={() => {
+              if (on) return;
+              setLoading(true);
+              setRecentRange({ day });
+            }}
+            style={[styles.rangeChip, on && styles.rangeChipOn]}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: on }}
+          >
+            <Text style={[styles.rangeText, on && styles.rangeTextOn]}>{label}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 
@@ -1688,7 +1676,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         {/* 🕘 The last ones I worked on (while the empty search box is tapped) */}
         {!selecting && searchFocused && !search && peek.length > 0 && (
           <View style={styles.peekBox}>
-            <Text style={styles.peekTitle}>🕘 Just worked on</Text>
+            <Text style={styles.peekTitle}>📞 Just called</Text>
             {peek.map((l) => {
               const r = recentInfo.get(l.id);
               return (
@@ -1799,7 +1787,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           </ScrollView>
         )}
 
-        {/* 🕘 Recent: today, or the days I choose */}
+        {/* 🕘 Recent: my calls today or yesterday */}
         {!selecting && special === 'recent' && rangeRow}
 
         {/* 🔎 more outside this chip / filter */}
@@ -2276,7 +2264,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       {/* 💵 Students: paid in all */}
       {!selecting && paidSummary && <View style={styles.countRow}>{paidSummary}</View>}
 
-      {/* 🕘 Recent: today, or the days I choose */}
+      {/* 🕘 Recent: my calls today or yesterday */}
       {!selecting && special === 'recent' && rangeRow}
 
       {/* Count line + sort */}
@@ -2697,7 +2685,7 @@ const CardRow = memo(function CardRow({
     onPay: canPay ? () => h.pay(lead) : undefined,
   };
   const card = modern ? <ModernLeadCard {...props} /> : <LeadCard {...props} />;
-  // 🧭 It no longer fits this list: say where it went (and that 🕘 Recent keeps it)
+  // 🧭 It no longer fits this list: say where it went
   const movedTo = [
     lead.stage?.name ?? null,
     lead.next_follow_up_at
@@ -2709,7 +2697,7 @@ const CardRow = memo(function CardRow({
   const withDone = done ? (
     <View style={styles.done}>
       <View style={styles.doneDim}>{card}</View>
-      <Text style={styles.doneText}>➡️ Moved{movedTo ? `: ${movedTo}` : ''} · still in 🕘 Recent</Text>
+      <Text style={styles.doneText}>➡️ Moved{movedTo ? `: ${movedTo}` : ''}</Text>
     </View>
   ) : (
     card
