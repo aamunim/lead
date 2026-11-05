@@ -170,9 +170,11 @@ export function feeBadge(lead: {
   // Admitted: what is still to pay
   if (lead.fee_status === 'final' && lead.fee_due != null) {
     const due = Number(lead.fee_due);
-    if (due <= 0) return Number(lead.fee_paid ?? 0) > 0 ? { text: '✓ Paid', tone: 'good' } : null;
+    const paid = Number(lead.fee_paid ?? 0);
+    if (due <= 0) return paid > 0 ? { text: `✓ Paid ${money(paid)}`, tone: 'good' } : null;
     const late = !!lead.fee_next_due && lead.fee_next_due < new Date().toISOString().slice(0, 10);
-    return { text: `${late ? '⚠' : '💵'} Due ${money(due)}`, tone: late ? 'bad' : 'wait' };
+    // 💵 what was paid, and what is still to pay
+    return { text: `${late ? '⚠' : '💵'} ${money(paid)} paid · ${money(due)} due`, tone: late ? 'bad' : 'wait' };
   }
   switch (lead.fee_status) {
     case 'negotiating':

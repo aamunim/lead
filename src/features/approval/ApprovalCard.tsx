@@ -4,19 +4,15 @@ import { Modal } from '@/shared/ui/Modal';
 
 import {
   DEFAULT_APPROVAL_SETTINGS,
-  approveAdmission,
-  listAdmission,
-  approveRegistration,
   canApprove,
   getApprovalSettings,
   getPlacementOptions,
-  resubmitAdmission,
-  resubmitRegistration,
-  returnAdmission,
-  returnRegistration,
+  markReceived,
   setNuAdmissionId,
   setPlacement,
   setStudentRef,
+  submitOnline,
+  undoIttcStep,
   type ApprovalSettings,
   type Placement,
   type PlacementOptions,
@@ -28,22 +24,18 @@ import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
 
 // =====================================================================
-// 🎓 Admission & registration approval (admitted students only)
-//   1. Admission: ⏳ waiting → ✅ approved (৳ needed + the section chosen)
-//      or ↩ sent back
-//   2. Registration (after the admission is approved): ⏳ → ✅ (৳ needed
-//      in total) or ↩ sent back
-//   The Admission Officer can change the course / batch / section, the
-//   College ID and the NU Admission ID. Hidden once cancelled.
+// 🏛 The admission flow (admitted students only)
+//   1. 📤 Submitted Online: the NU Admission ID, no money
+//   2. 🏛 Received by ITTC: after Submitted, once the course's admission
+//      fee is paid
+//   The Admission Officer / admins do both (and undo, with a reason), and
+//   can change the course / batch / section, the College ID and the NU ID.
+//   Hidden once cancelled.
 // =====================================================================
 
 export type ApprovalLead = {
   id: string;
   student_ref: string | null;
-  approval_status: string | null;
-  approval_by: string | null;
-  approval_at: string | null;
-  approval_note: string | null;
   nu_admission_id: string | null;
   papers_required: number | null;
   papers_missing: number | null;
@@ -52,33 +44,21 @@ export type ApprovalLead = {
   admitted_course_id: string | null;
   admitted_batch_id: string | null;
   admitted_section_id: string | null;
-  registration_status: string | null;
-  registration_by: string | null;
-  registration_at: string | null;
-  registration_note: string | null;
-  /** 📋 listed without pay */
-  listed_at?: string | null;
-  listed_by?: string | null;
+  submitted_at: string | null;
+  submitted_by?: string | null;
+  received_at: string | null;
+  received_by?: string | null;
+  /** ৳ the course's admission fee (kept on the lead) */
+  admission_fee_need: number | null;
 };
 
-type Sheet =
-  | 'approve'
-  | 'return'
-  | 'resubmit'
-  | 'nu'
-  | 'ref'
-  | 'place'
-  | 'reg_approve'
-  | 'reg_return'
-  | 'reg_resubmit'
-  | 'list'
-  | null;
+type Sheet = 'submit' | 'receive' | 'undo_submit' | 'undo_receive' | 'nu' | 'ref' | 'place' | null;
 export type ApprovalSheetKind = Exclude<Sheet, null>;
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
-/** What the officer should look at before approving the admission */
+/** What to look at for a student (the website's popups) */
 export function admissionChecks(
   lead: Pick<ApprovalLead, 'student_ref' | 'papers_required' | 'papers_missing' | 'fee_due'>,
 ): { ok: boolean; text: string }[] {
@@ -116,51 +96,48 @@ export function ApprovalCard({
       .catch(() => setOptions(null));
   }, []);
 
-  const status = lead.approval_status;
-  if (!settings.enabled || !status) return null;
   const officer = canApprove(settings, profile, isAdmin);
-  const reg = status === 'approved' ? (lead.registration_status ?? 'waiting') : null;
-
   const paid = Number(lead.fee_paid ?? 0);
-  const admissionReady = paid >= settings.admission_min_paid;
-  const registrationReady = paid >= settings.registration_min_paid;
-  const checks = admissionChecks(lead);
-  const warnings = checks.filter((c) => !c.ok).length;
+  const need = Number(lead.admission_fee_need ?? settings.admission_min_paid);
+  const feeOk = paid >= need;
+  const submitted = !!lead.submitted_at;
+  const received = !!lead.received_at;
 
   const placement = placementText(options, lead.admitted_course_id, lead.admitted_batch_id, lead.admitted_section_id);
-  const done = reg === 'approved';
-  const tone = done ? styles.good : status === 'returned' || reg === 'returned' ? styles.bad : styles.wait;
+  const tone = received ? styles.good : styles.wait;
 
   return (
     <View style={[styles.card, tone]}>
-      <Text style={styles.header}>🎓 Admission & registration</Text>
+      <Text style={styles.header}>🏛 Submitted Online → Received by ITTC</Text>
 
-      {/* The two steps */}
       <Step
         n={1}
-        title="Admission"
-        status={status === 'waiting' && lead.listed_at ? 'listed' : status}
-        by={nameOf(status === 'waiting' && lead.listed_at ? (lead.listed_by ?? null) : lead.approval_by)}
-        at={status === 'waiting' && lead.listed_at ? lead.listed_at : lead.approval_at}
-        note={lead.approval_note}
+        title="📤 Submitted Online"
+        done={submitted}
+        doneText="Submitted"
+        waitText="Not yet"
+        by={nameOf(lead.submitted_by)}
+        at={lead.submitted_at}
+        undo={officer && submitted && !received ? () => setSheet('undo_submit') : undefined}
       />
       <Step
         n={2}
-        title="Registration"
-        status={reg}
-        by={nameOf(lead.registration_by)}
-        at={lead.registration_at}
-        note={lead.registration_note}
+        title="🏛 Received by ITTC"
+        done={received}
+        doneText="Received"
+        waitText={!submitted ? 'After Submitted' : feeOk ? 'Ready' : `${money(need - paid)} more`}
+        ready={submitted && feeOk}
+        by={nameOf(lead.received_by)}
+        at={lead.received_at}
+        undo={officer && received ? () => setSheet('undo_receive') : undefined}
       />
 
-      {/* Paid and what each step needs */}
+      {/* Paid and the admission fee */}
       <View style={styles.money}>
-        <Text style={styles.moneyPaid}>Paid {money(paid)}</Text>
-        <Text style={[styles.moneyNeed, admissionReady ? styles.okText : styles.warnText]}>
-          {admissionReady ? '✓' : '✗'} Admission needs {money(settings.admission_min_paid)}
-        </Text>
-        <Text style={[styles.moneyNeed, registrationReady ? styles.okText : styles.warnText]}>
-          {registrationReady ? '✓' : '✗'} Registration needs {money(settings.registration_min_paid)} in total
+        <Text style={styles.moneyPaid}>💵 Paid {money(paid)}</Text>
+        <Text style={[styles.moneyNeed, feeOk ? styles.okText : styles.warnText]}>
+          {feeOk ? '✓' : '✗'} Admission fee {money(need)}
+          {feeOk ? ' paid' : ` (${money(need - paid)} more)`}
         </Text>
       </View>
 
@@ -175,86 +152,29 @@ export function ApprovalCard({
           label="Course · batch · section"
           value={placement || null}
           missing={!lead.admitted_section_id ? 'No section yet' : undefined}
-          onEdit={officer && status === 'approved' ? () => setSheet('place') : undefined}
+          onEdit={officer ? () => setSheet('place') : undefined}
         />
       </View>
 
-      {/* ── Step 1: the admission ── */}
-      {status === 'waiting' && officer && (
+      {officer && !submitted && (
+        <Button title="📤 Submitted Online (NU Admission ID)" onPress={() => setSheet('submit')} fullWidth />
+      )}
+      {officer && submitted && !received && (
         <>
-          <Text style={styles.label}>CHECK BEFORE APPROVING</Text>
-          {checks.map((c) => (
-            <Text key={c.text} style={[styles.check, !c.ok && styles.checkWarn]}>
-              {c.ok ? '✅' : '⚠️'} {c.text}
-            </Text>
-          ))}
-          {!admissionReady && (
+          {!feeOk && (
             <Text style={styles.blocked}>
-              🔒 Approve opens when {money(settings.admission_min_paid)} is paid (paid {money(paid)}).
+              🔒 Opens when the admission fee {money(need)} is paid (paid {money(paid)}).
             </Text>
           )}
-          {/* 📋 Section + NU Admission ID before any money */}
-          <Button
-            title={lead.listed_at ? '📋 Listed (no pay): change' : '📋 List without pay (section + NU ID)'}
-            variant="secondary"
-            onPress={() => setSheet('list')}
-            fullWidth
-          />
-          <View style={styles.row}>
-            <View style={styles.flex}>
-              <Button title="↩ Send back" variant="secondary" onPress={() => setSheet('return')} fullWidth />
-            </View>
-            <View style={styles.flex}>
-              <Button
-                title="✅ Approve admission"
-                onPress={() => setSheet('approve')}
-                disabled={!admissionReady}
-                fullWidth
-              />
-            </View>
-          </View>
+          <Button title="🏛 Received by ITTC" onPress={() => setSheet('receive')} disabled={!feeOk} fullWidth />
         </>
       )}
-      {status === 'waiting' && !officer && <Text style={styles.meta}>The Admission Officer will check it.</Text>}
-      {status === 'returned' && (
-        <Button title="Fixed: send the admission again" onPress={() => setSheet('resubmit')} fullWidth />
-      )}
-
-      {/* ── Step 2: the registration ── */}
-      {reg === 'waiting' && officer && (
-        <>
-          {!registrationReady && (
-            <Text style={styles.blocked}>
-              🔒 Registration opens when {money(settings.registration_min_paid)} is paid in total (paid {money(paid)}).
-            </Text>
-          )}
-          <View style={styles.row}>
-            <View style={styles.flex}>
-              <Button title="↩ Send back" variant="secondary" onPress={() => setSheet('reg_return')} fullWidth />
-            </View>
-            <View style={styles.flex}>
-              <Button
-                title="📝 Approve registration"
-                onPress={() => setSheet('reg_approve')}
-                disabled={!registrationReady}
-                fullWidth
-              />
-            </View>
-          </View>
-        </>
-      )}
-      {reg === 'waiting' && !officer && (
-        <Text style={styles.meta}>The Admission Officer will check the registration.</Text>
-      )}
-      {reg === 'returned' && (
-        <Button title="Fixed: send the registration again" onPress={() => setSheet('reg_resubmit')} fullWidth />
-      )}
+      {!officer && !received && <Text style={styles.meta}>The Admission Officer does these steps.</Text>}
 
       {sheet && (
         <ApprovalActionSheet
           kind={sheet}
-          lead={lead}
-          warnings={warnings}
+          lead={{ ...lead, admission_fee_need: need }}
           onClose={() => setSheet(null)}
           onDone={(message) => {
             setSheet(null);
@@ -269,53 +189,44 @@ export function ApprovalCard({
 function Step({
   n,
   title,
-  status,
+  done,
+  doneText,
+  waitText,
+  ready,
   by,
   at,
-  note,
+  undo,
 }: {
   n: number;
   title: string;
-  status: string | null;
+  done: boolean;
+  doneText: string;
+  waitText: string;
+  ready?: boolean;
   by: string | null;
   at: string | null;
-  note: string | null;
+  undo?: () => void;
 }) {
-  const label =
-    status === 'approved'
-      ? '✅ Approved'
-      : status === 'returned'
-        ? '↩ Sent back'
-        : status === 'listed'
-          ? '📋 Listed (no pay)'
-          : status === 'waiting'
-            ? '⏳ Waiting'
-            : 'After the admission';
-  const pill =
-    status === 'approved'
-      ? styles.pillGood
-      : status === 'returned'
-        ? styles.pillBad
-        : status
-          ? styles.pillWait
-          : styles.pillOff;
+  const pill = done ? styles.pillGood : ready ? styles.pillWait : styles.pillOff;
   return (
     <View style={styles.step}>
-      <View style={[styles.stepNo, status === 'approved' && styles.stepNoDone]}>
-        <Text style={[styles.stepNoText, status === 'approved' && styles.stepNoTextDone]}>{n}</Text>
+      <View style={[styles.stepNo, done && styles.stepNoDone]}>
+        <Text style={[styles.stepNoText, done && styles.stepNoTextDone]}>{done ? '✓' : n}</Text>
       </View>
       <View style={styles.flex}>
         <View style={styles.stepHead}>
           <Text style={styles.stepTitle}>{title}</Text>
           <View style={[styles.pill, pill]}>
-            <Text style={[styles.pillText, pill]}>{label}</Text>
+            <Text style={[styles.pillText, pill]}>{done ? `✅ ${doneText}` : waitText}</Text>
           </View>
         </View>
-        {status && status !== 'waiting' && at && (
-          <Text style={styles.meta}>{[by, day(at)].filter(Boolean).join(' · ')}</Text>
-        )}
-        {!!note && <Text style={styles.note}>“{note}”</Text>}
+        {done && at && <Text style={styles.meta}>{[by, day(at)].filter(Boolean).join(' · ')}</Text>}
       </View>
+      {undo && (
+        <Pressable onPress={undo} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Undo ${title}`}>
+          <Text style={styles.undo}>Undo</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -455,15 +366,13 @@ function Chips({
 export function ApprovalActionSheet({
   kind,
   lead,
-  warnings,
-  checks,
   onClose,
   onDone,
 }: {
   kind: ApprovalSheetKind;
   lead: ApprovalLead;
-  warnings: number;
-  /** 🌐 shown in the dialog when opened from the table (the card shows them itself) */
+  /** (old, not used) */
+  warnings?: number;
   checks?: { ok: boolean; text: string }[];
   onClose: () => void;
   onDone: (message: string) => void;
@@ -479,43 +388,32 @@ export function ApprovalActionSheet({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const needsReason = kind === 'return' || kind === 'reg_return';
-  const withPlacement = kind === 'approve' || kind === 'place' || kind === 'list';
+  const isUndo = kind === 'undo_submit' || kind === 'undo_receive';
+  const need = Number(lead.admission_fee_need ?? 0);
+  const paid = Number(lead.fee_paid ?? 0);
 
   const save = async () => {
     setError(null);
-    if (needsReason && !text.trim()) return setError('Please write what needs to be fixed.');
+    if (isUndo && !text.trim()) return setError('Please write why.');
     if (kind === 'ref' && !ref.trim()) return setError('Please type the College ID.');
-    if (withPlacement && (!place.courseId || !place.batchId || !place.sectionId)) {
+    if (kind === 'submit' && !nu.trim()) return setError('Please type the NU Admission ID.');
+    if (kind === 'place' && (!place.courseId || !place.batchId || !place.sectionId)) {
       return setError('Please choose the course, batch and section.');
-    }
-    if (kind === 'list' && !nu.trim()) return setError('Please type the NU Admission ID.');
-    if (kind === 'approve' && warnings > 0 && !text.trim()) {
-      return setError('Some checks are not done. Please write why you approve anyway.');
     }
     setSaving(true);
     try {
-      if (kind === 'list') {
-        await listAdmission(lead.id, place, nu, text);
-        onDone('📋 Listed without pay: section and NU Admission ID saved.');
-      } else if (kind === 'approve') {
-        await approveAdmission(lead.id, nu, text, place);
-        onDone('✅ Admission approved. Registration is next.');
-      } else if (kind === 'return') {
-        await returnAdmission(lead.id, text);
-        onDone('↩ Admission sent back to fix.');
-      } else if (kind === 'resubmit') {
-        await resubmitAdmission(lead.id, text);
-        onDone('Sent for admission approval again.');
-      } else if (kind === 'reg_approve') {
-        await approveRegistration(lead.id, text);
-        onDone('📝 Registration approved.');
-      } else if (kind === 'reg_return') {
-        await returnRegistration(lead.id, text);
-        onDone('↩ Registration sent back to fix.');
-      } else if (kind === 'reg_resubmit') {
-        await resubmitRegistration(lead.id, text);
-        onDone('Sent for registration approval again.');
+      if (kind === 'submit') {
+        await submitOnline(lead.id, nu, text);
+        onDone('📤 Submitted Online. The NU Admission ID is saved.');
+      } else if (kind === 'receive') {
+        await markReceived(lead.id, text);
+        onDone('🏛 Received by ITTC.');
+      } else if (kind === 'undo_submit') {
+        await undoIttcStep(lead.id, 'submitted', text);
+        onDone('↩ Submitted Online undone.');
+      } else if (kind === 'undo_receive') {
+        await undoIttcStep(lead.id, 'received', text);
+        onDone('↩ Received by ITTC undone.');
       } else if (kind === 'place') {
         await setPlacement(lead.id, place);
         onDone('🏫 Course, batch and section saved.');
@@ -534,13 +432,10 @@ export function ApprovalActionSheet({
   };
 
   const titles: Record<ApprovalSheetKind, string> = {
-    list: '📋 List without pay',
-    approve: '✅ Approve admission',
-    return: '↩ Send the admission back',
-    resubmit: 'Send for admission approval again',
-    reg_approve: '📝 Approve registration',
-    reg_return: '↩ Send the registration back',
-    reg_resubmit: 'Send for registration approval again',
+    submit: '📤 Submitted Online',
+    receive: '🏛 Received by ITTC',
+    undo_submit: '↩ Undo Submitted Online',
+    undo_receive: '↩ Undo Received by ITTC',
     place: '🏫 Course, batch and section',
     nu: '🆔 NU Admission ID',
     ref: '✏️ College ID',
@@ -554,27 +449,23 @@ export function ApprovalActionSheet({
           <View style={styles.handle} />
           <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetTitle}>{titles[kind]}</Text>
-            {kind === 'approve' &&
-              checks?.map((c) => (
-                <Text key={c.text} style={[styles.check, !c.ok && styles.checkWarn]}>
-                  {c.ok ? '✅' : '⚠️'} {c.text}
-                </Text>
-              ))}
-            {withPlacement && <PlacementPicker value={place} onChange={setPlace} />}
+            {kind === 'submit' && (
+              <Text style={styles.hint}>No money is needed for this step: only the NU Admission ID.</Text>
+            )}
+            {kind === 'receive' && (
+              <Text style={[styles.check, paid >= need ? null : styles.checkWarn]}>
+                {paid >= need ? '✅' : '⚠️'} Admission fee {money(need)} · paid {money(paid)}
+              </Text>
+            )}
+            {kind === 'place' && <PlacementPicker value={place} onChange={setPlace} />}
             {kind === 'place' && (
               <Text style={styles.hint}>
                 A new course changes the fee to that course's fee (its fee talk, or the full fee).
               </Text>
             )}
-            {(kind === 'approve' || kind === 'nu' || kind === 'list') && (
+            {(kind === 'submit' || kind === 'nu') && (
               <TextField
-                label={
-                  kind === 'approve'
-                    ? 'NU Admission ID (now or later)'
-                    : kind === 'list'
-                      ? 'NU Admission ID *'
-                      : 'NU Admission ID'
-                }
+                label={kind === 'submit' ? 'NU Admission ID *' : 'NU Admission ID'}
                 value={nu}
                 onChangeText={setNu}
                 autoCapitalize="characters"
@@ -592,27 +483,22 @@ export function ApprovalActionSheet({
                 placeholder="Type it as it is"
               />
             )}
-            {kind !== 'nu' && kind !== 'ref' && kind !== 'place' && (
+            {(kind === 'submit' || kind === 'receive' || isUndo) && (
               <TextField
-                label={
-                  needsReason
-                    ? 'What needs to be fixed? *'
-                    : kind === 'approve' && warnings > 0
-                      ? `Note * (${warnings} check${warnings > 1 ? 's' : ''} not done)`
-                      : 'Note (optional)'
-                }
+                label={isUndo ? 'Why? *' : 'Note (optional)'}
                 value={text}
                 onChangeText={setText}
                 multiline
-                placeholder={needsReason ? 'e.g. NID copy missing' : 'e.g. Fee in 2 installments'}
+                placeholder={isUndo ? 'e.g. Marked by mistake' : 'e.g. Submitted from the NU site'}
               />
             )}
             {error && <Text style={styles.error}>{error}</Text>}
             <Button
-              title={needsReason ? 'Send back' : kind === 'approve' || kind === 'reg_approve' ? 'Approve' : 'Save'}
-              variant={needsReason ? 'danger' : 'primary'}
+              title={isUndo ? 'Undo' : kind === 'submit' ? '📤 Submitted' : kind === 'receive' ? '🏛 Received' : 'Save'}
+              variant={isUndo ? 'danger' : 'primary'}
               onPress={save}
               loading={saving}
+              disabled={kind === 'receive' && paid < need}
               fullWidth
             />
           </ScrollView>
@@ -669,6 +555,7 @@ const styles = StyleSheet.create({
   idEmpty: { fontWeight: fontWeight.regular, color: colors.textMuted },
   missing: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.warning },
   edit: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
+  undo: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.danger, paddingTop: 4 },
   label: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.textMuted, marginTop: spacing.xs },
   check: { fontSize: fontSize.small, color: colors.text },
   checkWarn: { color: colors.warning, fontWeight: fontWeight.semibold },

@@ -42,9 +42,9 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/students' as Href,
       },
       {
-        title: 'Admission approval',
-        description: 'Admission Officer approves admitted students; NU Admission ID',
-        icon: '✅',
+        title: 'Admission flow',
+        description: 'Submitted Online → Received by ITTC: who does it, the admission fee',
+        icon: '🏛',
         href: '/settings/approval' as Href,
       },
       {

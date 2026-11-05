@@ -8,6 +8,19 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-22-a',
+    date: '22 Nov 2026',
+    title: '🏛 Submitted Online → Received by ITTC',
+    items: [
+      '📤 Submitted Online: only the NU Admission ID, no money needed',
+      '🏛 Received by ITTC: after Submitted, once the course’s admission fee is paid (Settings → Courses → the course)',
+      '🗂 Listed, Admission approval and Registration are gone; old students were moved to the new steps',
+      '💵 Students tab: the ৳ button by the search shows who paid how much (৳0, under ৳1,000, ৳1,000+, your own range, this month)',
+      '↕ Sort by Paid most, Paid least or Last paid; the list shows the total paid',
+      '🏛 Mark many → ITTC: the ready ones are marked Received at once',
+    ],
+  },
+  {
     key: '2026-11-21-a',
     date: '21 Nov 2026',
     title: '🔀 Move many students at once',

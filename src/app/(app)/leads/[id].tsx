@@ -587,6 +587,12 @@ export function LeadDetailView({
         return d.to
           ? `🆔 NU Admission ID: ${d.to}${d.from ? ` (was ${d.from})` : ''}`
           : `🆔 NU Admission ID removed (was ${d.from ?? ''})`;
+      case 'submitted_online':
+        return `📤 Submitted Online${d.nu_admission_id ? ` · NU ${d.nu_admission_id}` : ''}${d.note ? ` · “${d.note}”` : ''}`;
+      case 'received_by_ittc':
+        return `🏛 Received by ITTC${d.fee != null ? ` · admission fee ৳${Math.round(Number(d.fee)).toLocaleString('en-IN')} paid` : ''}${d.note ? ` · “${d.note}”` : ''}`;
+      case 'ittc_undone':
+        return `↩ ${d.step === 'received' ? 'Received by ITTC' : 'Submitted Online'} undone${d.reason ? `: ${d.reason}` : ''}`;
       case 'admission_listed':
         return `📋 Listed without pay${d.section ? ` · Section ${d.section}` : ''}${d.nu_admission_id ? ` · NU ${d.nu_admission_id}` : ''}${d.note ? ` · “${d.note}”` : ''}`;
       case 'placement_changed':
@@ -1451,7 +1457,7 @@ export function LeadDetailView({
   const fee = stageKind === 'open' || stageKind === 'won' ? feeBadge(lead) : null;
   const approval =
     stageKind === 'won' && lead.admitted_at
-      ? stageBadge(lead.approval_status, lead.registration_status, lead.listed_at)
+      ? stageBadge(lead.submitted_at, lead.received_at, lead.admission_fee_ok)
       : null;
   const admissionSummary =
     [

@@ -66,6 +66,8 @@ import {
   sortLabel,
 } from '@/features/leads/LeadSortSheet';
 import { StudentsSummary } from '@/features/students/StudentsSummary';
+import { PaidSheet, paidRangeLabel } from '@/features/students/PaidSheet';
+import { BulkReceivedSheet } from '@/features/approval/BulkReceivedSheet';
 import {
   MAX_MARK_ALL,
   listAllMatchingLeads,
@@ -74,6 +76,9 @@ import {
   type LeadListItem,
   type LeadSort,
   type QuickFilter,
+  STUDENT_FLOW_CHIPS,
+  sumLeadPaid,
+  type PaidRange,
 } from '@/features/leads/api';
 import {
   countActiveFilters,
@@ -121,7 +126,7 @@ import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 
 
 // The floating buttons shown while leads are marked ("lost" opens the Lost sheet)
-type FloatAction = QuickField | 'lost' | 'fee' | 'placement';
+type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received';
 
 const ACTIONS: {
   field: FloatAction;
@@ -137,6 +142,7 @@ const ACTIONS: {
   { field: 'fee', label: 'Fee', icon: 'cash', color: '#D97706' },
   { field: 'lost', label: 'Lost', icon: 'close-circle', color: '#EF4444' },
   { field: 'placement', label: 'Move', icon: 'swap-horizontal', color: '#0D9488' },
+  { field: 'received', label: 'ITTC', icon: 'business', color: '#7C3AED' },
 ];
 
 
@@ -175,15 +181,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     }
   };
 
-  // 🎓 Admission approval chips (Students only, when it is on)
-  const [approvalOn, setApprovalOn] = useState(false);
   // 🔀 Move marked students to another course · batch · section (Admission Officer / admin)
   const [canMove, setCanMove] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  // 🏛 Mark the ready ones Received by ITTC
+  const [receivedOpen, setReceivedOpen] = useState(false);
   useEffect(() => {
     if (students)
       getApprovalSettings().then((s) => {
-        setApprovalOn(s.enabled);
         setCanMove(canApprove(s, profile, isAdmin));
       });
   }, [students, profile, isAdmin]);
@@ -199,17 +204,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         { key: 'papers', label: '📄 Papers missing' },
         { key: 'new_students', label: 'New this month' },
         // 🎓 Admission approval (Settings → Admission approval)
-        ...(approvalOn
-          ? [
-              { key: 'approval_waiting' as QuickFilter, label: '⏳ Admission waiting' },
-              { key: 'listed' as QuickFilter, label: '📋 Listed' },
-              { key: 'registration_waiting' as QuickFilter, label: '📝 Registration waiting' },
-              { key: 'registered' as QuickFilter, label: '✅ Registered' },
-              { key: 'approval_returned' as QuickFilter, label: '↩ Sent back' },
-              { key: 'no_section' as QuickFilter, label: '🏫 No section' },
-              { key: 'no_nu_id' as QuickFilter, label: '🆔 No NU ID' },
-            ]
-          : []),
+        ...STUDENT_FLOW_CHIPS,
       ]
     : // Leads: "All", then who added them and when (➕ chips below)
       [{ key: 'all', label: 'All' }];
@@ -242,7 +237,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       (a.field !== 'fee' || feeOn) &&
       // Students are admitted already: no stage / lost from here
       (!students || (a.field !== 'stage' && a.field !== 'lost')) &&
-      (a.field !== 'placement' || (students && canMove)),
+      (a.field !== 'placement' || (students && canMove)) &&
+      (a.field !== 'received' || (students && canMove)),
   );
   const showAssignee = assignmentOn && seesOthers;
 
@@ -374,6 +370,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   };
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
+  // 💵 Students: paid between / since (the 💵 button by the search)
+  const [paidRange, setPaidRange] = useState<PaidRange | null>(null);
+  const [paidOpen, setPaidOpen] = useState(false);
+  const paidQ = students ? paidRange : null;
+
   // Full filters
   const [filters, setFilters] = useState<LeadFilters>({});
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
@@ -484,10 +485,36 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       students,
       ids: idsFilter,
       added: addedQ,
+      paid: paidQ,
     }),
-    [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort, students, idsFilter, addedQ],
+    [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort, students, idsFilter, addedQ, paidQ],
   );
   const queryKey = useMemo(() => JSON.stringify(listQuery), [listQuery]);
+
+  // 💵 Students: how much the students in the list paid in all
+  const [paidSum, setPaidSum] = useState<{ total: number; count: number; paying: number } | null>(null);
+  useEffect(() => {
+    if (!students) return;
+    let live = true;
+    const t = setTimeout(() => {
+      sumLeadPaid(listQuery)
+        .then((r) => live && setPaidSum(r))
+        .catch(() => live && setPaidSum(null));
+    }, 400);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, queryKey]);
+  const paidSummary =
+    students && paidSum && paidSum.count > 0 ? (
+      <Text style={styles.paidLine} numberOfLines={1}>
+        💵 {money(paidSum.total)} paid
+        {paidSum.paying > 0 ? ` · avg ${money(Math.round(paidSum.total / paidSum.paying))} (${paidSum.paying} paid)` : ''}
+        {paidRange ? ` · ${paidRangeLabel(paidRange)}` : ''}
+      </Text>
+    ) : null;
 
   const loadFirstPage = useCallback(async () => {
     const myRequest = ++requestId.current;
@@ -579,7 +606,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             ...(assignmentOn && seesOthers ? [{ key: 'unassigned' as QuickFilter, label: 'Unassigned' }] : []),
           ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [students, assignmentOn, seesOthers, approvalOn],
+    [students, assignmentOn, seesOthers],
   );
   const chipKeys = modernChips.map((c) => c.key).join(',');
   const [chipCounts, setChipCounts] = useState<Map<string, number | null>>(new Map());
@@ -595,13 +622,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       students,
       ids: idsFilter,
       added: addedQ,
+      paid: paidQ,
     };
     Promise.all(modernChips.map((c) => countLeads({ ...base, quick: c.key }).catch(() => null))).then((list) => {
       if (mine !== countsId.current) return;
       setChipCounts(new Map(modernChips.map((c, i) => [c.key, list[i]])));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modern, debouncedSearch, profile?.id, effectiveFilters, closedMode, students, idsFilter, addedQ, chipKeys]);
+  }, [modern, debouncedSearch, profile?.id, effectiveFilters, closedMode, students, idsFilter, addedQ, chipKeys, paidQ]);
   useFocusEffect(
     useCallback(() => {
       loadChipCounts();
@@ -645,7 +673,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   useEffect(() => {
     setSelected(new Set());
     setMatchingCache([]);
-  }, [debouncedSearch, quick, effectiveFilters, addedQ]);
+  }, [debouncedSearch, quick, effectiveFilters, addedQ, paidQ]);
 
   // --- after a call from the list: open the popup on return -----------
   useEffect(() => {
@@ -700,6 +728,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         students,
         ids: idsFilter,
         added: addedQ,
+        paid: paidQ,
         page: next,
       });
       setLeads((list) => [...list, ...result.items]);
@@ -897,6 +926,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         students,
         ids: idsFilter,
         added: addedQ,
+        paid: paidQ,
       });
       setMatchingCache(all);
       setSelected(new Set(all.map((l) => l.id)));
@@ -921,7 +951,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
   const markedLeads = [...selected].map((id) => pool.get(id)).filter(Boolean) as LeadListItem[];
 
-  const listIsFiltered = filterCount > 0 || quick !== 'all' || !!debouncedSearch || !!addedQ;
+  const listIsFiltered = filterCount > 0 || quick !== 'all' || !!debouncedSearch || !!addedQ || !!paidQ;
 
   // After a change from a sheet or the bar: the list and the board show it
   const reloadAll = () => {
@@ -951,7 +981,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     Keyboard.dismiss();
   };
   // Anything besides the search that makes the list smaller
-  const narrowed = filterCount > 0 || quick !== 'all' || !!addedQ || !!idsFilter;
+  const narrowed = filterCount > 0 || quick !== 'all' || !!addedQ || !!idsFilter || !!paidQ;
   const searchEverywhere = () => {
     setLoading(true);
     applyFilters({}, null);
@@ -971,6 +1001,18 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         keep={keepSetting}
         onKeep={isWeb ? undefined : changeKeep}
       />
+
+      {paidOpen && (
+        <PaidSheet
+          value={paidRange}
+          onClose={() => setPaidOpen(false)}
+          onApply={(r) => {
+            setPaidOpen(false);
+            setLoading(true);
+            setPaidRange(r);
+          }}
+        />
+      )}
 
       <LeadFilterSheet
         visible={filterSheetVisible}
@@ -1086,6 +1128,21 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           onDone={(message) => {
             const ids = markedLeads.map((l) => l.id);
             setMoveOpen(false);
+            setSelected(new Set());
+            setMatchingCache([]);
+            showToast(message);
+            afterChange(ids);
+          }}
+        />
+      )}
+
+      {receivedOpen && (
+        <BulkReceivedSheet
+          ids={markedLeads.map((l) => l.id)}
+          onClose={() => setReceivedOpen(false)}
+          onDone={(message) => {
+            const ids = markedLeads.map((l) => l.id);
+            setReceivedOpen(false);
             setSelected(new Set());
             setMatchingCache([]);
             showToast(message);
@@ -1250,12 +1307,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       { key: 'fee', field: 'fee', label: 'Fee', icon: 'payments' },
       { key: 'lost', field: 'lost', label: 'Lost', icon: 'block', danger: true },
       { key: 'placement', field: 'placement', label: 'Move', icon: 'swap-horiz' },
+      { key: 'received', field: 'received', label: 'ITTC', icon: 'account-balance' },
     ].filter((a) => a.field === 'rating' || actions.some((x) => x.field === a.field)) as (ModernAction & {
       field: FloatAction;
     })[];
     const runAction = (field: FloatAction) => {
       if (field === 'lost') return setLostVisible(true);
       if (field === 'placement') return setMoveOpen(true);
+      if (field === 'received') return setReceivedOpen(true);
       if (field === 'fee') {
         const one = markedLeads.length === 1 ? markedLeads[0] : null;
         if (!one) return showToast('Mark just one lead for Fee & discount.');
@@ -1340,19 +1399,31 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               <MIcon name="close" size={20} color={colors.textMuted} />
             </Pressable>
           )}
-          <Pressable
-            onPress={() => setFilterSheetVisible(true)}
-            style={[m.filterBtn, filterCount > 0 && m.filterBtnOn]}
-            accessibilityRole="button"
-            accessibilityLabel={filterCount > 0 ? `Filters, ${filterCount} on` : 'Filters'}
-          >
-            <MIcon name="tune" size={20} color={filterCount > 0 ? md.onPrimaryC : colors.text} />
-            {filterCount > 0 && (
-              <View style={m.badge}>
-                <Text style={m.badgeText}>{filterCount}</Text>
-              </View>
-            )}
-          </Pressable>
+          {students ? (
+            // 💵 Students: paid between / since (the lead filters are not for students)
+            <Pressable
+              onPress={() => setPaidOpen(true)}
+              style={[m.filterBtn, !!paidRange && m.filterBtnOn]}
+              accessibilityRole="button"
+              accessibilityLabel={paidRange ? `Paid: ${paidRangeLabel(paidRange)}. Change` : 'Filter by paid'}
+            >
+              <Text style={[styles.paidBtnText, !!paidRange && { color: md.onPrimaryC }]}>৳</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => setFilterSheetVisible(true)}
+              style={[m.filterBtn, filterCount > 0 && m.filterBtnOn]}
+              accessibilityRole="button"
+              accessibilityLabel={filterCount > 0 ? `Filters, ${filterCount} on` : 'Filters'}
+            >
+              <MIcon name="tune" size={20} color={filterCount > 0 ? md.onPrimaryC : colors.text} />
+              {filterCount > 0 && (
+                <View style={m.badge}>
+                  <Text style={m.badgeText}>{filterCount}</Text>
+                </View>
+              )}
+            </Pressable>
+          )}
         </View>
 
         {/* 🔍 Recent searches */}
@@ -1411,7 +1482,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                 }}
               />
             )}
-            {savedFilters.map((f) => (
+            {(students ? [] : savedFilters).map((f) => (
               <ModernChip
                 key={f.id}
                 label={f.name}
@@ -1453,6 +1524,18 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                 <Text style={styles.clearFilters}>Clear</Text>
               </Pressable>
             )}
+            {students && !!paidRange && (
+              <Pressable
+                onPress={() => {
+                  setLoading(true);
+                  setPaidRange(null);
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+              >
+                <Text style={styles.clearFilters}>Clear ৳</Text>
+              </Pressable>
+            )}
             {sort === 'next_call' && !showBoard && (
               <Pressable
                 onPress={toggleGroup}
@@ -1475,6 +1558,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             </Pressable>
           </View>
         )}
+
+        {/* 💵 Students: paid in all (and the ৳ filter) */}
+        {!selecting && paidSummary && <View style={m.meta}>{paidSummary}</View>}
 
         {/* ➕ How many each person added in the chosen period */}
         {!selecting && !students && addedCounts.length > 1 && (
@@ -1718,23 +1804,35 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             </Pressable>
           )}
         </View>
-        <Pressable
-          onPress={() => setFilterSheetVisible(true)}
-          style={({ pressed }) => [
-            styles.filterBtn,
-            filterCount > 0 && styles.filterBtnOn,
-            pressed && styles.pressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={filterCount > 0 ? `Filters, ${filterCount} on` : 'Filters'}
-        >
-          <Ionicons name="options" size={20} color={filterCount > 0 ? colors.textOnPrimary : colors.text} />
-          {filterCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{filterCount}</Text>
-            </View>
-          )}
-        </Pressable>
+        {students ? (
+          // 💵 Students: paid between / since (the lead filters are not for students)
+          <Pressable
+            onPress={() => setPaidOpen(true)}
+            style={({ pressed }) => [styles.filterBtn, !!paidRange && styles.filterBtnOn, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={paidRange ? `Paid: ${paidRangeLabel(paidRange)}. Change` : 'Filter by paid'}
+          >
+            <Text style={[styles.paidBtnText, !!paidRange && { color: colors.textOnPrimary }]}>৳</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => setFilterSheetVisible(true)}
+            style={({ pressed }) => [
+              styles.filterBtn,
+              filterCount > 0 && styles.filterBtnOn,
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={filterCount > 0 ? `Filters, ${filterCount} on` : 'Filters'}
+          >
+            <Ionicons name="options" size={20} color={filterCount > 0 ? colors.textOnPrimary : colors.text} />
+            {filterCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{filterCount}</Text>
+              </View>
+            )}
+          </Pressable>
+        )}
       </View>
 
       {/* 🔍 Recent searches: shown while the empty search box is tapped */}
@@ -1807,7 +1905,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
           {savedFilters.length > 0 && <View style={styles.chipDivider} />}
 
-          {savedFilters.map((f) => {
+          {(students ? [] : savedFilters).map((f) => {
             const on = activeSavedId === f.id;
             return (
               <Pressable
@@ -1830,6 +1928,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           })}
         </ScrollView>
       )}
+
+      {/* 💵 Students: paid in all */}
+      {!selecting && paidSummary && <View style={styles.countRow}>{paidSummary}</View>}
 
       {/* Count line + sort */}
       {!selecting && (
@@ -1864,6 +1965,18 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           {filterCount > 0 && (
             <Pressable onPress={() => applyFilters({}, null)} hitSlop={8} accessibilityRole="button">
               <Text style={styles.clearFilters}>Clear filters</Text>
+            </Pressable>
+          )}
+          {students && !!paidRange && (
+            <Pressable
+              onPress={() => {
+                setLoading(true);
+                setPaidRange(null);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
+              <Text style={styles.clearFilters}>Clear ৳</Text>
             </Pressable>
           )}
           {/* 📞📝 Compact (as before) / Detailed (last call and note): list and board */}
@@ -2100,6 +2213,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                   onPress={() => {
                     if (a.field === 'lost') return setLostVisible(true);
                     if (a.field === 'placement') return setMoveOpen(true);
+                    if (a.field === 'received') return setReceivedOpen(true);
                     if (a.field === 'fee') {
                       const one = markedLeads.length === 1 ? markedLeads[0] : null;
                       if (!one) return showToast('Mark just one lead for Fee & discount.');
@@ -2156,6 +2270,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 // One lead card
 // =====================================================================
 const styles = StyleSheet.create({
+  paidBtnText: { fontSize: 19, fontWeight: fontWeight.bold, color: colors.text },
+  paidLine: { fontSize: fontSize.caption, color: colors.textMuted },
   screen: { flex: 1, backgroundColor: colors.background },
   // 📌 Keep in place
   resort: {

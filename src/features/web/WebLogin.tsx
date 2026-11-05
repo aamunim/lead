@@ -76,7 +76,7 @@ export function WebLogin() {
           <View style={styles.points}>
             {[
               ['🎓', 'Students and admissions in one place'],
-              ['✅', 'Admission approval, College ID and NU ID'],
+              ['🏛', 'Submitted Online, Received by ITTC, NU ID'],
               ['💰', 'Fees, discounts, payments and papers'],
             ].map(([icon, text]) => (
               <View key={text} style={styles.point}>

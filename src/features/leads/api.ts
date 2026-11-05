@@ -65,12 +65,14 @@ export type LeadListItem = Pick<
   | 'guardian_phone'
   | 'email'
   | 'area'
-  // 🎓 Admission approval (admitted students)
-  | 'approval_status'
+  // 🏛 Submitted Online → Received by ITTC (admitted students)
   | 'nu_admission_id'
-  | 'registration_status'
   | 'admitted_section_id'
-  | 'listed_at'
+  | 'submitted_at'
+  | 'received_at'
+  | 'admission_fee_need'
+  | 'admission_fee_ok'
+  | 'fee_last_paid_at'
   // Papers (counts kept up to date by the database)
   | 'papers_required'
   | 'papers_received'
@@ -163,17 +165,23 @@ export type QuickFilter =
   | 'paid'
   | 'papers'
   | 'new_students'
-  // 🎓 Admission approval
-  | 'approval_waiting'
-  | 'approved'
-  | 'approval_returned'
+  // 📤 Submitted Online → 🏛 Received by ITTC
+  | 'not_submitted'
+  | 'submitted'
+  | 'ittc_ready'
+  | 'received'
   | 'no_nu_id'
-  // 📝 Registration (after the admission is approved)
-  | 'registration_waiting'
-  // 📋 Listed without pay (section + NU ID, no money yet)
-  | 'listed'
-  | 'registered'
   | 'no_section';
+
+/** 🏛 The Students tab's flow chips (phone and website) */
+export const STUDENT_FLOW_CHIPS: { key: QuickFilter; label: string }[] = [
+  { key: 'not_submitted', label: '⏳ Not submitted' },
+  { key: 'submitted', label: '📤 Submitted' },
+  { key: 'ittc_ready', label: '🏛 Ready for ITTC' },
+  { key: 'received', label: '🏛 Received' },
+  { key: 'no_nu_id', label: '🆔 No NU ID' },
+  { key: 'no_section', label: '🏫 No section' },
+];
 
 /**
  * Closed leads (Admitted / Lost / Cancelled) in the list:
@@ -201,7 +209,11 @@ export type LeadSort =
   | 'admitted_oldest'
   | 'student_id'
   | 'due_most'
-  | 'next_due';
+  | 'next_due'
+  // 💵 Paid
+  | 'paid_most'
+  | 'paid_least'
+  | 'last_paid';
 
 export const DEFAULT_SORT: LeadSort = 'next_call';
 
@@ -224,6 +236,9 @@ export const STUDENT_SORT_OPTIONS: typeof SORT_OPTIONS = [
   { value: 'admitted_oldest', label: 'Oldest admission', text: 'First admitted first', icon: '📜' },
   { value: 'name', label: 'Name A–Z', text: 'By name', icon: '🔤' },
   { value: 'student_id', label: 'Student ID', text: 'By student ID', icon: '🪪' },
+  { value: 'paid_most', label: 'Paid most', text: 'Most money paid first', icon: '💰' },
+  { value: 'paid_least', label: 'Paid least', text: 'Least money paid first (৳0 at the top)', icon: '🪙' },
+  { value: 'last_paid', label: 'Last paid', text: 'Latest payment first', icon: '🧾' },
   { value: 'due_most', label: 'Most due', text: 'Most money still to pay first', icon: '💵' },
   { value: 'next_due', label: 'Next installment', text: 'Earliest installment date first', icon: '📅' },
   { value: 'papers_missing', label: 'Most papers missing', text: 'Most required papers still to collect first', icon: '📄' },
@@ -248,6 +263,17 @@ export type LeadQuery = {
   students?: boolean;
   /** ➕ Added by these people, in this period (the Leads tab's user + date chips) */
   added?: AddedQuery | null;
+  /** 💵 Students: paid between (৳, refunds taken off), or paid since a day */
+  paid?: PaidRange | null;
+};
+
+/** 💵 Paid so far: min / max in ৳ (either may be left out), and "paid since" (ISO) */
+export type PaidRange = {
+  min?: number | null;
+  max?: number | null;
+  from?: string | null;
+  /** how "from" was chosen (for the label) */
+  since?: 'week' | 'month' | null;
 };
 
 export type DuplicateLead = {
@@ -279,7 +305,7 @@ function toError(error: { message: string }): Error {
 const LIST_SELECT = `
   id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, created_by, assigned_to, stage_id, closed_at, student_ref,
   alt_phone, guardian_name, guardian_phone, email, area,
-  approval_status, nu_admission_id, registration_status, admitted_section_id, listed_at,
+  nu_admission_id, admitted_section_id, submitted_at, received_at, admission_fee_need, admission_fee_ok, fee_last_paid_at,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
   fee_status, fee_full, fee_discount, fee_final, fee_paid, fee_due, fee_next_due, admitted_at, admitted_by,
@@ -314,7 +340,7 @@ export const PAGE_SIZE = 30;
 export const MAX_MARK_ALL = 2000;
 
 /** Builds the leads query with search, quick filter and the full filters */
-function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids') {
+function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' | 'paid') {
   const {
     search = '',
     quick = 'all',
@@ -327,13 +353,18 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids')
     onlyIds = null,
     students = false,
     added = null,
+    paid = null,
   } = options;
   const idOnly = withCount === 'only' || withCount === 'ids';
 
   let query = supabase
     .from('leads')
     .select(
-      idOnly ? 'id' + filterSelect(filters) : LIST_SELECT + filterSelect(filters),
+      withCount === 'paid'
+        ? 'id, fee_paid' + filterSelect(filters)
+        : idOnly
+          ? 'id' + filterSelect(filters)
+          : LIST_SELECT + filterSelect(filters),
       withCount === 'only' ? { count: 'exact', head: true } : withCount === true ? { count: 'exact' } : undefined,
     )
     .is('deleted_at', null);
@@ -389,16 +420,18 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids')
     if (quick === 'overdue') query = query.gt('fee_due', 0).lt('fee_next_due', todayIso);
     if (quick === 'paid') query = query.eq('fee_due', 0);
     if (quick === 'papers') query = query.gt('papers_missing', 0);
-    if (quick === 'approval_waiting') query = query.eq('approval_status', 'waiting');
-    if (quick === 'approved') query = query.eq('approval_status', 'approved');
-    if (quick === 'approval_returned') {
-      query = query.or('approval_status.eq.returned,registration_status.eq.returned');
+    if (quick === 'not_submitted') query = query.is('submitted_at', null);
+    if (quick === 'submitted') query = query.not('submitted_at', 'is', null).is('received_at', null);
+    if (quick === 'ittc_ready') {
+      query = query.not('submitted_at', 'is', null).is('received_at', null).eq('admission_fee_ok', true);
     }
-    if (quick === 'listed') query = query.eq('approval_status', 'waiting').not('listed_at', 'is', null);
-    if (quick === 'registration_waiting') query = query.eq('registration_status', 'waiting');
-    if (quick === 'registered') query = query.eq('registration_status', 'approved');
-    if (quick === 'no_section') query = query.not('approval_status', 'is', null).is('admitted_section_id', null);
-    if (quick === 'no_nu_id') query = query.not('approval_status', 'is', null).is('nu_admission_id', null);
+    if (quick === 'received') query = query.not('received_at', 'is', null);
+    if (quick === 'no_section') query = query.is('admitted_section_id', null);
+    if (quick === 'no_nu_id') query = query.is('nu_admission_id', null);
+    // 💵 Paid (refunds taken off): a range, e.g. under ৳1,000 or ৳5,000 – ৳10,000
+    if (paid?.min != null) query = query.gte('fee_paid_total', paid.min);
+    if (paid?.max != null) query = query.lte('fee_paid_total', paid.max);
+    if (paid?.from) query = query.gte('fee_last_paid_at', paid.from);
     if (quick === 'new_students') {
       query = query.gte('admitted_at', new Date(today.getFullYear(), today.getMonth(), 1).toISOString());
     }
@@ -457,6 +490,15 @@ function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: 
     case 'student_id':
       q = q.order('student_ref', { ascending: true, nullsFirst: false }).order('name', { ascending: true });
       break;
+    case 'paid_most':
+      q = q.order('fee_paid_total', { ascending: false }).order('name', { ascending: true });
+      break;
+    case 'paid_least':
+      q = q.order('fee_paid_total', { ascending: true }).order('name', { ascending: true });
+      break;
+    case 'last_paid':
+      q = q.order('fee_last_paid_at', { ascending: false, nullsFirst: false }).order('name', { ascending: true });
+      break;
     case 'due_most':
       q = q.order('fee_due', { ascending: false, nullsFirst: false }).order('name', { ascending: true });
       break;
@@ -498,6 +540,26 @@ export async function listLeads(
 export async function countLeads(options: LeadQuery): Promise<number | null> {
   const { count, error } = await buildLeadQuery(options, 'only');
   return error ? null : (count ?? null);
+}
+
+/** 💵 Students: how much the matching students paid in all (refunds taken off) */
+export async function sumLeadPaid(options: LeadQuery): Promise<{ total: number; count: number; paying: number }> {
+  let total = 0;
+  let count = 0;
+  let paying = 0;
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await buildLeadQuery(options, 'paid').range(from, from + 999);
+    if (error) throw toError(error);
+    const rows = (data ?? []) as unknown as { fee_paid: number | null }[];
+    for (const r of rows) {
+      const n = Number(r.fee_paid ?? 0);
+      total += n;
+      if (n > 0) paying += 1;
+    }
+    count += rows.length;
+    if (rows.length < 1000) break;
+  }
+  return { total, count, paying };
 }
 
 /** Every lead that matches (up to MAX_MARK_ALL), for "Mark all matching" */

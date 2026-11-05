@@ -89,7 +89,7 @@ function ModernLeadCardBase({
 
   // Stage chip (students: the approval step; closed leads: Admitted / Lost)
   const approval =
-    student && kind === 'won' ? stageBadge(lead.approval_status, lead.registration_status, lead.listed_at) : null;
+    student && kind === 'won' ? stageBadge(lead.submitted_at, lead.received_at, lead.admission_fee_ok) : null;
   const closed = !student && kind !== 'open' ? CLOSED[kind] : null;
   const chip = approval
     ? {

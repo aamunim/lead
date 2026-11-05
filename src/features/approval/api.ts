@@ -5,11 +5,11 @@ import { supabase } from '@/shared/lib/supabase';
 import type { Json } from '@/shared/types/database';
 
 // =====================================================================
-// 🎓 Admission approval: admitted students only, outside the pipeline
-//   After "Mark admitted" the Admission Officer checks everything and
-//   approves (NU Admission ID now or later) or sends it back with a reason.
-//   The College ID is the Student ID (Settings → Admission). Cancelling the
-//   admission hides all of it (the timeline keeps it).
+// 🏛 Admission flow (admitted students only, outside the pipeline)
+//   ✅ Admitted → 📤 Submitted Online (NU Admission ID, no money)
+//              → 🏛 Received by ITTC (the course's admission fee paid)
+//   The Admission Officer (Settings → Admission flow) and admins do both.
+//   Cancelling the admission hides all of it (the timeline keeps it).
 // =====================================================================
 
 export type ApprovalStatus = 'waiting' | 'approved' | 'returned';
@@ -17,9 +17,9 @@ export type ApprovalStatus = 'waiting' | 'approved' | 'returned';
 export type ApprovalSettings = {
   enabled: boolean;
   who: WhoRule;
-  /** ৳ paid in total before the admission can be approved */
+  /** ৳ the default admission fee (a course can have its own: Settings → Courses) */
   admission_min_paid: number;
-  /** ৳ paid in total before the registration can be approved */
+  /** (old: the registration step is gone) */
   registration_min_paid: number;
 };
 
@@ -58,39 +58,18 @@ export function canApprove(s: ApprovalSettings, profile: MyProfile | null, isAdm
 }
 
 /**
- * Where a student is: the admission approval first, then the registration.
+ * Where a student is: ✅ admitted → 📤 Submitted Online → 🏛 Received by ITTC
  * (one badge for the cards and the table)
  */
 export function stageBadge(
-  approval: string | null | undefined,
-  registration: string | null | undefined,
-  listedAt?: string | null,
+  submittedAt: string | null | undefined,
+  receivedAt: string | null | undefined,
+  feeOk?: boolean | null,
 ): { text: string; color: 'wait' | 'good' | 'bad' } | null {
-  if (approval === 'approved') {
-    if (registration === 'approved') return { text: '✅ Registered', color: 'good' };
-    if (registration === 'returned') return { text: '↩ Registration sent back', color: 'bad' };
-    return { text: '📝 Registration waiting', color: 'wait' };
-  }
-  if (approval === 'returned') return { text: '↩ Admission sent back', color: 'bad' };
-  if (approval === 'waiting' && listedAt) return { text: '📋 Listed (no pay)', color: 'wait' };
-  if (approval === 'waiting') return { text: '⏳ Admission waiting', color: 'wait' };
-  return null;
-}
-
-/** Badge for a student's card and the approval card */
-export function approvalBadge(
-  status: string | null | undefined,
-): { text: string; color: 'wait' | 'good' | 'bad' } | null {
-  switch (status) {
-    case 'waiting':
-      return { text: '⏳ Approval waiting', color: 'wait' };
-    case 'approved':
-      return { text: '✅ Approved', color: 'good' };
-    case 'returned':
-      return { text: '↩ Sent back', color: 'bad' };
-    default:
-      return null;
-  }
+  if (receivedAt) return { text: '🏛 Received by ITTC', color: 'good' };
+  if (submittedAt && feeOk) return { text: '🏛 Ready for ITTC', color: 'wait' };
+  if (submittedAt) return { text: '📤 Submitted online', color: 'wait' };
+  return { text: '⏳ Not submitted', color: 'wait' };
 }
 
 function toError(error: { message: string }): Error {
@@ -102,37 +81,7 @@ function toError(error: { message: string }): Error {
 /** Course · batch · section of an admitted student */
 export type Placement = { courseId: string | null; batchId: string | null; sectionId: string | null };
 
-export async function approveAdmission(
-  leadId: string,
-  nuAdmissionId: string,
-  note: string,
-  placement: Placement,
-): Promise<void> {
-  const { error } = await supabase.rpc('approve_admission', {
-    p_lead: leadId,
-    p_nu_admission_id: nuAdmissionId.trim() || undefined,
-    p_note: note.trim() || undefined,
-    p_course: placement.courseId ?? undefined,
-    p_batch: placement.batchId ?? undefined,
-    p_section: placement.sectionId ?? undefined,
-  });
-  if (error) throw toError(error);
-}
 
-/** 📋 Listed without pay: the section (and course / batch) and the NU Admission ID, before any money */
-export async function listAdmission(leadId: string, p: Placement, nuAdmissionId: string, note: string): Promise<void> {
-  if (!p.courseId || !p.batchId || !p.sectionId) throw new Error('Please choose the course, batch and section.');
-  if (!nuAdmissionId.trim()) throw new Error('Please type the NU Admission ID.');
-  const { error } = await supabase.rpc('list_admission', {
-    p_lead: leadId,
-    p_course: p.courseId,
-    p_batch: p.batchId,
-    p_section: p.sectionId,
-    p_nu_admission_id: nuAdmissionId.trim(),
-    p_note: note.trim() || undefined,
-  });
-  if (error) throw toError(error);
-}
 
 /** Change the course / batch / section (at approval or later) */
 export async function setPlacement(leadId: string, p: Placement): Promise<void> {
@@ -148,20 +97,8 @@ export async function setPlacement(leadId: string, p: Placement): Promise<void> 
   if (error) throw toError(error);
 }
 
-export async function approveRegistration(leadId: string, note: string): Promise<void> {
-  const { error } = await supabase.rpc('approve_registration', { p_lead: leadId, p_note: note.trim() || undefined });
-  if (error) throw toError(error);
-}
 
-export async function returnRegistration(leadId: string, reason: string): Promise<void> {
-  const { error } = await supabase.rpc('return_registration', { p_lead: leadId, p_reason: reason });
-  if (error) throw toError(error);
-}
 
-export async function resubmitRegistration(leadId: string, note: string): Promise<void> {
-  const { error } = await supabase.rpc('resubmit_registration', { p_lead: leadId, p_note: note.trim() || undefined });
-  if (error) throw toError(error);
-}
 
 /** Paid so far (refunds taken off), as the database counts it for the approvals */
 export async function getPaid(leadId: string): Promise<number> {
@@ -228,15 +165,7 @@ export async function updateSection(id: string, patch: { name?: string; is_activ
   }
 }
 
-export async function returnAdmission(leadId: string, reason: string): Promise<void> {
-  const { error } = await supabase.rpc('return_admission', { p_lead: leadId, p_reason: reason });
-  if (error) throw toError(error);
-}
 
-export async function resubmitAdmission(leadId: string, note: string): Promise<void> {
-  const { error } = await supabase.rpc('resubmit_admission', { p_lead: leadId, p_note: note.trim() || undefined });
-  if (error) throw toError(error);
-}
 
 export async function setNuAdmissionId(leadId: string, value: string): Promise<void> {
   const { error } = await supabase.rpc('set_nu_admission_id', { p_lead: leadId, p_value: value.trim() });
@@ -254,16 +183,76 @@ export async function setStudentRef(leadId: string, value: string): Promise<void
   }
 }
 
-/** Students waiting for an approval: admission or registration (the officer's Home card, web menu) */
+// ---------------------------------------------------------------------
+// 📤 Submitted Online → 🏛 Received by ITTC (Admission Officer / admin)
+// ---------------------------------------------------------------------
+export async function submitOnline(leadId: string, nuAdmissionId: string, note = ''): Promise<void> {
+  if (!nuAdmissionId.trim()) throw new Error('Please type the NU Admission ID.');
+  const { error } = await supabase.rpc('submit_online', {
+    p_lead: leadId,
+    p_nu_admission_id: nuAdmissionId.trim(),
+    p_note: note.trim() || undefined,
+  });
+  if (error) throw toError(error);
+}
+
+export async function markReceived(leadId: string, note = ''): Promise<void> {
+  const { error } = await supabase.rpc('mark_received', { p_lead: leadId, p_note: note.trim() || undefined });
+  if (error) throw toError(error);
+}
+
+/** ↩ Undo one step, with a reason (Received first, then Submitted) */
+export async function undoIttcStep(leadId: string, step: 'submitted' | 'received', reason: string): Promise<void> {
+  if (!reason.trim()) throw new Error('Please write why.');
+  const { error } = await supabase.rpc('undo_ittc_step', { p_lead: leadId, p_step: step, p_reason: reason.trim() });
+  if (error) throw toError(error);
+}
+
+export type BulkReceived = {
+  ready: number;
+  done: number;
+  already: number;
+  not_submitted: number;
+  short: number;
+  skipped: number;
+};
+
+/** 🏛 Many at once: the ready ones are marked, the others are left out (dry = only count) */
+export async function bulkMarkReceived(leadIds: string[], dry: boolean): Promise<BulkReceived> {
+  const { data, error } = await supabase.rpc('bulk_mark_received', { p_leads: leadIds, p_dry: dry });
+  if (error) throw toError(error);
+  return data as unknown as BulkReceived;
+}
+
+/** A course's admission fee (null = the default in Settings → Admission flow) */
+export async function setCourseAdmissionFee(courseId: string, amount: number | null): Promise<void> {
+  const { error } = await supabase.rpc('set_course_admission_fee', { p_course: courseId, p_amount: amount });
+  if (error) throw toError(error);
+}
+
+/** The officer's work: not submitted yet, and submitted with the fee paid (ready for ITTC) */
+export async function countIttcWork(): Promise<{ notSubmitted: number; ready: number }> {
+  const base = () =>
+    supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .not('admitted_at', 'is', null)
+      .is('deleted_at', null)
+      .is('cancelled_at', null);
+  const [a, b] = await Promise.all([
+    base().is('submitted_at', null),
+    base().not('submitted_at', 'is', null).is('received_at', null).eq('admission_fee_ok', true),
+  ]);
+  return { notSubmitted: a.count ?? 0, ready: b.count ?? 0 };
+}
+
+/** The officer's badge (web menu): students ready for ITTC */
 export async function countWaitingApproval(): Promise<number> {
-  const { count, error } = await supabase
-    .from('leads')
-    .select('id', { count: 'exact', head: true })
-    .or('approval_status.eq.waiting,registration_status.eq.waiting')
-    .is('deleted_at', null)
-    .is('cancelled_at', null);
-  if (error) return 0;
-  return count ?? 0;
+  try {
+    return (await countIttcWork()).ready;
+  } catch {
+    return 0;
+  }
 }
 
 // ---------------------------------------------------------------------
