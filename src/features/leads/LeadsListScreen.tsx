@@ -149,6 +149,10 @@ const ACTIONS: {
 
 
 // =====================================================================
+// ⚡ Chip numbers kept for a short while (coming back to the list shows them at once)
+const CHIP_FRESH_MS = 30_000;
+const CHIP_CACHE = new Map<string, { at: number; counts: Map<string, number | null> }>();
+
 // 👥 Leads list, and the 🎓 Students list (the same screen, only admitted students)
 // =====================================================================
 export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students' }) {
@@ -616,25 +620,36 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   const chipKeys = modernChips.map((c) => c.key).join(',');
   const [chipCounts, setChipCounts] = useState<Map<string, number | null>>(new Map());
   const countsId = useRef(0);
-  const loadChipCounts = useCallback(() => {
-    if (!modern) return;
-    const mine = ++countsId.current;
-    const base = {
-      search: debouncedSearch,
-      userId: profile?.id,
-      filters: effectiveFilters,
-      closedMode,
-      students,
-      ids: idsFilter,
-      added: addedQ,
-      paid: paidQ,
-    };
-    Promise.all(modernChips.map((c) => countLeads({ ...base, quick: c.key }).catch(() => null))).then((list) => {
-      if (mine !== countsId.current) return;
-      setChipCounts(new Map(modernChips.map((c, i) => [c.key, list[i]])));
-    });
+  const loadChipCounts = useCallback(
+    (force = false) => {
+      if (!modern) return;
+      const mine = ++countsId.current;
+      const base = {
+        search: debouncedSearch,
+        userId: profile?.id,
+        filters: effectiveFilters,
+        closedMode,
+        students,
+        ids: idsFilter,
+        added: addedQ,
+        paid: paidQ,
+      };
+      // ⚡ The numbers from a moment ago show at once; they are asked again only
+      //   when older than 30 seconds (or after a change)
+      const key = `${chipKeys}|${JSON.stringify(base)}`;
+      const cached = CHIP_CACHE.get(key);
+      if (cached) setChipCounts(cached.counts);
+      if (cached && !force && Date.now() - cached.at < CHIP_FRESH_MS) return;
+      Promise.all(modernChips.map((c) => countLeads({ ...base, quick: c.key }).catch(() => null))).then((list) => {
+        const counts = new Map(modernChips.map((c, i) => [c.key as string, list[i]]));
+        CHIP_CACHE.set(key, { at: Date.now(), counts });
+        if (mine !== countsId.current) return;
+        setChipCounts(counts);
+      });
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modern, debouncedSearch, profile?.id, effectiveFilters, closedMode, students, idsFilter, addedQ, chipKeys, paidQ]);
+    [modern, debouncedSearch, profile?.id, effectiveFilters, closedMode, students, idsFilter, addedQ, chipKeys, paidQ],
+  );
   useFocusEffect(
     useCallback(() => {
       loadChipCounts();
@@ -961,14 +976,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   // After a change from a sheet or the bar: the list and the board show it
   const reloadAll = () => {
     loadFirstPage();
-    loadChipCounts();
+    loadChipCounts(true);
     setBoardReload((n) => n + 1);
   };
   /** After a change to these leads: 📌 update them where they are, else load the list again */
   const afterChange = (ids: string[]) => {
     if (!keepOn || ids.length === 0 || ids.length > 100 || showBoard) return reloadAll();
     refreshInPlace(ids);
-    loadChipCounts();
+    loadChipCounts(true);
     setBoardReload((n) => n + 1);
   };
 
@@ -1265,7 +1280,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           .then((m) => live && setLocks(m))
           .catch(() => undefined);
       const first = setTimeout(tick, 400);
-      const timer = setInterval(tick, 15000);
+      const timer = setInterval(tick, 30000);
       return () => {
         live = false;
         clearTimeout(first);
@@ -1281,7 +1296,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         onPress={() => {
           setRefreshing(true);
           loadFirstPage();
-          loadChipCounts();
+          loadChipCounts(true);
         }}
         style={({ pressed }) => [styles.resort, pressed && styles.pressed]}
         accessibilityRole="button"
@@ -1647,7 +1662,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                 onRefresh={() => {
                   setRefreshing(true);
                   loadFirstPage();
-                  loadChipCounts();
+                  loadChipCounts(true);
                 }}
               />
             }
