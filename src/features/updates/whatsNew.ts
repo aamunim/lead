@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-19-a',
+    date: '19 Nov 2026',
+    title: '👤 My profile · 🎓 IDs by batch year',
+    items: [
+      '👤 More → tap your name: change your photo, name, phone and sign-in email',
+      '🛠 Admins: Users → a person → photo, name, phone and email too',
+      '🎓 Settings → Admission → Student ID: the year can come from the batch’s start year (a 2027 batch → 27001, 27002 …)',
+      '🏷 Courses get a short code ({CODE} in the ID), and one tap gives every student an ID with the new pattern',
+    ],
+  },
+  {
     key: '2026-11-18-a',
     date: '18 Nov 2026',
     title: '🌙 Dark mode',

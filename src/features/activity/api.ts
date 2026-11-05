@@ -489,6 +489,8 @@ export function describeChange(
         warn: true,
       };
     }
+    case 'student_ref_renumbered':
+      return { text: `🎓 Student ID changed: ${String(d.old ?? '—')} → ${String(d.new ?? '')}`, warn: false };
     case 'call_lock_override':
       // 📵 Called while someone else was on a call with the lead
       return {
