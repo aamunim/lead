@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-27-a',
+    date: '27 Nov 2026',
+    title: '⚡ Opens at once',
+    items: [
+      '⚡ The app opens with what it showed last time, at once; fresh numbers replace them a moment later',
+      '🏠 Home asks the server far less (16 requests instead of 26)',
+      '📋 Leads and Students show their last list and chip numbers at once too',
+      '🔒 Signing out removes all of it from the phone',
+    ],
+  },
+  {
     key: '2026-11-26-a',
     date: '26 Nov 2026',
     title: '⚡ Faster screens',

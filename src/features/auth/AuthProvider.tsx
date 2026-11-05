@@ -1,4 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createContext,
   useCallback,
@@ -58,6 +59,10 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// ⚡ Kept on the phone for a fast start (checked again with the server each time)
+const SETUP_KEY = 'auth:setup_done';
+const PROFILE_KEY = 'auth:profile:';
+
 // ---------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------
@@ -81,7 +86,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshSetupStatus = useCallback(async () => {
     try {
       setErrorMessage(null);
-      setSetupComplete(await isSetupComplete());
+      const done = await isSetupComplete();
+      setSetupComplete(done);
+      if (done) AsyncStorage.setItem(SETUP_KEY, '1').catch(() => undefined);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Something went wrong.');
     }
@@ -96,7 +103,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setProfileLoading(true);
       setErrorMessage(null);
-      setProfile(await getMyProfile(userId));
+      const fresh = await getMyProfile(userId);
+      setProfile(fresh);
+      // ⚡ kept on the phone: the next start opens at once with it (then checks again)
+      if (fresh) AsyncStorage.setItem(PROFILE_KEY + userId, JSON.stringify(fresh)).catch(() => undefined);
+      else AsyncStorage.removeItem(PROFILE_KEY + userId).catch(() => undefined);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Something went wrong.');
     } finally {
@@ -127,6 +138,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // so the next person on this phone never sees them (no Supabase call here)
       if (event === 'SIGNED_OUT') {
         clearPhoneCallData().catch(() => undefined);
+        AsyncStorage.getAllKeys()
+          .then((keys) => AsyncStorage.multiRemove(keys.filter((k) => k.startsWith(PROFILE_KEY))))
+          .catch(() => undefined);
       }
     });
 
@@ -134,9 +148,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // --- check setup once when the app opens -------------------------
+  //   ⚡ a phone that saw it done once starts at once (it is checked again)
   useEffect(() => {
+    AsyncStorage.getItem(SETUP_KEY)
+      .then((v) => v === '1' && setSetupComplete((now) => (now === null ? true : now)))
+      .catch(() => undefined);
     refreshSetupStatus();
   }, [refreshSetupStatus]);
+
+  // ⚡ last time's profile at once, so the app opens without waiting for the server
+  useEffect(() => {
+    if (!userId) return;
+    let live = true;
+    AsyncStorage.getItem(PROFILE_KEY + userId)
+      .then((raw) => {
+        if (!live || !raw) return;
+        const saved = JSON.parse(raw) as MyProfile;
+        setProfile((now) => now ?? saved);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [userId]);
 
   // --- load the profile whenever the signed-in user changes --------
   useEffect(() => {

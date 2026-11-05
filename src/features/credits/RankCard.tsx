@@ -1,4 +1,5 @@
 import { router, type Href } from 'expo-router';
+import { useSavedState } from '@/shared/lib/saved';
 import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -11,10 +12,12 @@ import { colors, fontWeight } from '@/shared/theme';
 // 🏆 Home: "This week you are #3 · 420 credits ▲2" (tap = the leaderboard)
 export function RankCard() {
   const { profile } = useAuth();
-  const [line, setLine] = useState<{ rank: number | null; total: number; move: number | null; of: number } | null>(
+  // ⚡ last time's line at once, then the fresh one
+  const [line, setLine] = useSavedState<{ rank: number | null; total: number; move: number | null; of: number } | null>(
+    'home:rank',
     null,
   );
-  const [level, setLevel] = useState<Level | null>(null);
+  const [level, setLevel] = useSavedState<Level | null>('home:level', null);
 
   useFocusRefresh(
     useCallback(() => {

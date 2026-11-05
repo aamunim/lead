@@ -1,4 +1,5 @@
 import { router, type Href } from 'expo-router';
+import { useSavedState } from '@/shared/lib/saved';
 import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -23,7 +24,8 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 export function ReportHomeCard() {
   const { profile, hasPermission } = useAuth();
   const isAdmin = hasPermission('settings.manage');
-  const [report, setReport] = useState<LeadReport | null>(null);
+  // ⚡ last time's card at once, then the fresh one
+  const [report, setReport] = useSavedState<LeadReport | null>('home:report', null);
 
   useFocusRefresh(
     useCallback(() => {

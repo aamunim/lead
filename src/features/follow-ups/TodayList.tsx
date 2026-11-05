@@ -1,4 +1,6 @@
 import { router, type Href } from 'expo-router';
+import { shareRecent } from '@/features/home/summary';
+import { useSavedState } from '@/shared/lib/saved';
 import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, LayoutAnimation, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -38,7 +40,8 @@ export function TodayList() {
   const canSeeOthers = sharedMode || hasPermission('leads.view_all') || hasPermission('leads.view_team');
   const [scope, setScope] = useState<Scope>('mine');
 
-  const [items, setItems] = useState<DueFollowUp[]>([]);
+  // ⚡ last time's list at once, then the fresh one
+  const [items, setItems] = useSavedState<DueFollowUp[]>(`home:calls:${scope}`, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -51,7 +54,8 @@ export function TodayList() {
       setError(null);
       const mine = !canSeeOthers || scope === 'mine';
       const options = !mine ? {} : assignmentOn ? { userId: profile?.id } : { createdBy: profile?.id };
-      const data = await listDueFollowUps(options);
+      // ⚡ the same request as the "Calls due" tile: one answer for both
+      const data = [...(await shareRecent(`due:${JSON.stringify(options)}`, () => listDueFollowUps(options)))];
       // The list comes sorted by time; keep that order inside each group
       data.sort((a, b) => rank(a) - rank(b));
       setItems(data);
@@ -87,7 +91,7 @@ export function TodayList() {
           <MIcon name="call" size={18} color={md.onPrimaryC} />
         </View>
         <Text style={styles.title}>Next calls</Text>
-        {!loading && !error && (
+        {(!loading || items.length > 0) && !error && (
           <Text style={styles.subtitle} numberOfLines={1}>
             <Text style={styles.strong}>{today.length + revive.length + missed.length}</Text> today
             {overdue.length > 0 && (
@@ -122,7 +126,7 @@ export function TodayList() {
       </View>
       {!!mineHint && <Text style={styles.hint}>{mineHint.replace(' · ', '')}</Text>}
 
-      {loading ? (
+      {loading && items.length === 0 ? (
         <ActivityIndicator color={colors.primary} style={styles.loader} />
       ) : error ? (
         <Pressable onPress={load} accessibilityRole="button" style={styles.emptyBox}>

@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { readSaved, writeSaved } from '@/shared/lib/saved';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation, type Href } from 'expo-router';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -500,6 +501,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort, students, idsFilter, addedQ, paidQ],
   );
   const queryKey = useMemo(() => JSON.stringify(listQuery), [listQuery]);
+  const leadsRef = useRef<LeadListItem[]>([]);
+  leadsRef.current = leads;
 
   // 💵 Students: how much the students in the list paid in all
   const [paidSum, setPaidSum] = useState<{ total: number; count: number; paying: number } | null>(null);
@@ -528,6 +531,16 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
   const loadFirstPage = useCallback(async () => {
     const myRequest = ++requestId.current;
+    // ⚡ Nothing on screen yet: show last time's first page at once (then the fresh one)
+    const saveKey = listQuery.search ? null : `list:${queryKey}`;
+    if (saveKey && leadsRef.current.length === 0) {
+      readSaved<{ items: LeadListItem[]; total: number | null }>(saveKey).then((saved) => {
+        if (!saved || myRequest !== requestId.current || leadsRef.current.length > 0) return;
+        setLeads(saved.items);
+        setTotal(saved.total);
+        setLoading(false);
+      });
+    }
     try {
       setError(null);
       const [result, order] = await Promise.all([
@@ -537,6 +550,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       if (myRequest !== requestId.current) return;
       setLeads(result.items);
       setTotal(result.total);
+      if (saveKey) writeSaved(saveKey, { items: result.items, total: result.total });
       setPage(0);
       keepOrder.current = order;
       keepKey.current = keepOn ? queryKey : null;
@@ -640,6 +654,10 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       const key = `${chipKeys}|${JSON.stringify(base)}`;
       const cached = CHIP_CACHE.get(key);
       if (cached) setChipCounts(cached.counts);
+      else
+        readSaved<[string, number | null][]>(`chips:${key}`).then((saved) => {
+          if (saved && mine === countsId.current && !CHIP_CACHE.has(key)) setChipCounts(new Map(saved));
+        });
       if (cached && !force && Date.now() - cached.at < CHIP_FRESH_MS) return;
       countChips(
         base,
@@ -647,6 +665,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       )
         .then((counts) => {
           CHIP_CACHE.set(key, { at: Date.now(), counts });
+          writeSaved(`chips:${key}`, [...counts.entries()]);
           if (mine !== countsId.current) return;
           setChipCounts(counts);
         })

@@ -1,5 +1,8 @@
-import { router, useFocusEffect, type Href } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { router, type Href } from 'expo-router';
+import { shareRecent } from '@/features/home/summary';
+import { useSavedState } from '@/shared/lib/saved';
+import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
+import { useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { contactLabel } from '@/features/leads/contact';
@@ -13,16 +16,17 @@ import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
 //   Shown on Home only when there is at least one.
 // =====================================================================
 export function TodayVisits() {
-  const [items, setItems] = useState<TodayVisit[]>([]);
+  // ⚡ last time's visits at once, then the fresh ones
+  const [items, setItems] = useSavedState<TodayVisit[]>('home:visits', []);
   const more = useShowMore(items, 5);
 
   // Reload every time Home comes back into view (e.g. after marking a visit)
-  useFocusEffect(
+  useFocusRefresh(
     useCallback(() => {
-      listTodayVisits()
+      shareRecent('visits:today', () => listTodayVisits())
         .then(setItems)
         .catch(() => setItems([]));
-    }, []),
+    }, [setItems]),
   );
 
   if (items.length === 0) return null;
