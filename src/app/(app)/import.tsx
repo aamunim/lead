@@ -26,7 +26,7 @@ import {
     type Spreadsheet,
 } from '@/features/import-export/excel';
 import { listAssignableUsers } from '@/features/leads/api';
-import { listItems } from '@/features/settings/api';
+import { listCourses, listItems } from '@/features/settings/api';
 import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -57,6 +57,8 @@ export default function ImportScreen() {
   const [sources, setSources] = useState<Option[]>([]);
   const [users, setUsers] = useState<Option[]>([]);
   const [defaultSourceId, setDefaultSourceId] = useState<string | null>(null);
+  const [courses, setCourses] = useState<Option[]>([]);
+  const [defaultCourseId, setDefaultCourseId] = useState<string | null>(null);
   const [duplicateMode, setDuplicateMode] = useState<DuplicateMode>('skip');
   const [assignMode, setAssignMode] = useState<AssignMode>('none');
   const [assignUserId, setAssignUserId] = useState<string | null>(null);
@@ -81,8 +83,10 @@ export default function ImportScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const [src, ppl] = await Promise.all([listItems('lead_sources'), listAssignableUsers()]);
+        const [src, ppl, crs] = await Promise.all([listItems('lead_sources'), listAssignableUsers(), listCourses()]);
         setSources(src.map((s) => ({ value: s.id, label: s.name })));
+        setCourses(crs.map((c) => ({ value: c.id, label: c.name })));
+        if (crs.length === 1) setDefaultCourseId(crs[0].id);
         setUsers(ppl.map((p) => ({ value: p.id, label: p.full_name ?? 'No name' })));
         // "Old records" is a sensible default source for imports
         const old = src.find((s) => s.name.toLowerCase() === 'old records');
@@ -140,8 +144,14 @@ export default function ImportScreen() {
   }, [sheet, mapping]);
 
   // --- step 4: run ------------------------------------------------------
+  // 🎓 Every new lead needs a course: from the file's Course column, or chosen here
+  const courseMapped = mapping.course != null;
   const handleImport = async () => {
     if (!sheet) return;
+    if (courses.length > 0 && !courseMapped && !defaultCourseId) {
+      setError('Choose the interested course for these leads.');
+      return;
+    }
     if (assignMode === 'user' && !assignUserId) {
       setError('Choose who gets the leads.');
       return;
@@ -162,6 +172,7 @@ export default function ImportScreen() {
         {
           fileName,
           defaultSourceId,
+          defaultCourseId,
           duplicateMode,
           assignMode,
           assignUserId,
@@ -328,6 +339,26 @@ export default function ImportScreen() {
       {/* ---------- 3. Options ---------- */}
       {step === 'options' && sheet && (
         <>
+          <View style={styles.card}>
+            <Text style={styles.fieldLabel}>
+              {courseMapped ? '🎓 Course for rows without one (or an unknown name)' : '🎓 Interested course *'}
+            </Text>
+            {!courseMapped && (
+              <Text style={styles.muted}>The file has no Course column: every new lead gets this course.</Text>
+            )}
+            <Chips
+              options={courseMapped ? [{ value: '__none__', label: 'None' }, ...courses] : courses}
+              selected={[defaultCourseId ?? '__none__']}
+              onPress={(v) => {
+                setDefaultCourseId(v === '__none__' ? null : v);
+                setError(null);
+              }}
+            />
+            {courseMapped && !defaultCourseId && (
+              <Text style={styles.muted}>Rows with no known course are not imported (shown as errors).</Text>
+            )}
+          </View>
+
           <View style={styles.card}>
             <Text style={styles.fieldLabel}>Source for rows without one</Text>
             <Chips
