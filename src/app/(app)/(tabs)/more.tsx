@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { Redirect, router, useFocusEffect, type Href } from 'expo-router';
 import { Children, useCallback, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { signOut } from '@/features/auth/api';
@@ -200,11 +200,21 @@ function PhoneMore() {
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* 👤 You */}
-        <View style={styles.profile}>
+        <Pressable
+          onPress={go('/profile')}
+          android_ripple={{ color: 'rgba(255,255,255,0.18)', foreground: true }}
+          style={styles.profile}
+          accessibilityRole="button"
+          accessibilityLabel="My profile"
+        >
           <View style={styles.profileGlow} />
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials || '?'}</Text>
-          </View>
+          {profile?.avatar_url ? (
+            <Image source={{ uri: profile.avatar_url }} style={styles.avatar} accessibilityLabel="My photo" />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials || '?'}</Text>
+            </View>
+          )}
           <View style={styles.flex}>
             <Text style={styles.name} numberOfLines={1}>
               {name}
@@ -225,7 +235,7 @@ function PhoneMore() {
           >
             <MIcon name="vpn-key" size={20} color="#FFFFFF" />
           </Pressable>
-        </View>
+        </Pressable>
 
         {/* ⚡ Quick tiles */}
         <View style={styles.tiles}>

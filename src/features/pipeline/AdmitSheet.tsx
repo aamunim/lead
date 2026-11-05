@@ -142,6 +142,12 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, lead.id]);
 
+  // 🎓 The ID depends on the course and the batch (its start year)
+  useEffect(() => {
+    if (!visible || loading) return;
+    previewStudentRef(courseId, batchId).then(setRefPreview);
+  }, [visible, loading, courseId, batchId]);
+
   // --- batches of the chosen course ------------------------------------------
   useEffect(() => {
     setBatchId(null);

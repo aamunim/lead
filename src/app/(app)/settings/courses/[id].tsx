@@ -30,6 +30,8 @@ type FeeRow = { key: string; id?: string; name: string; amount: string };
 
 type CourseForm = {
   name: string;
+  /** 🎓 {CODE} in the student ID, e.g. BED */
+  code: string;
   category: string;
   duration: string;
   description: string;
@@ -38,6 +40,7 @@ type CourseForm = {
 
 const EMPTY_COURSE: CourseForm = {
   name: '',
+  code: '',
   category: '',
   duration: '',
   description: '',
@@ -77,6 +80,7 @@ export default function CourseEditScreen() {
       }
       setForm({
         name: course.name,
+        code: course.code ?? '',
         category: course.category ?? '',
         duration: course.duration ?? '',
         description: course.description ?? '',
@@ -144,6 +148,7 @@ export default function CourseEditScreen() {
       const saved = await saveCourse({
         ...(isNew ? {} : { id }),
         name: form.name.trim(),
+        code: form.code.trim().toUpperCase() || null,
         category: form.category.trim() || null,
         duration: form.duration.trim() || null,
         description: form.description.trim() || null,
@@ -196,6 +201,13 @@ export default function CourseEditScreen() {
             value={form.name}
             onChangeText={(v) => setField('name', v)}
             placeholder="e.g. BBA"
+          />
+          <TextField
+            label="Short code (for the student ID)"
+            value={form.code}
+            onChangeText={(v) => setField('code', v.replace(/[^A-Za-z0-9]/g, '').slice(0, 8))}
+            placeholder="e.g. BED"
+            autoCapitalize="characters"
           />
           <TextField
             label="Category"

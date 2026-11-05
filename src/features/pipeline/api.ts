@@ -77,7 +77,8 @@ export type AdmissionSettings = {
   cancel: WhoRule;
   batch_required: boolean;
   allow_overbooking: boolean;
-  student_id: { mode: StudentIdMode; pattern: string };
+  /** year_from: {YY}/{YYYY} from the admission day, or from the batch's start year */
+  student_id: { mode: StudentIdMode; pattern: string; year_from?: 'admission' | 'batch' };
   closed_in_list: 'hide' | 'show';
   papers_on_admit: PapersOnAdmitRule;
 };
@@ -87,7 +88,7 @@ export const DEFAULT_ADMISSION: AdmissionSettings = {
   cancel: { mode: 'roles', roles: ['super_admin', 'admin'], user_ids: [] },
   batch_required: false,
   allow_overbooking: false,
-  student_id: { mode: 'auto', pattern: '{YY}{000}' },
+  student_id: { mode: 'auto', pattern: '{YY}{000}', year_from: 'admission' },
   closed_in_list: 'hide',
   papers_on_admit: 'warn',
 };
@@ -120,11 +121,13 @@ export async function saveAdmissionSettings(settings: AdmissionSettings): Promis
  * What a student ID pattern looks like, for the settings screen.
  *   {YY}{000}, number 42 → 26042 · ADM-{YYYY}-{0000} → ADM-2026-0042
  */
-export function formatStudentRef(pattern: string, n: number, now = new Date()): string {
+export function formatStudentRef(pattern: string, n: number, now = new Date(), code = 'BED'): string {
   const year = String(now.getFullYear());
   let out = (pattern.trim() || DEFAULT_ADMISSION.student_id.pattern)
     .replace(/\{YYYY\}/g, year)
-    .replace(/\{YY\}/g, year.slice(2));
+    .replace(/\{YY\}/g, year.slice(2))
+    .replace(/\{SESSION\}/g, `${year}-${String(now.getFullYear() + 1).slice(2)}`)
+    .replace(/\{CODE\}/g, code.toUpperCase());
   const zeros = out.match(/\{(0+)\}/);
   if (!zeros) return out + String(n);
   out = out.replace(/\{0+\}/, String(n).padStart(zeros[1].length, '0'));
@@ -396,10 +399,38 @@ export function batchLabel(b: AdmissionBatch): string {
 }
 
 /** What the next automatic student ID will be (not used up) */
-export async function previewStudentRef(): Promise<string | null> {
-  const { data, error } = await supabase.rpc('preview_student_ref');
+export async function previewStudentRef(courseId?: string | null, batchId?: string | null): Promise<string | null> {
+  const { data, error } = await supabase.rpc('preview_student_ref', {
+    p_course: courseId ?? undefined,
+    p_batch: batchId ?? undefined,
+  });
   if (error) return null;
   return (data as string | null) ?? null;
+}
+
+/** ⚠️ Courses with two or more batches starting in the same year (they share one number series) */
+export async function studentRefWarnings(): Promise<{ course: string; year: number; batches: string[] }[]> {
+  const { data, error } = await supabase.rpc('student_ref_warnings');
+  if (error) return [];
+  return ((data ?? []) as { course_name: string; year: number; batches: string[] }[]).map((r) => ({
+    course: r.course_name,
+    year: Number(r.year),
+    batches: r.batches ?? [],
+  }));
+}
+
+export type RenumberResult = {
+  students: number;
+  changed: number;
+  examples: { old: string | null; new: string }[];
+  applied: boolean;
+};
+
+/** 🔁 Every student gets an ID with the pattern now set (apply = false: only a preview) */
+export async function renumberStudentRefs(apply: boolean): Promise<RenumberResult> {
+  const { data, error } = await supabase.rpc('renumber_student_refs', { p_apply: apply });
+  if (error) throw new Error(error.message);
+  return data as unknown as RenumberResult;
 }
 
 // =====================================================================

@@ -29,6 +29,8 @@ import { ResetPasswordSheet } from '@/features/users/ResetPasswordSheet';
 import { designOf, saveListDesign, type ListDesign } from '@/features/leads/design';
 import { ListDesignPicker } from '@/features/leads/ListDesignPicker';
 import { supabase } from '@/shared/lib/supabase';
+import { ProfilePhoto } from '@/features/users/ProfilePhoto';
+import { adminSetEmail } from '@/features/users/profile';
 
 type Form = {
   fullName: string;
@@ -92,6 +94,9 @@ export default function UserEditScreen() {
   // --- what the signed-in admin is allowed to do here ---------------
   const isSelf = me?.id === user?.id;
   const [requireBusy, setRequireBusy] = useState(false);
+  // ✉️ sign-in email (an admin sets someone else's at once)
+  const [newEmail, setNewEmail] = useState<string | null>(null);
+  const [emailBusy, setEmailBusy] = useState(false);
   const iAmSuperAdmin = me?.role_key === 'super_admin';
   const targetIsSuperAdmin = user?.role_key === 'super_admin';
   const readOnly = targetIsSuperAdmin && !iAmSuperAdmin;
@@ -220,6 +225,20 @@ export default function UserEditScreen() {
 
       {/* Summary */}
       <View style={styles.card}>
+        <ProfilePhoto
+          url={user.avatar_url}
+          name={user.full_name}
+          size={80}
+          userId={readOnly ? undefined : user.id}
+          onChanged={
+            readOnly
+              ? undefined
+              : (u) => {
+                  setUser({ ...user, avatar_url: u });
+                  if (isSelf) refreshProfile().catch(() => undefined);
+                }
+          }
+        />
         <Text style={styles.name}>{user.full_name || 'No name'}</Text>
         <Text style={styles.muted}>{user.email}</Text>
         <View style={[styles.statusPill, { backgroundColor: STATUS[status].background }]}>
@@ -260,6 +279,37 @@ export default function UserEditScreen() {
           editable={!readOnly}
           keyboardType="phone-pad"
         />
+        <TextField
+          label="Sign-in email"
+          value={newEmail ?? user.email ?? ''}
+          onChangeText={setNewEmail}
+          editable={!readOnly}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {newEmail != null && newEmail.trim().toLowerCase() !== (user.email ?? '').toLowerCase() && (
+          <Button
+            title={isSelf ? 'Change my email (confirm link)' : 'Change email now'}
+            variant="secondary"
+            loading={emailBusy}
+            onPress={async () => {
+              if (isSelf) return router.push('/profile' as Href);
+              setEmailBusy(true);
+              try {
+                await adminSetEmail(user.id, newEmail);
+                setUser({ ...user, email: newEmail.trim().toLowerCase() });
+                setNewEmail(null);
+                Alert.alert('✅ Email changed', `${user.full_name ?? 'They'} now sign in with ${newEmail.trim().toLowerCase()}.`);
+              } catch (e) {
+                Alert.alert('Could not change', e instanceof Error ? e.message : '');
+              } finally {
+                setEmailBusy(false);
+              }
+            }}
+            fullWidth
+          />
+        )}
       </View>
 
       {/* Role */}

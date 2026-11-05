@@ -901,6 +901,7 @@ export type Database = {
       courses: {
         Row: {
           category: string | null
+          code?: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -912,6 +913,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          code?: string | null
           category?: string | null
           created_at?: string
           created_by?: string | null
@@ -924,6 +926,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          code?: string | null
           category?: string | null
           created_at?: string
           created_by?: string | null
@@ -2533,7 +2536,12 @@ export type Database = {
         Args: { p_at: string; p_lead_id: string; p_note?: string }
         Returns: string
       }
-      preview_student_ref: { Args: never; Returns: string }
+      preview_student_ref: { Args: { p_course?: string; p_batch?: string }; Returns: string }
+      student_ref_warnings: {
+        Args: never
+        Returns: { course_id: string; course_name: string; year: number; batches: string[] }[]
+      }
+      renumber_student_refs: { Args: { p_apply?: boolean }; Returns: Json }
       refresh_lead_papers: { Args: { p_lead_id: string }; Returns: undefined }
       reopen_lead: {
         Args: { p_lead_id: string; p_note?: string; p_stage_id?: string }
@@ -2778,6 +2786,7 @@ export type Database = {
       save_credit_rules: { Args: { p_rules: Json; p_enabled: boolean; p_retro: boolean }; Returns: undefined }
       set_leaderboard_hidden: { Args: { p_user: string; p_hidden: boolean }; Returns: undefined }
       set_call_sync_required: { Args: { p_user: string; p_required: boolean }; Returns: undefined }
+      admin_set_user_email: { Args: { p_user: string; p_email: string }; Returns: undefined }
       add_credit_adjustment: { Args: { p_user: string; p_points: number; p_reason: string }; Returns: undefined }
       user_export: { Args: { p_user: string; p_from: string; p_to: string }; Returns: Json }
       recent_contact: { Args: { p_lead: string }; Returns: Json }

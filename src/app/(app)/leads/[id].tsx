@@ -631,6 +631,8 @@ export function LeadDetailView({
         return 'Lead deleted';
       case 'restored':
         return 'Lead restored';
+      case 'student_ref_renumbered':
+        return `🎓 Student ID changed: ${String(d.old ?? '—')} → ${String(d.new ?? '')}`;
       case 'call_lock_override':
         return `📵 Called anyway · ${String(d.other_name ?? 'someone').split(' ')[0]} was on a call with the lead`;
       case 'double_call':

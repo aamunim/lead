@@ -3,6 +3,7 @@ import { Stack, router, type Href } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   StyleSheet,
   Switch,
@@ -18,6 +19,8 @@ import {
   DEFAULT_ADMISSION,
   formatStudentRef,
   getAdmissionSettings,
+  renumberStudentRefs,
+  studentRefWarnings,
   saveAdmissionSettings,
   type AdmissionSettings,
   type PapersOnAdmitRule,
@@ -71,6 +74,53 @@ export default function AdmissionSettingsScreen() {
   const canManage = hasPermission('settings.manage');
 
   const [settings, setSettings] = useState<AdmissionSettings>(DEFAULT_ADMISSION);
+  // ⚠️ courses with two batches starting in the same year · 🔁 renumbering
+  const [warnings, setWarnings] = useState<{ course: string; year: number; batches: string[] }[]>([]);
+  const [renumbering, setRenumbering] = useState(false);
+  useEffect(() => {
+    studentRefWarnings().then(setWarnings);
+  }, []);
+  const byBatch = settings.student_id.year_from === 'batch';
+  const hasYear = /\{(YY|YYYY|SESSION)\}/.test(settings.student_id.pattern);
+
+  const renumber = async () => {
+    if (dirty) return Alert.alert('Save first', 'Save the new pattern, then give every student a new ID.');
+    setRenumbering(true);
+    try {
+      const p = await renumberStudentRefs(false);
+      if (p.changed === 0) {
+        Alert.alert('Nothing to change', `All ${p.students} students already have IDs with this pattern.`);
+        return;
+      }
+      const ex = p.examples.map((e) => `${e.old ?? '—'} → ${e.new}`).join('\n');
+      Alert.alert(
+        `Change ${p.changed} of ${p.students} student IDs?`,
+        `Oldest admission first, in each series:\n${ex}${p.changed > p.examples.length ? '\n…' : ''}\n\nThe old ID of each is kept in its change log. This can't be undone with one tap.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Change IDs',
+            style: 'destructive',
+            onPress: async () => {
+              setRenumbering(true);
+              try {
+                const done = await renumberStudentRefs(true);
+                Alert.alert('✅ Done', `${done.changed} student IDs changed.`);
+              } catch (e) {
+                Alert.alert('Could not change', e instanceof Error ? e.message : '');
+              } finally {
+                setRenumbering(false);
+              }
+            },
+          },
+        ],
+      );
+    } catch (e) {
+      Alert.alert('Could not check', e instanceof Error ? e.message : '');
+    } finally {
+      setRenumbering(false);
+    }
+  };
   const [users, setUsers] = useState<AssignableUser[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -95,8 +145,13 @@ export default function AdmissionSettingsScreen() {
   };
 
   const preview = useMemo(
-    () => formatStudentRef(settings.student_id.pattern, 42),
-    [settings.student_id.pattern],
+    () =>
+      formatStudentRef(
+        settings.student_id.pattern,
+        1,
+        settings.student_id.year_from === 'batch' ? new Date(2027, 0, 1) : new Date(),
+      ),
+    [settings.student_id.pattern, settings.student_id.year_from],
   );
 
   const handleSave = async () => {
@@ -260,14 +315,62 @@ export default function AdmissionSettingsScreen() {
               autoCorrect={false}
               style={styles.input}
             />
+            <Text style={styles.label}>The year in the ID</Text>
+            <View style={styles.yearRow}>
+              {(
+                [
+                  ['admission', '📅 Admission day'],
+                  ['batch', '🎓 Batch start year'],
+                ] as const
+              ).map(([v, label]) => {
+                const on = (settings.student_id.year_from ?? 'admission') === v;
+                return (
+                  <Pressable
+                    key={v}
+                    onPress={() => set('student_id', { ...settings.student_id, year_from: v })}
+                    style={[styles.yearChip, on && styles.yearChipOn]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: on }}
+                  >
+                    <Text style={[styles.yearText, on && styles.yearTextOn]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
             <View style={styles.previewBox}>
-              <Text style={styles.hint}>Looks like</Text>
+              <Text style={styles.hint}>{byBatch ? 'First student of a batch starting in 2027' : 'Looks like'}</Text>
               <Text style={styles.previewText}>{preview}</Text>
             </View>
             <Text style={styles.hint}>
-              {'{YY}'} = short year · {'{YYYY}'} = year · {'{000}'} = running number (as many digits as zeros). With a
-              year in it, numbers start again from 1 each year: {'{YY}{000}'} gives 26001, 26002 … then 27001 in 2027.
+              {'{YY}'} = short year · {'{YYYY}'} = year · {'{SESSION}'} = 2027-28 · {'{CODE}'} = the course’s short code
+              (Settings → Courses) · {'{000}'} = running number (as many digits as zeros).{' '}
+              {byBatch
+                ? 'The year is the batch’s start year (its start date): a batch starting in 2027 gives 27001, 27002 …'
+                : 'The year is the day of admission: numbers start again from 1 each year.'}{' '}
+              With {'{CODE}'} each course counts on its own.
             </Text>
+            {byBatch && hasYear && warnings.length > 0 && (
+              <View style={styles.warnBox}>
+                <Text style={styles.warnTitle}>⚠️ Two batches in one year share one series</Text>
+                {warnings.map((w) => (
+                  <Text key={`${w.course}-${w.year}`} style={styles.warnText}>
+                    • {w.course} {w.year}: {w.batches.join(', ')}
+                  </Text>
+                ))}
+                <Text style={styles.warnText}>
+                  Their students get one run of numbers ({String(warnings[0].year).slice(2)}001, …
+                  {String(warnings[0].year).slice(2)}002 …) in the order they are admitted. Put {'{CODE}'} in the
+                  pattern if different courses should count apart.
+                </Text>
+              </View>
+            )}
+            <Button
+              title="🔁 Give every student an ID with this pattern"
+              variant="secondary"
+              onPress={renumber}
+              loading={renumbering}
+              fullWidth
+            />
           </View>
         )}
       </View>
@@ -515,6 +618,20 @@ const styles = StyleSheet.create({
     color: colors.text,
     letterSpacing: 0.5,
   },
+  yearRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  yearChip: {
+    paddingVertical: 7,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  yearChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  yearText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
+  yearTextOn: { color: colors.textOnPrimary },
+  warnBox: { gap: 4, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.warningSoft },
+  warnTitle: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.warning },
+  warnText: { fontSize: fontSize.caption, color: colors.text, lineHeight: 18 },
   previewBox: {
     flexDirection: 'row',
     alignItems: 'center',
