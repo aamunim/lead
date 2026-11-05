@@ -83,6 +83,8 @@ import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 import { deleteLeadFile, isRecordedVoice, listLeadFiles, type LeadFile } from '@/features/files/api';
 import { onVoiceSaved } from '@/features/voice/useVoiceNotes';
 import { isWeb } from '@/features/web/api';
+import { mergedInto } from '@/features/leads/merge';
+import { MergePickSheet } from '@/features/leads/MergePickSheet';
 import { WebStudentLayout } from '@/features/web/student/WebStudentLayout';
 import { ApprovalCard } from '@/features/approval/ApprovalCard';
 
@@ -175,6 +177,8 @@ export function LeadDetailView({
   const me = profile?.id ?? null;
 
   const [lead, setLead] = useState<LeadDetail | null>(null);
+  // 🔗 Merge with another lead
+  const [mergePick, setMergePick] = useState(false);
   const [filesTick, setFilesTick] = useState(0);
   // ▶ The voice note being played (from the timeline)
   const [playing, setPlaying] = useState<PlayableFile | null>(null);
@@ -282,6 +286,14 @@ export function LeadDetailView({
         listHolidays(year).catch(() => []),
         listHolidays(year + 1).catch(() => []),
       ]);
+      // 🔗 Merged into another lead: open that one
+      if (!l || l.merged_into) {
+        const into = l?.merged_into ?? (await mergedInto(id).catch(() => null));
+        if (into) {
+          router.replace(`/leads/${into}` as Href);
+          return;
+        }
+      }
       loadVoices();
       setLead(l);
       setActivity(a);
@@ -666,6 +678,14 @@ export function LeadDetailView({
         return 'Lead deleted';
       case 'restored':
         return 'Lead restored';
+      case 'merged': {
+        const names = (d.names as unknown as string[] | undefined) ?? [];
+        return `🔗 Merged with ${names.length > 0 ? names.join(', ') : `${Number(d.count ?? 1)} lead(s)`}`;
+      }
+      case 'merged_away':
+        return `🔗 Merged into ${String(d.into_name ?? 'another lead')}`;
+      case 'unmerged':
+        return '↩ Merge undone';
       case 'bulk_placement':
         return `🔀 Moved: ${String(d.from ?? '—')} → ${String(d.to ?? '')} (with ${Number(d.count ?? 1)})`;
       case 'student_ref_renumbered':
@@ -1367,6 +1387,9 @@ export function LeadDetailView({
         {detailsOpen && (
           <>
             {lead.alt_phone && <PhoneRow label="Alternative" phone={lead.alt_phone} onCall={call} />}
+            {((lead.extra_phones as string[] | null) ?? []).map((p) => (
+              <PhoneRow key={p} label="Other number" phone={p} onCall={call} />
+            ))}
             <InfoRow label="Email" value={lead.email} />
             <InfoRow
               label="Last contacted"
@@ -1442,6 +1465,25 @@ export function LeadDetailView({
   );
   const deleteEl = (
     <>
+      {hasPermission('leads.merge') && (
+        <>
+          <Button
+            title="🔗 Merge with another lead"
+            variant="secondary"
+            onPress={() => setMergePick(true)}
+            fullWidth
+          />
+          <MergePickSheet
+            visible={mergePick}
+            exclude={[lead.id]}
+            onClose={() => setMergePick(false)}
+            onPick={(other) => {
+              setMergePick(false);
+              router.push(`/leads/merge?ids=${lead.id},${other.id}` as Href);
+            }}
+          />
+        </>
+      )}
       {hasPermission('leads.delete') && (
         <Button title="Delete lead" variant="danger" onPress={confirmDelete} fullWidth />
       )}
