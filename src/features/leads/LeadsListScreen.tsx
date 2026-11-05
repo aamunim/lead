@@ -1,5 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { readSaved, writeSaved } from '@/shared/lib/saved';
+import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
+import {
+  listRecent,
+  onStarsChange,
+  recentWhat,
+  recentWhen,
+  starredIds,
+  type RecentRange,
+  type RecentRow,
+} from '@/features/leads/find';
+import { RangeSheet } from '@/features/leads/AddedChips';
+import { rangeText } from '@/features/leads/added';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation, type Href } from 'expo-router';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -23,7 +35,14 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { openWhatsApp } from '@/features/leads/contact';
 import type { TemplateChannel } from '@/features/templates/api';
 import { TemplateSheet } from '@/features/templates/TemplateSheet';
-import { canTakePayments, canUseFees, getFeeSettings, money, recordPayment, type FeeSettings } from '@/features/fees/api';
+import {
+  canTakePayments,
+  canUseFees,
+  getFeeSettings,
+  money,
+  recordPayment,
+  type FeeSettings,
+} from '@/features/fees/api';
 import { PaySheet } from '@/features/fees/PaymentsSection';
 import { FeeSheet, type FeeSheetLead } from '@/features/fees/FeeSheet';
 import { useTemplateAccess } from '@/features/templates/useTemplateAccess';
@@ -93,12 +112,7 @@ import {
 import { LostSheet } from '@/features/pipeline/LostSheet';
 import { getAdmissionSettings } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
-import {
-  addRecentSearch,
-  clearRecentSearches,
-  loadRecentSearches,
-  removeRecentSearch,
-} from '@/features/leads/search';
+import { addRecentSearch, clearRecentSearches, loadRecentSearches, removeRecentSearch } from '@/features/leads/search';
 import { getCardSettings, loadDetailed, saveDetailed } from '@/features/leads/lastActivity';
 import { LeadCard } from '@/features/leads/LeadCard';
 import { canApprove, getApprovalSettings } from '@/features/approval/api';
@@ -107,7 +121,7 @@ import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
 import { listAssignableUsers } from '@/features/leads/api';
 import { VoicePlayer } from '@/features/voice/VoiceNote';
 import { isWeb } from '@/features/web/api';
-import { listLeadIds, listLeadsByIds, matchingLeadIds, PAGE_SIZE as LIST_PAGE } from '@/features/leads/api';
+import { countLeads, listLeadIds, listLeadsByIds, matchingLeadIds, PAGE_SIZE as LIST_PAGE } from '@/features/leads/api';
 import {
   GROUP_LABEL,
   loadGroupByTime,
@@ -126,7 +140,6 @@ type ListRow =
   | { type: 'lead'; key: string; lead: LeadListItem };
 import { MIcon, md } from '@/features/home/md';
 import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
-
 
 // The floating buttons shown while leads are marked ("lost" opens the Lost sheet)
 type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received' | 'course';
@@ -148,7 +161,6 @@ const ACTIONS: {
   { field: 'received', label: 'ITTC', icon: 'business', color: '#7C3AED' },
   { field: 'course', label: 'Course', icon: 'school', color: '#0891B2' },
 ];
-
 
 // =====================================================================
 // ⚡ Chip numbers kept for a short while (coming back to the list shows them at once)
@@ -216,8 +228,12 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         // 🎓 Admission approval (Settings → Admission approval)
         ...STUDENT_FLOW_CHIPS,
       ]
-    : // Leads: "All", then who added them and when (➕ chips below)
-      [{ key: 'all', label: 'All' }];
+    : // Leads: "All", 🕘 Recent, ⭐ Starred, then who added them and when (➕ chips below)
+      [
+        { key: 'all', label: 'All' },
+        { key: 'recent', label: '🕘 Recent' },
+        { key: 'starred', label: '⭐ Starred' },
+      ];
 
   // Many leads lost at once: only for people who edit their team's or all leads
   const canBulkLost = hasPermission('leads.edit_team') || hasPermission('leads.edit_all');
@@ -282,7 +298,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     () =>
       students
         ? null
-        : addedQuery(added, seesAllAdded, creators.length > 0 ? creators.map((c) => c.id) : profile?.id ? [profile.id] : []),
+        : addedQuery(
+            added,
+            seesAllAdded,
+            creators.length > 0 ? creators.map((c) => c.id) : profile?.id ? [profile.id] : [],
+          ),
     [students, added, seesAllAdded, creators, profile?.id],
   );
   useEffect(() => {
@@ -485,20 +505,107 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   }, [filters, assignmentOn]);
 
   // --- load the first page ---------------------------------------------
+  // 🔎 🕘 Recent (what I worked on) and ⭐ Starred: their leads, in their own order
+  const special = !students && !debouncedSearch && (quick === 'recent' || quick === 'starred') ? quick : null;
+  const [recentRange, setRecentRange] = useState<RecentRange>({ day: 'today' });
+  const [recentRows, setRecentRows] = useState<RecentRow[] | null>(null);
+  const [starIds, setStarIds] = useState<string[] | null>(null);
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const loadSpecial = useCallback(async () => {
+    if (students) return;
+    const [r, st] = await Promise.all([
+      listRecent(recentRange).catch(() => [] as RecentRow[]),
+      starredIds().catch(() => [] as string[]),
+    ]);
+    setRecentRows(r);
+    setStarIds(st);
+  }, [students, recentRange]);
+  useFocusRefresh(
+    useCallback(() => {
+      loadSpecial();
+    }, [loadSpecial]),
+    10_000,
+  );
+  useEffect(
+    () =>
+      onStarsChange(() =>
+        starredIds()
+          .then(setStarIds)
+          .catch(() => undefined),
+      ),
+    [],
+  );
+  const recentCountRef = useRef<number | null>(null);
+  recentCountRef.current = recentRows ? recentRows.length : null;
+  const starCountRef = useRef<number | null>(null);
+  starCountRef.current = starIds ? starIds.length : null;
+  // the chips' numbers follow, and a tap on 🕘 / ⭐ asks again
+  useEffect(() => {
+    if (students) return;
+    setChipCounts((m) => {
+      const next = new Map(m);
+      next.set('recent', recentRows ? recentRows.length : null);
+      next.set('starred', starIds ? starIds.length : null);
+      return next;
+    });
+  }, [students, recentRows, starIds]);
+  useEffect(() => {
+    if (quick === 'recent' || quick === 'starred') loadSpecial();
+  }, [quick, loadSpecial]);
+  const recentInfo = useMemo(() => new Map((recentRows ?? []).map((r) => [r.leadId, r])), [recentRows]);
+  const specialIds =
+    special === 'recent' ? (recentRows ?? []).map((r) => r.leadId) : special === 'starred' ? starIds : null;
+  const starSet = useMemo(() => new Set(starIds ?? []), [starIds]);
+  // 🕘 Tapping the empty search box: the last few I worked on, to open at once
+  const [peek, setPeek] = useState<LeadListItem[]>([]);
+  useEffect(() => {
+    if (students || !searchFocused || search) return;
+    const ids = (recentRows ?? []).slice(0, 5).map((r) => r.leadId);
+    if (ids.length === 0) return setPeek([]);
+    listLeadsByIds(ids)
+      .then(setPeek)
+      .catch(() => setPeek([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, searchFocused, search, recentRows]);
+  /** 🕘 "2m ago · 📞 Call" on the cards of the Recent list */
+  const recentNote = (id: string) => {
+    if (special !== 'recent') return null;
+    const r = recentInfo.get(id);
+    return r ? `🕘 ${recentWhen(r.at)} · ${recentWhat(r)}` : null;
+  };
+
   const listQuery = useMemo(
     () => ({
       search: debouncedSearch,
-      quick,
+      quick: special ? ('all' as QuickFilter) : quick,
       userId: profile?.id,
-      filters: effectiveFilters,
-      closedMode,
+      filters: special ? {} : effectiveFilters,
+      // 🔎 A search finds every lead (Lost and Admitted ones too, with their badge)
+      closedMode: special || (debouncedSearch && !students) ? ('show' as ClosedMode) : closedMode,
       sort,
       students,
       ids: idsFilter,
-      added: addedQ,
+      onlyIds: special ? (specialIds ?? []) : null,
+      added: special ? null : addedQ,
       paid: paidQ,
+      special,
+      specialKey: special ? (specialIds ?? []).join(',') : '',
     }),
-    [debouncedSearch, quick, profile?.id, effectiveFilters, closedMode, sort, students, idsFilter, addedQ, paidQ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      debouncedSearch,
+      quick,
+      profile?.id,
+      effectiveFilters,
+      closedMode,
+      sort,
+      students,
+      idsFilter,
+      addedQ,
+      paidQ,
+      special,
+      specialIds,
+    ],
   );
   const queryKey = useMemo(() => JSON.stringify(listQuery), [listQuery]);
   const leadsRef = useRef<LeadListItem[]>([]);
@@ -524,7 +631,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     students && paidSum && paidSum.count > 0 ? (
       <Text style={styles.paidLine} numberOfLines={1}>
         💵 {money(paidSum.total)} paid
-        {paidSum.paying > 0 ? ` · avg ${money(Math.round(paidSum.total / paidSum.paying))} (${paidSum.paying} paid)` : ''}
+        {paidSum.paying > 0
+          ? ` · avg ${money(Math.round(paidSum.total / paidSum.paying))} (${paidSum.paying} paid)`
+          : ''}
         {paidRange ? ` · ${paidRangeLabel(paidRange)}` : ''}
       </Text>
     ) : null;
@@ -543,10 +652,19 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     }
     try {
       setError(null);
-      const [result, order] = await Promise.all([
-        listLeads({ ...listQuery, page: 0 }),
-        keepOn ? listLeadIds(listQuery).catch(() => null) : Promise.resolve(null),
-      ]);
+      const [result, order] = listQuery.special
+        ? [
+            await listLeadsByIds(listQuery.onlyIds ?? []).then((items) => ({
+              items,
+              total: items.length,
+              hasMore: false,
+            })),
+            null,
+          ]
+        : await Promise.all([
+            listLeads({ ...listQuery, page: 0 }),
+            keepOn ? listLeadIds(listQuery).catch(() => null) : Promise.resolve(null),
+          ]);
       if (myRequest !== requestId.current) return;
       setLeads(result.items);
       setTotal(result.total);
@@ -624,10 +742,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         ? quickFilters
         : [
             { key: 'all', label: 'All' },
-            ...(assignmentOn ? [{ key: 'mine' as QuickFilter, label: 'Mine' }] : []),
-            { key: 'hot', label: '🔥 Hot' },
+            { key: 'recent', label: '🕘 Recent' },
+            { key: 'starred', label: '⭐ Starred' },
             { key: 'new', label: '🆕 Not called' },
-            ...(assignmentOn && seesOthers ? [{ key: 'unassigned' as QuickFilter, label: 'Unassigned' }] : []),
           ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [students, assignmentOn, seesOthers],
@@ -661,9 +778,13 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       if (cached && !force && Date.now() - cached.at < CHIP_FRESH_MS) return;
       countChips(
         base,
-        modernChips.map((c) => c.key),
+        modernChips.map((c) => c.key).filter((k) => k !== 'recent' && k !== 'starred'),
       )
         .then((counts) => {
+          if (!students) {
+            counts.set('recent', recentCountRef.current);
+            counts.set('starred', starCountRef.current);
+          }
           CHIP_CACHE.set(key, { at: Date.now(), counts });
           writeSaved(`chips:${key}`, [...counts.entries()]);
           if (mine !== countsId.current) return;
@@ -1026,6 +1147,18 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   };
   // Anything besides the search that makes the list smaller
   const narrowed = filterCount > 0 || quick !== 'all' || !!addedQ || !!idsFilter || !!paidQ;
+  // 🔎 A search inside a chip / filter: how many more match outside it
+  const [outsideMore, setOutsideMore] = useState(0);
+  useEffect(() => {
+    if (!debouncedSearch || !narrowed || idsFilter || total == null) return setOutsideMore(0);
+    let live = true;
+    countLeads({ search: debouncedSearch, userId: profile?.id, students, closedMode: 'show' })
+      .then((n) => live && setOutsideMore(Math.max(0, (n ?? 0) - total)))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [debouncedSearch, narrowed, idsFilter, total, students, profile?.id]);
   const searchEverywhere = () => {
     setLoading(true);
     applyFilters({}, null);
@@ -1164,7 +1297,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             courseId: l.admitted_course?.id ?? null,
             batchId: l.admitted_batch?.id ?? null,
             sectionId: l.admitted_section?.id ?? null,
-            place: [l.admitted_course?.name, l.admitted_batch?.name, l.admitted_section ? `Section ${l.admitted_section.name}` : null]
+            place: [
+              l.admitted_course?.name,
+              l.admitted_batch?.name,
+              l.admitted_section ? `Section ${l.admitted_section.name}` : null,
+            ]
               .filter(Boolean)
               .join(' · '),
           }))}
@@ -1265,12 +1402,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   // =====================================================================
   // ✨ The new design (the classic one is below, as it always was)
   // =====================================================================
-  const grouped = modern && sort === 'next_call' && groupOn;
+  const grouped = modern && sort === 'next_call' && groupOn && !special;
   const rows = useMemo<ListRow[]>(() => {
     if (!grouped) return leads.map((l) => ({ type: 'lead', key: l.id, lead: l }));
     const now = new Date();
     const groups = leads.map((l) =>
-      keepOn ? (keepGroup.current.get(l.id) ?? timeGroup(l.next_follow_up_at, now)) : timeGroup(l.next_follow_up_at, now),
+      keepOn
+        ? (keepGroup.current.get(l.id) ?? timeGroup(l.next_follow_up_at, now))
+        : timeGroup(l.next_follow_up_at, now),
     );
     const sizes = new Map<TimeGroup, number>();
     groups.forEach((g) => sizes.set(g, (sizes.get(g) ?? 0) + 1));
@@ -1282,7 +1421,12 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       const g = groups[i];
       if (g !== current) {
         current = g;
-        out.push({ type: 'head', key: `head-${g}`, group: g, count: !hasMore || g !== lastGroup ? (sizes.get(g) ?? 0) : null });
+        out.push({
+          type: 'head',
+          key: `head-${g}`,
+          group: g,
+          count: !hasMore || g !== lastGroup ? (sizes.get(g) ?? 0) : null,
+        });
       }
       out.push({ type: 'lead', key: l.id, lead: l });
     });
@@ -1344,7 +1488,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     },
     select: (id) => toggleSelect(id),
     peek: (lead) => setPeekLead(lead),
-    play: (lead, fileId, seconds) => setPlaying({ id: fileId, name: `Voice note · ${lead.name}`, duration_sec: seconds }),
+    play: (lead, fileId, seconds) =>
+      setPlaying({ id: fileId, name: `Voice note · ${lead.name}`, duration_sec: seconds }),
     call: (lead) => call(lead),
     whatsapp: (lead) => whatsapp(lead),
     sms: (lead) => sms(lead),
@@ -1368,6 +1513,43 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   const canPayFor = (lead: LeadListItem) =>
     students && !!paySettings && lead.stage?.kind === 'won' && Number(lead.fee_due ?? 0) > 0;
 
+  const rangeRow = (
+    <View style={styles.rangeRow}>
+      <Pressable
+        onPress={() => {
+          setLoading(true);
+          setRecentRange({ day: 'today' });
+        }}
+        style={[styles.rangeChip, recentRange.day === 'today' && styles.rangeChipOn]}
+        accessibilityRole="radio"
+        accessibilityState={{ selected: recentRange.day === 'today' }}
+      >
+        <Text style={[styles.rangeText, recentRange.day === 'today' && styles.rangeTextOn]}>Today</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => setRangeOpen(true)}
+        style={[styles.rangeChip, recentRange.day === 'custom' && styles.rangeChipOn]}
+        accessibilityRole="radio"
+        accessibilityState={{ selected: recentRange.day === 'custom' }}
+      >
+        <Text style={[styles.rangeText, recentRange.day === 'custom' && styles.rangeTextOn]}>
+          📅 {recentRange.day === 'custom' ? rangeText(recentRange.from, recentRange.to) : 'Choose days'}
+        </Text>
+      </Pressable>
+      {rangeOpen && (
+        <RangeSheet
+          from={recentRange.day === 'custom' ? recentRange.from : undefined}
+          to={recentRange.day === 'custom' ? recentRange.to : undefined}
+          onClose={() => setRangeOpen(false)}
+          onPick={(from, to) => {
+            setRangeOpen(false);
+            setLoading(true);
+            setRecentRange({ day: 'custom', from, to });
+          }}
+        />
+      )}
+    </View>
+  );
 
   if (modern) {
     const n = total ?? leads.length;
@@ -1503,6 +1685,42 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           )}
         </View>
 
+        {/* 🕘 The last ones I worked on (while the empty search box is tapped) */}
+        {!selecting && searchFocused && !search && peek.length > 0 && (
+          <View style={styles.peekBox}>
+            <Text style={styles.peekTitle}>🕘 Just worked on</Text>
+            {peek.map((l) => {
+              const r = recentInfo.get(l.id);
+              return (
+                <Pressable
+                  key={l.id}
+                  onPress={() => cardHandlers.open(l)}
+                  style={({ pressed }) => [styles.peekRow, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.peekName} numberOfLines={1}>
+                    {starSet.has(l.id) ? '⭐ ' : ''}
+                    {l.name}
+                  </Text>
+                  <Text style={styles.peekWhat} numberOfLines={1}>
+                    {r ? `${recentWhat(r)} · ${recentWhen(r.at)}` : ''}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              onPress={() => {
+                setLoading(true);
+                setQuick('recent');
+              }}
+              hitSlop={6}
+              accessibilityRole="button"
+            >
+              <Text style={styles.peekAll}>See all recent ›</Text>
+            </Pressable>
+          </View>
+        )}
+
         {/* 🔍 Recent searches */}
         {!selecting && searchFocused && !search && recent.length > 0 && (
           <ScrollView
@@ -1522,7 +1740,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                 onLongPress={() => removeRecentSearch(students, t).then(setRecent)}
               />
             ))}
-            <Pressable onPress={() => clearRecentSearches(students).then(setRecent)} hitSlop={8} accessibilityRole="button">
+            <Pressable
+              onPress={() => clearRecentSearches(students).then(setRecent)}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
               <Text style={styles.clearFilters}>Clear</Text>
             </Pressable>
           </ScrollView>
@@ -1530,7 +1752,12 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
         {/* Chips with how many each has · ➕ added by / when · saved filters */}
         {!selecting && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={m.chips} style={styles.chipsScroll}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={m.chips}
+            style={styles.chipsScroll}
+          >
             {modernChips.map((f) => {
               const on = f.key === quick && (f.key !== 'all' || !addedQ);
               return (
@@ -1572,11 +1799,25 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           </ScrollView>
         )}
 
+        {/* 🕘 Recent: today, or the days I choose */}
+        {!selecting && special === 'recent' && rangeRow}
+
+        {/* 🔎 more outside this chip / filter */}
+        {!selecting && outsideMore > 0 && (
+          <Pressable onPress={searchEverywhere} style={styles.outside} accessibilityRole="button">
+            <Text style={styles.outsideText}>
+              🔍 {outsideMore} more {outsideMore === 1 ? 'match' : 'matches'} outside this filter · Show all ›
+            </Text>
+          </Pressable>
+        )}
+
         {/* 248 leads · 2 filters        ⏱ Groups   Next call */}
         {!selecting && (
           <View style={m.meta}>
             <Text style={m.metaText} numberOfLines={1}>
-              {loading ? ' ' : (
+              {loading ? (
+                ' '
+              ) : (
                 <>
                   <Text style={m.metaStrong}>{n.toLocaleString('en-IN')}</Text> {noun}
                   {idsFilter ? ' from a notification' : ''}
@@ -1626,7 +1867,12 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                 <Text style={[m.groupText, groupOn && m.groupTextOn]}>Groups</Text>
               </Pressable>
             )}
-            <Pressable onPress={() => setSortSheetVisible(true)} hitSlop={8} style={m.sortBtn} accessibilityRole="button">
+            <Pressable
+              onPress={() => setSortSheetVisible(true)}
+              hitSlop={8}
+              style={m.sortBtn}
+              accessibilityRole="button"
+            >
               <MIcon name="schedule" size={15} color={colors.primary} />
               <Text style={m.sortText} numberOfLines={1}>
                 {keepOn ? '📌 ' : ''}
@@ -1641,7 +1887,12 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
         {/* ➕ How many each person added in the chosen period */}
         {!selecting && !students && addedCounts.length > 1 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll} contentContainerStyle={styles.addedCounts}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipsScroll}
+            contentContainerStyle={styles.addedCounts}
+          >
             {addedCounts.map((c) => (
               <Pressable
                 key={c.user_id}
@@ -1653,7 +1904,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                 accessibilityRole="button"
               >
                 <Text style={styles.addedCount}>
-                  {c.user_id === profile?.id ? 'Me' : (c.name ?? 'No name')} <Text style={styles.addedCountNum}>{c.total}</Text>
+                  {c.user_id === profile?.id ? 'Me' : (c.name ?? 'No name')}{' '}
+                  <Text style={styles.addedCountNum}>{c.total}</Text>
                   {c.imported > 0 ? ` (${c.imported} imported)` : ''}
                 </Text>
               </Pressable>
@@ -1663,7 +1915,16 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
         {showBoard ? (
           <LeadBoard
-            query={{ search: debouncedSearch, quick, userId: profile?.id, filters: effectiveFilters, closedMode, sort, ids: idsFilter, added: addedQ }}
+            query={{
+              search: debouncedSearch,
+              quick,
+              userId: profile?.id,
+              filters: effectiveFilters,
+              closedMode,
+              sort,
+              ids: idsFilter,
+              added: addedQ,
+            }}
             closedColumns={boardSettings.closed_columns}
             showAssignee={showAssignee}
             reloadKey={boardReload}
@@ -1677,7 +1938,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             staleDays={staleDays}
             nameOf={nameOf}
             onPeek={setPeekLead}
-            onPlayVoice={(lead, fileId, seconds) => setPlaying({ id: fileId, name: `Voice note · ${lead.name}`, duration_sec: seconds })}
+            onPlayVoice={(lead, fileId, seconds) =>
+              setPlaying({ id: fileId, name: `Voice note · ${lead.name}`, duration_sec: seconds })
+            }
             selected={selected}
             onToggle={(lead) => {
               setBoardPicked((mp) => new Map(mp).set(lead.id, lead));
@@ -1723,9 +1986,13 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             ListEmptyComponent={
               <View style={styles.empty}>
                 <MIcon name={students ? 'school' : 'groups'} size={40} color={md.outline} />
-                <Text style={styles.emptyTitle}>{listIsFiltered ? `No matching ${students ? 'students' : 'leads'}` : 'No leads yet'}</Text>
+                <Text style={styles.emptyTitle}>
+                  {listIsFiltered ? `No matching ${students ? 'students' : 'leads'}` : 'No leads yet'}
+                </Text>
                 <Text style={styles.emptyText}>
-                  {listIsFiltered ? 'Try another search or change the filters.' : 'Tap “Add lead” to add your first lead.'}
+                  {listIsFiltered
+                    ? 'Try another search or change the filters.'
+                    : 'Tap “Add lead” to add your first lead.'}
                 </Text>
                 {!!debouncedSearch && narrowed && (
                   <Pressable onPress={searchEverywhere} style={styles.searchAllBtn} accessibilityRole="button">
@@ -1736,7 +2003,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                 )}
               </View>
             }
-            ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.footer} color={colors.primary} /> : undefined}
+            ListFooterComponent={
+              loadingMore ? <ActivityIndicator style={styles.footer} color={colors.primary} /> : undefined
+            }
             renderItem={({ item: row }) =>
               row.type === 'head' ? (
                 <Text style={[m.group, row.group === 'late' && m.groupLate]}>
@@ -1761,6 +2030,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                     canPay={canPayFor(row.lead)}
                     done={doneIds.has(row.lead.id)}
                     lock={locks.get(row.lead.id) ?? null}
+                    starred={starSet.has(row.lead.id)}
+                    note={recentNote(row.lead.id)}
                   />
                 </View>
               )
@@ -1926,7 +2197,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               <Text style={styles.chipText}>{t}</Text>
             </Pressable>
           ))}
-          <Pressable onPress={() => clearRecentSearches(students).then(setRecent)} hitSlop={8} accessibilityRole="button">
+          <Pressable
+            onPress={() => clearRecentSearches(students).then(setRecent)}
+            hitSlop={8}
+            accessibilityRole="button"
+          >
             <Text style={styles.clearFilters}>Clear</Text>
           </Pressable>
         </ScrollView>
@@ -2001,6 +2276,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       {/* 💵 Students: paid in all */}
       {!selecting && paidSummary && <View style={styles.countRow}>{paidSummary}</View>}
 
+      {/* 🕘 Recent: today, or the days I choose */}
+      {!selecting && special === 'recent' && rangeRow}
+
       {/* Count line + sort */}
       {!selecting && (
         <View style={styles.countRow}>
@@ -2015,9 +2293,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                     : (total ?? leads.length) === 1
                       ? 'lead'
                       : 'leads'
-                }${
-                  idsFilter ? ' from a notification' : listIsFiltered ? ' found' : ''
-                }`}
+                }${idsFilter ? ' from a notification' : listIsFiltered ? ' found' : ''}`}
           </Text>
           {idsFilter && (
             <Pressable
@@ -2061,9 +2337,17 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               style={[styles.viewBtn, detailed && styles.viewBtnOn]}
               accessibilityRole="button"
               accessibilityState={{ selected: detailed }}
-              accessibilityLabel={detailed ? 'Detailed cards: showing the last call and note. Switch to compact' : 'Compact cards. Show the last call and note'}
+              accessibilityLabel={
+                detailed
+                  ? 'Detailed cards: showing the last call and note. Switch to compact'
+                  : 'Compact cards. Show the last call and note'
+              }
             >
-              <Ionicons name={detailed ? 'reader' : 'reader-outline'} size={14} color={detailed ? colors.textOnPrimary : colors.textMuted} />
+              <Ionicons
+                name={detailed ? 'reader' : 'reader-outline'}
+                size={14}
+                color={detailed ? colors.textOnPrimary : colors.textMuted}
+              />
             </Pressable>
           </View>
           {boardAllowed && (
@@ -2126,7 +2410,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               accessibilityRole="button"
             >
               <Text style={styles.addedCount}>
-                {c.user_id === profile?.id ? 'Me' : (c.name ?? 'No name')} <Text style={styles.addedCountNum}>{c.total}</Text>
+                {c.user_id === profile?.id ? 'Me' : (c.name ?? 'No name')}{' '}
+                <Text style={styles.addedCountNum}>{c.total}</Text>
                 {c.imported > 0 ? ` (${c.imported} imported)` : ''}
               </Text>
             </Pressable>
@@ -2136,7 +2421,16 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
       {showBoard ? (
         <LeadBoard
-          query={{ search: debouncedSearch, quick, userId: profile?.id, filters: effectiveFilters, closedMode, sort, ids: idsFilter, added: addedQ }}
+          query={{
+            search: debouncedSearch,
+            quick,
+            userId: profile?.id,
+            filters: effectiveFilters,
+            closedMode,
+            sort,
+            ids: idsFilter,
+            added: addedQ,
+          }}
           closedColumns={boardSettings.closed_columns}
           showAssignee={showAssignee}
           reloadKey={boardReload}
@@ -2150,7 +2444,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           staleDays={staleDays}
           nameOf={nameOf}
           onPeek={setPeekLead}
-          onPlayVoice={(lead, fileId, seconds) => setPlaying({ id: fileId, name: `Voice note · ${lead.name}`, duration_sec: seconds })}
+          onPlayVoice={(lead, fileId, seconds) =>
+            setPlaying({ id: fileId, name: `Voice note · ${lead.name}`, duration_sec: seconds })
+          }
           selected={selected}
           onToggle={(lead) => {
             // Marked on the board: the bar below works on it like on the list
@@ -2208,9 +2504,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               )}
             </View>
           }
-          ListFooterComponent={
-            loadingMore ? <ActivityIndicator style={styles.footer} color={colors.primary} /> : null
-          }
+          ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.footer} color={colors.primary} /> : null}
           renderItem={({ item }) => (
             <CardRow
               modern={false}
@@ -2228,6 +2522,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
               canPay={canPayFor(item)}
               done={doneIds.has(item.id)}
               lock={locks.get(item.id) ?? null}
+              starred={starSet.has(item.id)}
+              note={recentNote(item.id)}
             />
           )}
         />
@@ -2359,7 +2655,11 @@ const CardRow = memo(function CardRow({
   canPay,
   done,
   lock,
+  note,
+  starred,
 }: {
+  note?: string | null;
+  starred?: boolean;
   modern: boolean;
   lead: LeadListItem;
   h: CardHandlers;
@@ -2397,13 +2697,33 @@ const CardRow = memo(function CardRow({
     onPay: canPay ? () => h.pay(lead) : undefined,
   };
   const card = modern ? <ModernLeadCard {...props} /> : <LeadCard {...props} />;
-  const inner = done ? (
+  // 🧭 It no longer fits this list: say where it went (and that 🕘 Recent keeps it)
+  const movedTo = [
+    lead.stage?.name ?? null,
+    lead.next_follow_up_at
+      ? `next call ${new Date(lead.next_follow_up_at).toLocaleString('en-GB', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true })}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const withDone = done ? (
     <View style={styles.done}>
       <View style={styles.doneDim}>{card}</View>
-      <Text style={styles.doneText}>✓ Done · leaves on refresh</Text>
+      <Text style={styles.doneText}>➡️ Moved{movedTo ? `: ${movedTo}` : ''} · still in 🕘 Recent</Text>
     </View>
   ) : (
     card
+  );
+  const line = [starred ? '⭐' : null, note ?? null].filter(Boolean).join(' · ');
+  const inner = line ? (
+    <View>
+      <Text style={styles.recentLine} numberOfLines={1}>
+        {line}
+      </Text>
+      {withDone}
+    </View>
+  ) : (
+    withDone
   );
   if (!lock) return inner;
   const min = Math.max(0, Math.round((Date.now() - lock.startedAt.getTime()) / 60000));
@@ -2418,6 +2738,49 @@ const CardRow = memo(function CardRow({
 });
 
 const styles = StyleSheet.create({
+  outside: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+  },
+  outsideText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.primary },
+  peekBox: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+    gap: 2,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  peekTitle: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.textMuted, marginBottom: 2 },
+  peekRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7 },
+  peekName: { flex: 1, fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
+  peekWhat: { fontSize: fontSize.caption, color: colors.textMuted },
+  peekAll: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary, paddingTop: 4 },
+  rangeRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
+  rangeChip: {
+    paddingVertical: 5,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  rangeChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  rangeText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.text },
+  rangeTextOn: { color: colors.textOnPrimary },
+  recentLine: {
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+    fontWeight: fontWeight.semibold,
+    marginBottom: 2,
+    marginLeft: 6,
+  },
   paidBtnText: { fontSize: 19, fontWeight: fontWeight.bold, color: colors.text },
   paidLine: { fontSize: fontSize.caption, color: colors.textMuted },
   screen: { flex: 1, backgroundColor: colors.background },
@@ -2450,7 +2813,13 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.bold,
   },
   doneDim: { opacity: 0.5 },
-  doneText: { fontSize: 11.5, fontWeight: fontWeight.semibold, color: md.onOkC, marginLeft: spacing.md, marginBottom: 4 },
+  doneText: {
+    fontSize: 11.5,
+    fontWeight: fontWeight.semibold,
+    color: md.onOkC,
+    marginLeft: spacing.md,
+    marginBottom: 4,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.7 },
 
@@ -2756,8 +3125,24 @@ const m = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { fontSize: 9.5, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
-  chips: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 16, paddingRight: 24, paddingTop: 10, paddingBottom: 4 },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 2, minHeight: 30 },
+  chips: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 16,
+    paddingRight: 24,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 2,
+    minHeight: 30,
+  },
   metaText: { flex: 1, fontSize: 12.5, color: colors.textMuted },
   metaStrong: { fontWeight: fontWeight.semibold, color: colors.text },
   groupBtn: {

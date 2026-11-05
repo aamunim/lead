@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { canImportContacts } from '@/features/contacts/api';
 import { TodayList } from '@/features/follow-ups/TodayList';
+import { RecentHomeCard } from '@/features/leads/RecentHomeCard';
 import { getMyOpenNudge, markNudgeSeen, nudgeTitle, type Nudge } from '@/features/nudges/api';
 import { SyncSetupSheet } from '@/features/nudges/SyncSetupSheet';
 import { countUnread } from '@/features/notifications/api';
@@ -117,7 +118,10 @@ function PhoneHome() {
         }
         countUnread().then(setUnread);
         countDiscountsToAnswer().then(setDiscounts);
-        if (canManageUsers) countPendingUsers().then(setPendingCount).catch(() => setPendingCount(0));
+        if (canManageUsers)
+          countPendingUsers()
+            .then(setPendingCount)
+            .catch(() => setPendingCount(0));
       });
       const week = addedRange({ userId: null, day: 'week' });
       const day = addedRange({ userId: null, day: 'today' });
@@ -125,12 +129,14 @@ function PhoneHome() {
         getLeadsAdded(week.from, week.to)
           .then(async (rows) => {
             const weekN = rows.find((r) => r.user_id === profile.id)?.total ?? 0;
-            const todayN = weekN === 0 ? 0 : ((await getLeadsAdded(day.from, day.to)).find((r) => r.user_id === profile.id)?.total ?? 0);
+            const todayN =
+              weekN === 0
+                ? 0
+                : ((await getLeadsAdded(day.from, day.to)).find((r) => r.user_id === profile.id)?.total ?? 0);
             setMyAdded({ today: todayN, week: weekN });
           })
           .catch(() => setMyAdded(null));
       }
-
     }, [canManageUsers, checkNudge, profile?.id, sharedMode, hasPermission, setUnread, setDiscounts, setPendingCount]),
   );
 
@@ -224,8 +230,7 @@ function PhoneHome() {
           {greeting()}, {firstName}
           <Text style={styles.date}>
             {'   '}
-            {today} ·{' '}
-            {profile?.role?.name ?? 'No role'}
+            {today} · {profile?.role?.name ?? 'No role'}
           </Text>
         </Text>
 
@@ -270,6 +275,7 @@ function PhoneHome() {
         <View onLayout={(e) => (callsY.current = e.nativeEvent.layout.y - 8)}>
           <TodayVisits />
           <TodayList />
+          <RecentHomeCard />
         </View>
 
         {/* ── Students, approvals, this month ──────── */}

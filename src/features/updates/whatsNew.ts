@@ -8,6 +8,19 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-28-a',
+    date: '28 Nov 2026',
+    title: '🔎 Find your leads again',
+    items: [
+      '🕘 Recent: every lead you called, wrote a note on, changed or opened — Today, or choose days',
+      '⭐ Star a lead (top of the lead page) and find it under ⭐ Starred',
+      '🔍 Search now finds Lost and Admitted leads too, and tells you when more matches are outside your filter',
+      '➡️ A lead that moved to another stage says where it went, and stays in 🕘 Recent',
+      '🏠 Home: "Worked on today" shows the last leads you worked on',
+      '🧹 Fewer chips: This week, This month, Hot, Mine and Unassigned are gone (use Filters)',
+    ],
+  },
+  {
     key: '2026-11-27-a',
     date: '27 Nov 2026',
     title: '⚡ Opens at once',
@@ -255,7 +268,9 @@ export const WHATS_NEW: WhatsNew[] = [
     key: '2026-11-07-b',
     date: '7 Nov 2026',
     title: 'Last note: Add note first',
-    items: ['📝 In the last-note sheet (tap the note on a lead card), “Add note” is now the blue button and “Open lead” the white one'],
+    items: [
+      '📝 In the last-note sheet (tap the note on a lead card), “Add note” is now the blue button and “Open lead” the white one',
+    ],
   },
   {
     key: '2026-11-07-a',

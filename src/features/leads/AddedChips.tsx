@@ -102,10 +102,13 @@ export function AddedChips({ choice, onChange, creators, myId }: Props) {
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>Leads added by</Text>
             <ScrollView contentContainerStyle={styles.list}>
-              {[{ id: null, label: 'All users' }, ...creators.map((c) => ({
-                id: c.id as string | null,
-                label: `${c.id === myId ? 'Me' : (c.name ?? 'No name')}${c.is_active ? '' : ' (inactive)'}`,
-              }))].map((row) => {
+              {[
+                { id: null, label: 'All users' },
+                ...creators.map((c) => ({
+                  id: c.id as string | null,
+                  label: `${c.id === myId ? 'Me' : (c.name ?? 'No name')}${c.is_active ? '' : ' (inactive)'}`,
+                })),
+              ].map((row) => {
                 const on = choice.userId === row.id;
                 return (
                   <Pressable
@@ -144,7 +147,7 @@ export function AddedChips({ choice, onChange, creators, myId }: Props) {
 }
 
 // 📅 From – To (days only)
-function RangeSheet({
+export function RangeSheet({
   from: initialFrom,
   to: initialTo,
   onClose,

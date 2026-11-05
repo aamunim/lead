@@ -1,4 +1,5 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
+import { myStars, toggleStar, touchLead } from '@/features/leads/find';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -242,6 +243,29 @@ export function LeadDetailView({
   // A voice note saved from any sheet on this page: show it at once
   useEffect(() => onVoiceSaved((leadId) => leadId === id && loadVoices()), [id, loadVoices]);
 
+  // 👀 Opened: it shows in 🕘 Recent · ⭐ my star
+  const [starred, setStarred] = useState(false);
+  useEffect(() => {
+    if (!id) return;
+    touchLead(id);
+    myStars()
+      .then((m) => setStarred(m.has(id)))
+      .catch(() => undefined);
+  }, [id]);
+  const flipStar = () => {
+    if (!id) return;
+    setStarred((v) => !v);
+    toggleStar(id)
+      .then((on) => {
+        setStarred(on);
+        showToast(on ? '⭐ Starred: Leads → ⭐ Starred' : 'Star removed');
+      })
+      .catch((e) => {
+        setStarred((v) => !v);
+        showToast(e instanceof Error ? e.message : 'Could not change the star.');
+      });
+  };
+
   const load = useCallback(async () => {
     if (!id) return;
     try {
@@ -422,7 +446,8 @@ export function LeadDetailView({
 
   const call = async (phone: string) => {
     // ⚠️ Someone else talked to this lead a moment ago: ask first ("Read notes" = stay on this page)
-    if (id && !(await confirmCall(id, () => showToast('📝 The latest calls and notes are in the Timeline below')))) return;
+    if (id && !(await confirmCall(id, () => showToast('📝 The latest calls and notes are in the Timeline below'))))
+      return;
     callStartedAt.current = Date.now();
     leftApp.current = false;
     pendingChannel.current = 'phone';
@@ -1477,7 +1502,8 @@ export function LeadDetailView({
       .filter(Boolean)
       .join(' · ') || 'Visit, fee, papers, files';
   const infoSummary =
-    [courses[0] ?? null, lead.area, lead.source?.name ?? null].filter(Boolean).join(' · ') || 'Contact, guardian, source';
+    [courses[0] ?? null, lead.area, lead.source?.name ?? null].filter(Boolean).join(' · ') ||
+    'Contact, guardian, source';
   const late = !!followUp && overdue;
   const today = !!followUp && !late && new Date(followUp.due_at).toDateString() === new Date().toDateString();
   const copyPhone = () => {
@@ -1500,6 +1526,12 @@ export function LeadDetailView({
           {compactBar && !!lead.phone && (
             <BarBtn icon="call" label={`Call ${lead.name}`} onPress={() => call(lead.phone!)} />
           )}
+          {/* ⭐ my own short list (Leads → ⭐ Starred) */}
+          <BarBtn
+            icon={starred ? 'star' : 'star-border'}
+            label={starred ? 'Remove the star' : 'Star this lead'}
+            onPress={flipStar}
+          />
           <BarBtn icon="edit" label="Edit lead" onPress={() => router.push(`/leads/edit/${lead.id}` as Href)} />
         </View>
       </SafeAreaView>
@@ -1537,12 +1569,20 @@ export function LeadDetailView({
               <Text style={p.name} numberOfLines={2}>
                 {lead.name}
               </Text>
-              <Pressable onPress={copyPhone} hitSlop={6} style={p.phoneRow} accessibilityRole="button" accessibilityHint="Copies the number">
+              <Pressable
+                onPress={copyPhone}
+                hitSlop={6}
+                style={p.phoneRow}
+                accessibilityRole="button"
+                accessibilityHint="Copies the number"
+              >
                 <Text style={p.phone} numberOfLines={1}>
                   {whatsAppOnly(lead) ? '💬 ' : ''}
                   {contactLabel(lead)}
                 </Text>
-                {!!(lead.phone ?? lead.whatsapp_number) && <MIcon name="content-copy" size={15} color={colors.textMuted} />}
+                {!!(lead.phone ?? lead.whatsapp_number) && (
+                  <MIcon name="content-copy" size={15} color={colors.textMuted} />
+                )}
               </Pressable>
             </View>
           </View>
@@ -1590,7 +1630,13 @@ export function LeadDetailView({
                 onLongPress={templates.allowed ? () => setTemplateChannel('sms') : undefined}
               />
             )}
-            <RoundAction icon="edit-note" label="Note" bg={colors.surface} fg={md.onPurpleC} onPress={() => setNoteOpen(true)} />
+            <RoundAction
+              icon="edit-note"
+              label="Note"
+              bg={colors.surface}
+              fg={md.onPurpleC}
+              onPress={() => setNoteOpen(true)}
+            />
             {showFollowUpCard && (
               <RoundAction
                 icon="alarm"
@@ -1634,12 +1680,19 @@ export function LeadDetailView({
                   </Text>
                   {(late || !!followUp?.note) && (
                     <Text style={p.nextSub} numberOfLines={1}>
-                      {[late ? 'Overdue' : null, followUp?.note ? `“${followUp.note}”` : null].filter(Boolean).join(' · ')}
+                      {[late ? 'Overdue' : null, followUp?.note ? `“${followUp.note}”` : null]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </Text>
                   )}
                 </View>
                 {followUp && (
-                  <Pressable onPress={confirmRemoveFollowUp} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove the next call">
+                  <Pressable
+                    onPress={confirmRemoveFollowUp}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove the next call"
+                  >
                     <MIcon name="close" size={20} color={colors.textMuted} />
                   </Pressable>
                 )}
@@ -1679,7 +1732,13 @@ export function LeadDetailView({
                 {filesEl}
               </View>
             </Fold>
-            <Fold id="lead_info" icon="info-outline" tint={{ bg: md.surface2, fg: colors.text }} title="Info" summary={infoSummary}>
+            <Fold
+              id="lead_info"
+              icon="info-outline"
+              tint={{ bg: md.surface2, fg: colors.text }}
+              title="Info"
+              summary={infoSummary}
+            >
               {interestEl}
               {detailsEl}
             </Fold>
@@ -1769,7 +1828,7 @@ export function LeadDetailView({
           }}
         />
       ) : (
-          phoneEl
+        phoneEl
       )}
 
       {toast && (
