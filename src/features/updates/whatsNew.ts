@@ -8,6 +8,15 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-25-b',
+    date: '25 Nov 2026',
+    title: '⏱ Speed check',
+    items: [
+      '⏱ More → Speed check (website: your name → Speed check): times the server on your phone',
+      '📤 One tap sends the result to the developer, to find what is slow',
+    ],
+  },
+  {
     key: '2026-11-25-a',
     date: '25 Nov 2026',
     title: '⚡ Faster',

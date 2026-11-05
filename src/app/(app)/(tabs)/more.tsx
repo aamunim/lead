@@ -494,6 +494,13 @@ function PhoneMore() {
             pill={!developer && newFeedback > 0 ? { text: `${newFeedback} new`, tone: 'orange' } : undefined}
             onPress={go('/feedback')}
           />
+          <Row
+            icon="speed"
+            tone="blue"
+            title="Speed check"
+            subtitle="Is the app slow? Test it and send the result"
+            onPress={go('/speed')}
+          />
           {developer && (
             <Row
               icon="inbox"
