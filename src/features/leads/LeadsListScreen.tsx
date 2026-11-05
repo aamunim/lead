@@ -93,7 +93,8 @@ import {
 } from '@/features/leads/search';
 import { getCardSettings, loadDetailed, saveDetailed } from '@/features/leads/lastActivity';
 import { LeadCard } from '@/features/leads/LeadCard';
-import { getApprovalSettings } from '@/features/approval/api';
+import { canApprove, getApprovalSettings } from '@/features/approval/api';
+import { BulkPlacementSheet } from '@/features/approval/BulkPlacementSheet';
 import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
 import { listAssignableUsers } from '@/features/leads/api';
 import { VoicePlayer } from '@/features/voice/VoiceNote';
@@ -120,7 +121,7 @@ import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 
 
 // The floating buttons shown while leads are marked ("lost" opens the Lost sheet)
-type FloatAction = QuickField | 'lost' | 'fee';
+type FloatAction = QuickField | 'lost' | 'fee' | 'placement';
 
 const ACTIONS: {
   field: FloatAction;
@@ -135,6 +136,7 @@ const ACTIONS: {
   { field: 'followup', label: 'Next call', icon: 'alarm', color: '#10B981' },
   { field: 'fee', label: 'Fee', icon: 'cash', color: '#D97706' },
   { field: 'lost', label: 'Lost', icon: 'close-circle', color: '#EF4444' },
+  { field: 'placement', label: 'Move', icon: 'swap-horizontal', color: '#0D9488' },
 ];
 
 
@@ -175,9 +177,16 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
 
   // 🎓 Admission approval chips (Students only, when it is on)
   const [approvalOn, setApprovalOn] = useState(false);
+  // 🔀 Move marked students to another course · batch · section (Admission Officer / admin)
+  const [canMove, setCanMove] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   useEffect(() => {
-    if (students) getApprovalSettings().then((s) => setApprovalOn(s.enabled));
-  }, [students]);
+    if (students)
+      getApprovalSettings().then((s) => {
+        setApprovalOn(s.enabled);
+        setCanMove(canApprove(s, profile, isAdmin));
+      });
+  }, [students, profile, isAdmin]);
 
   // "Mine" and "Unassigned" only make sense while assignment is on
   const quickFilters: { key: QuickFilter; label: string }[] = students
@@ -232,7 +241,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       (a.field !== 'lost' || canBulkLost) &&
       (a.field !== 'fee' || feeOn) &&
       // Students are admitted already: no stage / lost from here
-      (!students || (a.field !== 'stage' && a.field !== 'lost')),
+      (!students || (a.field !== 'stage' && a.field !== 'lost')) &&
+      (a.field !== 'placement' || (students && canMove)),
   );
   const showAssignee = assignmentOn && seesOthers;
 
@@ -1060,6 +1070,30 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         }}
       />
 
+      {/* 🔀 Many students to one course · batch · section */}
+      {moveOpen && (
+        <BulkPlacementSheet
+          students={markedLeads.map((l) => ({
+            id: l.id,
+            courseId: l.admitted_course?.id ?? null,
+            batchId: l.admitted_batch?.id ?? null,
+            sectionId: l.admitted_section?.id ?? null,
+            place: [l.admitted_course?.name, l.admitted_batch?.name, l.admitted_section ? `Section ${l.admitted_section.name}` : null]
+              .filter(Boolean)
+              .join(' · '),
+          }))}
+          onClose={() => setMoveOpen(false)}
+          onDone={(message) => {
+            const ids = markedLeads.map((l) => l.id);
+            setMoveOpen(false);
+            setSelected(new Set());
+            setMatchingCache([]);
+            showToast(message);
+            afterChange(ids);
+          }}
+        />
+      )}
+
       {/* 💰 Fee & discount for one marked lead */}
       <FeeSheet
         lead={feeFor}
@@ -1215,11 +1249,13 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       { key: 'rating', field: 'rating', label: 'Rating', icon: 'local-fire-department' },
       { key: 'fee', field: 'fee', label: 'Fee', icon: 'payments' },
       { key: 'lost', field: 'lost', label: 'Lost', icon: 'block', danger: true },
+      { key: 'placement', field: 'placement', label: 'Move', icon: 'swap-horiz' },
     ].filter((a) => a.field === 'rating' || actions.some((x) => x.field === a.field)) as (ModernAction & {
       field: FloatAction;
     })[];
     const runAction = (field: FloatAction) => {
       if (field === 'lost') return setLostVisible(true);
+      if (field === 'placement') return setMoveOpen(true);
       if (field === 'fee') {
         const one = markedLeads.length === 1 ? markedLeads[0] : null;
         if (!one) return showToast('Mark just one lead for Fee & discount.');
@@ -2063,6 +2099,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                   key={a.field}
                   onPress={() => {
                     if (a.field === 'lost') return setLostVisible(true);
+                    if (a.field === 'placement') return setMoveOpen(true);
                     if (a.field === 'fee') {
                       const one = markedLeads.length === 1 ? markedLeads[0] : null;
                       if (!one) return showToast('Mark just one lead for Fee & discount.');

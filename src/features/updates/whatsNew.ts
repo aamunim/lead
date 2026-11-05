@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-21-a',
+    date: '21 Nov 2026',
+    title: '🔀 Move many students at once',
+    items: [
+      '🎓 Students tab → mark → 🔀 Move: a new course, batch or section for all of them',
+      '👀 First it shows what will happen: seats, the new IDs, fee changes for a new course',
+      '✅ All of them move, or none (when there aren’t enough seats or IDs)',
+      '🌐 On the website too: tick students → 🔀 Course · Batch · Section',
+    ],
+  },
+  {
     key: '2026-11-20-a',
     date: '20 Nov 2026',
     title: '🎓 Student ID rules for each section',

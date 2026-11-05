@@ -21,6 +21,7 @@ import {
   type ApprovalSettings,
 } from '@/features/approval/api';
 import { ApprovalActionSheet, admissionChecks, type ApprovalSheetKind } from '@/features/approval/ApprovalCard';
+import { BulkPlacementSheet } from '@/features/approval/BulkPlacementSheet';
 import {
   LEAD_BULK,
   LeadRowMenu,
@@ -256,6 +257,8 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   }, []);
   // 🎓 The Admission Officer (or an admin): approve from the row, change the fee
   const officer = canApprove(approval, profile, hasPermission('settings.manage'));
+  // 🔀 Move ticked students to another course · batch · section
+  const [moveOpen, setMoveOpen] = useState(false);
   // A popup opened from a row
   const [popup, setPopup] = useState<{ kind: PopupKind; row: LeadListItem } | null>(null);
   // 💵 Payments from the row (Settings → Fee: who takes payments)
@@ -525,6 +528,28 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
         .catch(() => showToast('Could not copy.'));
     },
   };
+  const moveSheet = moveOpen ? (
+    <BulkPlacementSheet
+      students={rows
+        .filter((r) => ticked.has(r.id))
+        .map((r) => ({
+          id: r.id,
+          courseId: r.admitted_course?.id ?? null,
+          batchId: r.admitted_batch?.id ?? null,
+          sectionId: r.admitted_section?.id ?? null,
+          place: [r.admitted_course?.name, r.admitted_batch?.name, r.admitted_section ? `Section ${r.admitted_section.name}` : null]
+            .filter(Boolean)
+            .join(' · '),
+        }))}
+      onClose={() => setMoveOpen(false)}
+      onDone={(message) => {
+        setMoveOpen(false);
+        setTicked(new Set());
+        showToast(message);
+        load(true);
+      }}
+    />
+  ) : null;
   const popupDone = (message: string) => {
     setPopup(null);
     showToast(message);
@@ -739,6 +764,11 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
                     <Text style={styles.bulkBtnText}>{b.label}</Text>
                   </Pressable>
                 ))}
+              {!leadsMode && officer && (
+                <Pressable onPress={() => setMoveOpen(true)} style={styles.bulkBtn} accessibilityRole="button">
+                  <Text style={styles.bulkBtnText}>🔀 Course · Batch · Section</Text>
+                </Pressable>
+              )}
               <Pressable onPress={doExport} style={styles.bulkBtn} accessibilityRole="button">
                 <Text style={styles.bulkBtnText}>⬇ Export</Text>
               </Pressable>
@@ -954,6 +984,8 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
           }}
         />
       )}
+
+      {moveSheet}
 
       {toast && (
         <View style={styles.toast} pointerEvents="none">

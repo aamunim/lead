@@ -489,6 +489,8 @@ export function describeChange(
         warn: true,
       };
     }
+    case 'bulk_placement':
+      return { text: `🔀 Moved: ${String(d.from ?? '—')} → ${String(d.to ?? '')} (with ${Number(d.count ?? 1)})`, warn: false };
     case 'student_ref_renumbered':
       return { text: `🎓 Student ID changed: ${String(d.old ?? '—')} → ${String(d.new ?? '')}`, warn: false };
     case 'call_lock_override':

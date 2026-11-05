@@ -631,6 +631,8 @@ export function LeadDetailView({
         return 'Lead deleted';
       case 'restored':
         return 'Lead restored';
+      case 'bulk_placement':
+        return `🔀 Moved: ${String(d.from ?? '—')} → ${String(d.to ?? '')} (with ${Number(d.count ?? 1)})`;
       case 'student_ref_renumbered':
         return `🎓 Student ID changed: ${String(d.old ?? '—')} → ${String(d.new ?? '')}`;
       case 'call_lock_override':
