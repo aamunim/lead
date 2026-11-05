@@ -292,7 +292,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
 
   const leadQuick: { key: QuickFilter; label: string }[] = [
     { key: 'all', label: 'All open' },
-    { key: 'recent', label: '🕘 Worked on today' },
+    { key: 'recent', label: '📞 Called today' },
     { key: 'starred', label: '⭐ Starred' },
     { key: 'new', label: '🆕 New' },
     { key: 'closed', label: 'Closed' },
@@ -365,7 +365,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   const [paidRange, setPaidRange] = useState<PaidRange | null>(null);
   const [paidOpen, setPaidOpen] = useState(false);
 
-  // 🕘 Worked on today / ⭐ Starred: the leads by id (any stage, Lost/Admitted too)
+  // 📞 Called today / ⭐ Starred: the leads by id (any stage, Lost/Admitted too)
   const special = leadsMode && (quick === 'recent' || quick === 'starred') ? quick : null;
   const [specialIds, setSpecialIds] = useState<string[] | null>(null);
   useEffect(() => {

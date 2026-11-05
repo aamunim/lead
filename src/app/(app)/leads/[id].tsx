@@ -1,5 +1,5 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
-import { myStars, toggleStar, touchLead } from '@/features/leads/find';
+import { myStars, toggleStar } from '@/features/leads/find';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -243,11 +243,10 @@ export function LeadDetailView({
   // A voice note saved from any sheet on this page: show it at once
   useEffect(() => onVoiceSaved((leadId) => leadId === id && loadVoices()), [id, loadVoices]);
 
-  // 👀 Opened: it shows in 🕘 Recent · ⭐ my star
+  // ⭐ my star
   const [starred, setStarred] = useState(false);
   useEffect(() => {
     if (!id) return;
-    touchLead(id);
     myStars()
       .then((m) => setStarred(m.has(id)))
       .catch(() => undefined);
