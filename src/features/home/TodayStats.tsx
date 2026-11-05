@@ -1,4 +1,6 @@
 import { router, type Href } from 'expo-router';
+import { getHomeSummary, shareRecent } from '@/features/home/summary';
+import { useSavedState } from '@/shared/lib/saved';
 import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -87,7 +89,8 @@ async function talkToday(start: string, me: string | null): Promise<number | nul
 export function TodayStats({ onOpenCalls }: { onOpenCalls?: () => void }) {
   const { profile, assignmentOn, hasPermission, sharedMode } = useAuth();
   const team = sharedMode || hasPermission('leads.view_all');
-  const [s, setS] = useState<Stats | null>(null);
+  // ⚡ last time's numbers at once, then the fresh ones
+  const [s, setS] = useSavedState<Stats | null>(`home:today:${team ? 'team' : 'me'}`, null);
 
   useFocusRefresh(
     useCallback(() => {
@@ -95,13 +98,14 @@ export function TodayStats({ onOpenCalls }: { onOpenCalls?: () => void }) {
       const me = team ? null : (profile?.id ?? null);
       const mine = assignmentOn ? { userId: profile?.id } : { createdBy: profile?.id };
       Promise.all([
-        listDueFollowUps(mine).catch(() => []),
-        talkToday(start, me),
-        leadsToday(start, me),
-        admittedToday(start, me),
-        listTodayVisits().catch(() => []),
-        takenToday(start),
-      ]).then(([due, talkMin, leads, admitted, visits, taken]) => {
+        shareRecent(`due:${JSON.stringify(mine)}`, () => listDueFollowUps(mine)).catch(() => []),
+        shareRecent('visits:today', () => listTodayVisits()).catch(() => []),
+        // ⚡ the numbers in one request (older database: one by one, as before)
+        getHomeSummary(me, start),
+      ]).then(async ([due, visits, sum]) => {
+        const [talkMin, leads, admitted, taken] = sum
+          ? [sum.talk_min, sum.leads_today, sum.admitted_today, sum.taken_today]
+          : await Promise.all([talkToday(start, me), leadsToday(start, me), admittedToday(start, me), takenToday(start)]);
         const t0 = new Date(start).getTime();
         const calls = due.filter((f) => new Date(f.due_at).getTime() >= t0).length;
         setS({ calls, talkMin, leads, admitted, visits: visits.length, taken });

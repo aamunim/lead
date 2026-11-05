@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { useSavedState } from '@/shared/lib/saved';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, AppState, Dimensions, Pressable, StyleSheet, View, type PressableProps } from 'react-native';
@@ -16,7 +17,8 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
 
   // 🎓 Students tab: Settings → Students decides who sees it
-  const [studentsTab, setStudentsTab] = useState(false);
+  // ⚡ last time's answer at once, so the tab bar doesn't jump on start
+  const [studentsTab, setStudentsTab] = useSavedState('tabs:students', false);
   useEffect(() => {
     const check = () =>
       getStudentsSettings()

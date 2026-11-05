@@ -1,4 +1,7 @@
 import { router, useFocusEffect, type Href } from 'expo-router';
+import { getHomeSummary } from '@/features/home/summary';
+import { startOfDay } from '@/features/follow-ups/api';
+import { useSavedState } from '@/shared/lib/saved';
 import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -56,11 +59,12 @@ function WebStart() {
 }
 
 function PhoneHome() {
-  const { profile, hasPermission } = useAuth();
-  const [pendingCount, setPendingCount] = useState(0);
-  const [unread, setUnread] = useState(0);
+  const { profile, hasPermission, sharedMode } = useAuth();
+  // ⚡ last time's numbers at once, then the fresh ones
+  const [pendingCount, setPendingCount] = useSavedState('home:pending', 0);
+  const [unread, setUnread] = useSavedState('home:unread', 0);
   const [contactsAllowed, setContactsAllowed] = useState(false);
-  const [discounts, setDiscounts] = useState(0);
+  const [discounts, setDiscounts] = useSavedState('home:discounts', 0);
   // ➕ Leads I added today / this week
   const [myAdded, setMyAdded] = useState<{ today: number; week: number } | null>(null);
 
@@ -102,8 +106,19 @@ function PhoneHome() {
         .catch(() => setContactsAllowed(false));
 
       checkNudge();
-      countUnread().then(setUnread);
-      countDiscountsToAnswer().then(setDiscounts);
+      // ⚡ 🔔, discounts and people waiting: one request with Home's numbers
+      const team = sharedMode || hasPermission('leads.view_all');
+      getHomeSummary(team ? null : (profile?.id ?? null), startOfDay(new Date()).toISOString()).then((sum) => {
+        if (sum) {
+          setUnread(sum.unread);
+          setDiscounts(sum.discounts);
+          if (canManageUsers) setPendingCount(sum.pending_users);
+          return;
+        }
+        countUnread().then(setUnread);
+        countDiscountsToAnswer().then(setDiscounts);
+        if (canManageUsers) countPendingUsers().then(setPendingCount).catch(() => setPendingCount(0));
+      });
       const week = addedRange({ userId: null, day: 'week' });
       const day = addedRange({ userId: null, day: 'today' });
       if (week && day && profile?.id) {
@@ -116,11 +131,7 @@ function PhoneHome() {
           .catch(() => setMyAdded(null));
       }
 
-      if (!canManageUsers) return;
-      countPendingUsers()
-        .then(setPendingCount)
-        .catch(() => setPendingCount(0));
-    }, [canManageUsers, checkNudge, profile?.id]),
+    }, [canManageUsers, checkNudge, profile?.id, sharedMode, hasPermission, setUnread, setDiscounts, setPendingCount]),
   );
 
   // ...and when the app comes back to the front

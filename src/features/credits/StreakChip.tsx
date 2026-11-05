@@ -1,4 +1,5 @@
 import { router, type Href } from 'expo-router';
+import { useSavedState } from '@/shared/lib/saved';
 import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
@@ -12,7 +13,8 @@ import { fontWeight } from '@/shared/theme';
 // Admin left you out of the leaderboard). Tap = the leaderboard.
 export function StreakChip() {
   const { profile } = useAuth();
-  const [me, setMe] = useState<Me | null>(null);
+  // ⚡ last time's streak at once, then the fresh one
+  const [me, setMe] = useSavedState<Me | null>('home:streak', null);
 
   useFocusRefresh(
     useCallback(() => {

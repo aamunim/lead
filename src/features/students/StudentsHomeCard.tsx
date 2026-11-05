@@ -1,4 +1,5 @@
 import { router, type Href } from 'expo-router';
+import { useSavedState } from '@/shared/lib/saved';
 import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -21,8 +22,9 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 export function StudentsHomeCard() {
   const { profile, hasPermission } = useAuth();
   const isAdmin = hasPermission('settings.manage');
-  const [allowed, setAllowed] = useState(false);
-  const [s, setS] = useState<StudentsSummaryData | null>(null);
+  // ⚡ last time's card at once, then the fresh one
+  const [allowed, setAllowed] = useSavedState('home:students:ok', false);
+  const [s, setS] = useSavedState<StudentsSummaryData | null>('home:students', null);
 
   useFocusRefresh(
     useCallback(() => {
@@ -31,7 +33,7 @@ export function StudentsHomeCard() {
         setAllowed(ok);
         if (ok) getStudentsSummary().then(setS);
       });
-    }, [profile, isAdmin]),
+    }, [profile, isAdmin, setAllowed, setS]),
   );
 
   if (!allowed || !s || s.students === 0) return null;

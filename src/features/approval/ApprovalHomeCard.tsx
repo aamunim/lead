@@ -1,4 +1,7 @@
 import { router, type Href } from 'expo-router';
+import { getHomeSummary } from '@/features/home/summary';
+import { startOfDay } from '@/features/follow-ups/api';
+import { useSavedState } from '@/shared/lib/saved';
 import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -13,19 +16,27 @@ import { fontSize, fontWeight } from '@/shared/theme';
 export function ApprovalHomeCard() {
   const { profile, hasPermission } = useAuth();
   const isAdmin = hasPermission('settings.manage');
-  const [work, setWork] = useState({ notSubmitted: 0, ready: 0 });
+  const { sharedMode } = useAuth();
+  // ⚡ last time's numbers at once, then the fresh ones
+  const [work, setWork] = useSavedState('home:ittc', { notSubmitted: 0, ready: 0 });
 
   useFocusRefresh(
     useCallback(() => {
       let live = true;
       getApprovalSettings()
-        .then((s) => (canApprove(s, profile, isAdmin) ? countIttcWork() : { notSubmitted: 0, ready: 0 }))
+        .then(async (s) => {
+          if (!canApprove(s, profile, isAdmin)) return { notSubmitted: 0, ready: 0 };
+          // ⚡ from Home's numbers (one request for all the cards); else as before
+          const team = sharedMode || hasPermission('leads.view_all');
+          const sum = await getHomeSummary(team ? null : (profile?.id ?? null), startOfDay(new Date()).toISOString());
+          return sum ? { notSubmitted: sum.ittc_not_submitted, ready: sum.ittc_ready } : countIttcWork();
+        })
         .then((n) => live && setWork(n))
         .catch(() => undefined);
       return () => {
         live = false;
       };
-    }, [profile, isAdmin]),
+    }, [profile, isAdmin, sharedMode, hasPermission, setWork]),
   );
 
   if (work.notSubmitted === 0 && work.ready === 0) return null;
