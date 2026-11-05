@@ -364,6 +364,13 @@ export default function AdmissionSettingsScreen() {
                 </Text>
               </View>
             )}
+            <Pressable
+              onPress={() => router.push('/settings/student-ids' as Href)}
+              hitSlop={6}
+              accessibilityRole="button"
+            >
+              <Text style={styles.rulesLink}>🎓 Own rules for each course, batch and section (ranges) ›</Text>
+            </Pressable>
             <Button
               title="🔁 Give every student an ID with this pattern"
               variant="secondary"
@@ -618,6 +625,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     letterSpacing: 0.5,
   },
+  rulesLink: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.primary, paddingVertical: 4 },
   yearRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   yearChip: {
     paddingVertical: 7,

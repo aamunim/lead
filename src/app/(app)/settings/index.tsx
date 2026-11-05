@@ -60,6 +60,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/admission' as Href,
       },
       {
+        title: 'Student ID rules',
+        description: 'Own numbers for each course, batch and section (27001 – 27110 …)',
+        icon: '🎓',
+        href: '/settings/student-ids' as Href,
+      },
+      {
         title: 'Required papers',
         description: 'Papers to collect, required or not, for which courses',
         icon: '📄',
