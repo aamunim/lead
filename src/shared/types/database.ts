@@ -1613,6 +1613,8 @@ export type Database = {
           admission_fee_need: number | null
           admission_fee_ok: boolean | null
           fee_paid_total: number | null
+          course_ids: string[]
+          pipeline_course_id: string | null
           fee_last_paid_at: string | null
           admission_note: string | null
           admitted_at: string | null
@@ -1965,6 +1967,7 @@ export type Database = {
           note_required: boolean
           sort_order: number
           updated_at: string
+          course_ids: string[] | null
         }
         Insert: {
           ask_date?: boolean
@@ -2002,6 +2005,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          course_ids: string[] | null
           avatar_url: string | null
           created_at: string
           deactivated_at: string | null
@@ -2075,6 +2079,8 @@ export type Database = {
           permissions: string[]
           rank: number
           updated_at: string
+          acts_as: string | null
+          course_ids: string[] | null
         }
         Insert: {
           created_at?: string
@@ -2552,6 +2558,24 @@ export type Database = {
       chat_mark_read: { Args: { p_chat_user?: string }; Returns: undefined }
       chat_topic_status: { Args: { p_topic: string; p_status: string }; Returns: undefined }
       chat_unread: { Args: never; Returns: number }
+      save_role: {
+        Args: {
+          p_key: string | null
+          p_name: string
+          p_description: string | null
+          p_acts_as: string
+          p_permissions: string[]
+          p_course_ids: string[] | null
+        }
+        Returns: string
+      }
+      delete_role: { Args: { p_key: string }; Returns: undefined }
+      role_counts: { Args: never; Returns: { role_key: string; people: number }[] }
+      my_course_ids: { Args: never; Returns: string[] | null }
+      set_user_courses: { Args: { p_user: string; p_course_ids: string[] | null }; Returns: undefined }
+      set_stage_courses: { Args: { p_stage: string; p_course_ids: string[] | null }; Returns: undefined }
+      set_pipeline_course: { Args: { p_lead: string; p_course: string }; Returns: undefined }
+      bulk_add_lead_course: { Args: { p_leads: string[]; p_course: string; p_dry?: boolean }; Returns: Json }
       chat_inbox: { Args: never; Returns: Json }
       chat_open_topics: { Args: never; Returns: Json }
       feedback_old_files: { Args: never; Returns: { id: string; paths: string[] }[] }

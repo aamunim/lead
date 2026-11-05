@@ -4,6 +4,8 @@ import {
   Platform,
   ActivityIndicator,
   FlatList,
+  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -13,7 +15,8 @@ import {
 
 import { listLeads, type LeadListItem, type LeadQuery } from '@/features/leads/api';
 import { LeadCard } from '@/features/leads/LeadCard';
-import { listPipelineStages, type PipelineStage } from '@/features/pipeline/api';
+import { listPipelineStages, stagesFor, type PipelineStage } from '@/features/pipeline/api';
+import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -95,27 +98,40 @@ export function LeadBoard({
   const height = measured || (Platform.OS === 'web' ? Math.max(400, winH - 240) : 0);
   const selecting = selected.size > 0;
 
+  // 🎓 A course's own pipeline (when some stages are only for some courses)
+  const [courses, setCourses] = useState<{ id: string; name: string }[]>([]);
+  const [course, setCourse] = useState<string | null>(null);
   useEffect(() => {
     listPipelineStages()
       .then(setStages)
       .catch((e) => setStagesError(e instanceof Error ? e.message : 'Could not load the stages.'));
+    supabase
+      .from('courses')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('sort_order')
+      .order('name')
+      .then(({ data }) => setCourses(data ?? []));
   }, []);
+  const perCourse = stages.some((s) => !!s.courseIds);
 
   // Columns: open stages, then Admitted / Lost (setting). "Closed" chip → only closed columns.
   const columns = useMemo(() => {
-    const open = stages.filter((s) => s.kind === 'open');
+    const allOpen = stages.filter((s) => s.kind === 'open');
+    const open = course ? stagesFor(allOpen, course) : allOpen;
     const closed = stages.filter((s) => s.kind === 'won' || s.kind === 'lost' || s.kind === 'cancelled');
     if (query.quick === 'closed') return closed;
     return closedColumns ? [...open, ...closed.filter((s) => s.kind !== 'cancelled')] : open;
-  }, [stages, closedColumns, query.quick]);
+  }, [stages, closedColumns, query.quick, course]);
 
   // --- loading ----------------------------------------------------------
-  const queryKey = `${JSON.stringify(query)}|${reloadKey}`;
+  const boardQuery = useMemo(() => ({ ...query, pipelineCourseId: course }), [query, course]);
+  const queryKey = `${JSON.stringify(boardQuery)}|${reloadKey}`;
   const keyRef = useRef(queryKey);
   const colsRef = useRef(cols);
   colsRef.current = cols;
-  const queryRef = useRef(query);
-  queryRef.current = query;
+  const queryRef = useRef(boardQuery);
+  queryRef.current = boardQuery;
   // The parent may pass a new function each render: keep loading stable
   const onChangedRef = useRef(onChanged);
   onChangedRef.current = onChanged;
@@ -208,6 +224,22 @@ export function LeadBoard({
 
   return (
     <View style={styles.board} onLayout={(e) => setHeight(e.nativeEvent.layout.height)}>
+      {/* 🎓 Every course (shared stages) or one course's own pipeline */}
+      {perCourse && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.coursePick}>
+          {[{ id: null as string | null, name: 'All courses' }, ...courses].map((c) => (
+            <Pressable
+              key={c.id ?? 'all'}
+              onPress={() => setCourse(c.id)}
+              style={[styles.courseChip, course === c.id && styles.courseChipOn]}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: course === c.id }}
+            >
+              <Text style={[styles.courseChipText, course === c.id && styles.courseChipTextOn]}>🎓 {c.name}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
       {height > 0 && (
         <FlatList
           horizontal
@@ -292,6 +324,18 @@ function CardGap() {
 }
 
 const styles = StyleSheet.create({
+  coursePick: { gap: spacing.xs, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  courseChip: {
+    paddingVertical: 5,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  courseChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  courseChipText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.text },
+  courseChipTextOn: { color: colors.textOnPrimary },
   board: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   muted: { fontSize: fontSize.small, color: colors.textMuted, textAlign: 'center' },

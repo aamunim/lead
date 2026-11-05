@@ -31,6 +31,7 @@ import { ListDesignPicker } from '@/features/leads/ListDesignPicker';
 import { supabase } from '@/shared/lib/supabase';
 import { ProfilePhoto } from '@/features/users/ProfilePhoto';
 import { adminSetEmail } from '@/features/users/profile';
+import { PersonCourses } from '@/features/roles/PersonCourses';
 
 type Form = {
   fullName: string;
@@ -113,12 +114,17 @@ export default function UserEditScreen() {
       ? 'deactivated'
       : 'pending';
 
-  const showTeamLead = form?.roleKey === 'caller';
+  // What a role works like (new roles too): Callers belong to a Team Lead
+  const baseOf = (key: string | undefined | null) => {
+    const r = roles.find((x) => x.key === key);
+    return r?.acts_as ?? (key === 'caller' ? 'caller' : key === 'team_lead' ? 'team_lead' : 'admin');
+  };
+  const showTeamLead = baseOf(form?.roleKey) === 'caller';
 
   // --- things to warn about -------------------------------------------
   const isAutoAssignUser =
     !!user && assignment.enabled && assignment.admin_auto && assignment.admin_auto_user_id === user.id;
-  const leadsATeam = user?.role_key === 'team_lead' && teamSize > 0;
+  const leadsATeam = baseOf(user?.role_key) === 'team_lead' && teamSize > 0;
 
   // --- save ----------------------------------------------------------
   const save = async (activate?: boolean) => {
@@ -132,7 +138,7 @@ export default function UserEditScreen() {
         phone: form.phone.trim() || null,
         // Role and status are never sent for your own account
         ...(isSelf ? {} : { role_key: form.roleKey }),
-        team_lead_id: form.roleKey === 'caller' ? form.teamLeadId : null,
+        team_lead_id: baseOf(form.roleKey) === 'caller' ? form.teamLeadId : null,
         ...(activate !== undefined && !isSelf ? { is_active: activate } : {}),
       });
       router.back();
@@ -146,7 +152,7 @@ export default function UserEditScreen() {
   // Changing a Team Lead's role leaves their Callers without a Team Lead
   const saveChanges = () => {
     if (!user || !form) return;
-    const losingTeam = leadsATeam && form.roleKey !== 'team_lead';
+    const losingTeam = leadsATeam && baseOf(form.roleKey) !== 'team_lead';
     if (!losingTeam) {
       save();
       return;
@@ -338,6 +344,16 @@ export default function UserEditScreen() {
             disabled={readOnly}
           />
         </View>
+      )}
+
+      {/* 🎓 Which courses this person sees (like the role, or their own) */}
+      {!readOnly && user && (
+        <PersonCourses
+          userId={user.id}
+          value={(user as unknown as { course_ids?: string[] | null }).course_ids ?? null}
+          role={roles.find((r) => r.key === (form?.roleKey ?? user.role_key)) ?? null}
+          onSaved={load}
+        />
       )}
 
       {/* 🎨 List design on their phone */}

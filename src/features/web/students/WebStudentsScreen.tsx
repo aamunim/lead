@@ -23,6 +23,7 @@ import {
 import { ApprovalActionSheet, admissionChecks, type ApprovalSheetKind } from '@/features/approval/ApprovalCard';
 import { BulkPlacementSheet } from '@/features/approval/BulkPlacementSheet';
 import { BulkReceivedSheet } from '@/features/approval/BulkReceivedSheet';
+import { BulkCourseSheet } from '@/features/leads/BulkCourseSheet';
 import { PaidSheet, paidRangeLabel } from '@/features/students/PaidSheet';
 import {
   LEAD_BULK,
@@ -254,6 +255,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   const [moveOpen, setMoveOpen] = useState(false);
   // 🏛 Mark the ticked (ready) ones Received by ITTC
   const [receivedOpen, setReceivedOpen] = useState(false);
+  const [courseOpen, setCourseOpen] = useState(false);
   // A popup opened from a row
   const [popup, setPopup] = useState<{ kind: PopupKind; row: LeadListItem } | null>(null);
   // 💵 Payments from the row (Settings → Fee: who takes payments)
@@ -556,6 +558,19 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
       }}
     />
   ) : null;
+  // 📚 Admins: a course for the ticked leads (only those without one)
+  const courseSheet = courseOpen ? (
+    <BulkCourseSheet
+      ids={rows.filter((r) => ticked.has(r.id)).map((r) => r.id)}
+      onClose={() => setCourseOpen(false)}
+      onDone={(message) => {
+        setCourseOpen(false);
+        setTicked(new Set());
+        showToast(message);
+        load(true);
+      }}
+    />
+  ) : null;
   const receivedSheet = receivedOpen ? (
     <BulkReceivedSheet
       ids={rows.filter((r) => ticked.has(r.id)).map((r) => r.id)}
@@ -800,6 +815,11 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
                     <Text style={styles.bulkBtnText}>{b.label}</Text>
                   </Pressable>
                 ))}
+              {leadsMode && hasPermission('settings.manage') && (
+                <Pressable onPress={() => setCourseOpen(true)} style={styles.bulkBtn} accessibilityRole="button">
+                  <Text style={styles.bulkBtnText}>📚 Course</Text>
+                </Pressable>
+              )}
               {!leadsMode && officer && (
                 <Pressable onPress={() => setMoveOpen(true)} style={styles.bulkBtn} accessibilityRole="button">
                   <Text style={styles.bulkBtnText}>🔀 Course · Batch · Section</Text>
@@ -1028,6 +1048,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
 
       {moveSheet}
       {receivedSheet}
+      {courseSheet}
       {paidOpen && (
         <PaidSheet
           value={paidRange}

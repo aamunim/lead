@@ -68,6 +68,7 @@ import {
 import { StudentsSummary } from '@/features/students/StudentsSummary';
 import { PaidSheet, paidRangeLabel } from '@/features/students/PaidSheet';
 import { BulkReceivedSheet } from '@/features/approval/BulkReceivedSheet';
+import { BulkCourseSheet } from '@/features/leads/BulkCourseSheet';
 import {
   MAX_MARK_ALL,
   listAllMatchingLeads,
@@ -126,7 +127,7 @@ import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 
 
 // The floating buttons shown while leads are marked ("lost" opens the Lost sheet)
-type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received';
+type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received' | 'course';
 
 const ACTIONS: {
   field: FloatAction;
@@ -143,6 +144,7 @@ const ACTIONS: {
   { field: 'lost', label: 'Lost', icon: 'close-circle', color: '#EF4444' },
   { field: 'placement', label: 'Move', icon: 'swap-horizontal', color: '#0D9488' },
   { field: 'received', label: 'ITTC', icon: 'business', color: '#7C3AED' },
+  { field: 'course', label: 'Course', icon: 'school', color: '#0891B2' },
 ];
 
 
@@ -186,6 +188,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   const [moveOpen, setMoveOpen] = useState(false);
   // 🏛 Mark the ready ones Received by ITTC
   const [receivedOpen, setReceivedOpen] = useState(false);
+  // 📚 Admins: a course for many leads (only those without one)
+  const [courseOpen, setCourseOpen] = useState(false);
   useEffect(() => {
     if (students)
       getApprovalSettings().then((s) => {
@@ -238,7 +242,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       // Students are admitted already: no stage / lost from here
       (!students || (a.field !== 'stage' && a.field !== 'lost')) &&
       (a.field !== 'placement' || (students && canMove)) &&
-      (a.field !== 'received' || (students && canMove)),
+      (a.field !== 'received' || (students && canMove)) &&
+      (a.field !== 'course' || (!students && isAdmin)),
   );
   const showAssignee = assignmentOn && seesOthers;
 
@@ -1136,6 +1141,21 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         />
       )}
 
+      {courseOpen && (
+        <BulkCourseSheet
+          ids={markedLeads.map((l) => l.id)}
+          onClose={() => setCourseOpen(false)}
+          onDone={(message) => {
+            const ids = markedLeads.map((l) => l.id);
+            setCourseOpen(false);
+            setSelected(new Set());
+            setMatchingCache([]);
+            showToast(message);
+            afterChange(ids);
+          }}
+        />
+      )}
+
       {receivedOpen && (
         <BulkReceivedSheet
           ids={markedLeads.map((l) => l.id)}
@@ -1308,6 +1328,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       { key: 'lost', field: 'lost', label: 'Lost', icon: 'block', danger: true },
       { key: 'placement', field: 'placement', label: 'Move', icon: 'swap-horiz' },
       { key: 'received', field: 'received', label: 'ITTC', icon: 'account-balance' },
+      { key: 'course', field: 'course', label: 'Course', icon: 'school' },
     ].filter((a) => a.field === 'rating' || actions.some((x) => x.field === a.field)) as (ModernAction & {
       field: FloatAction;
     })[];
@@ -1315,6 +1336,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       if (field === 'lost') return setLostVisible(true);
       if (field === 'placement') return setMoveOpen(true);
       if (field === 'received') return setReceivedOpen(true);
+      if (field === 'course') return setCourseOpen(true);
       if (field === 'fee') {
         const one = markedLeads.length === 1 ? markedLeads[0] : null;
         if (!one) return showToast('Mark just one lead for Fee & discount.');
@@ -2214,6 +2236,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                     if (a.field === 'lost') return setLostVisible(true);
                     if (a.field === 'placement') return setMoveOpen(true);
                     if (a.field === 'received') return setReceivedOpen(true);
+                    if (a.field === 'course') return setCourseOpen(true);
                     if (a.field === 'fee') {
                       const one = markedLeads.length === 1 ? markedLeads[0] : null;
                       if (!one) return showToast('Mark just one lead for Fee & discount.');

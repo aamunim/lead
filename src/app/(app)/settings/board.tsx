@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { roleLabelOf, useRoleChoices } from '@/features/roles/api';
 import { Stack, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
@@ -10,11 +11,6 @@ import type { WhoRule } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
-const ROLES: { key: string; label: string }[] = [
-  { key: 'admin', label: 'Admins' },
-  { key: 'team_lead', label: 'Team Leads' },
-  { key: 'caller', label: 'Callers' },
-];
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: 'Super Admin',
@@ -30,6 +26,7 @@ const WHO_MODES: { value: WhoRule['mode']; title: string; text: string }[] = [
 ];
 
 export default function BoardSettingsScreen() {
+  const ROLES = useRoleChoices();
   const { hasPermission } = useAuth();
   const canManage = hasPermission('settings.manage');
 
@@ -172,7 +169,7 @@ export default function BoardSettingsScreen() {
                     <CheckRow
                       key={u.id}
                       label={u.full_name ?? 'No name'}
-                      sub={ROLE_LABEL[u.role_key] ?? u.role_key}
+                      sub={ROLE_LABEL[u.role_key] ?? roleLabelOf(ROLES, u.role_key)}
                       on={settings.who.user_ids.includes(u.id)}
                       onPress={() => toggle('user_ids', u.id)}
                     />

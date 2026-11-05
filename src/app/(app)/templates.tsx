@@ -1,4 +1,5 @@
 import { Stack, useFocusEffect } from 'expo-router';
+import { roleLabelOf, useRoleChoices } from '@/features/roles/api';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -46,11 +47,6 @@ import { Button } from '@/shared/ui/Button';
 
 const WA = '#1F7A57';
 
-const ROLES = [
-  { key: 'admin', label: 'Admins' },
-  { key: 'team_lead', label: 'Team Leads' },
-  { key: 'caller', label: 'Callers' },
-];
 
 const CHANNELS: { value: TemplateInput['channels']; label: string }[] = [
   { value: 'both', label: 'WhatsApp + SMS' },
@@ -59,6 +55,7 @@ const CHANNELS: { value: TemplateInput['channels']; label: string }[] = [
 ];
 
 export default function TemplatesScreen() {
+  const ROLES = useRoleChoices();
   const { hasPermission, profile } = useAuth();
   const isAdmin = hasPermission('settings.manage');
 

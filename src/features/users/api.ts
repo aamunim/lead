@@ -11,7 +11,7 @@ export type UserRow = Tables<'profiles'> & {
 
 export type UserFilter = 'pending' | 'active' | 'deactivated' | 'all';
 
-export type RoleOption = Pick<Tables<'roles'>, 'key' | 'name' | 'rank' | 'description'>;
+export type RoleOption = Pick<Tables<'roles'>, 'key' | 'name' | 'rank' | 'description' | 'acts_as' | 'course_ids'>;
 export type TeamLeadOption = Pick<Tables<'profiles'>, 'id' | 'full_name' | 'role_key'>;
 
 export type UserUpdate = Pick<
@@ -107,7 +107,7 @@ export async function countPendingUsers(): Promise<number> {
 export async function listRoles(): Promise<RoleOption[]> {
   const { data, error } = await supabase
     .from('roles')
-    .select('key, name, rank, description')
+    .select('key, name, rank, description, acts_as, course_ids')
     .order('rank', { ascending: false });
 
   if (error) throw toError(error.message);
@@ -115,11 +115,16 @@ export async function listRoles(): Promise<RoleOption[]> {
 }
 
 export async function listTeamLeads(): Promise<TeamLeadOption[]> {
+  // Everyone whose role works like a Team Lead or an Admin (new roles too)
+  const { data: roles } = await supabase.from('roles').select('key, acts_as');
+  const keys = (roles ?? [])
+    .filter((r) => (r.acts_as ?? (r.key === 'team_lead' ? 'team_lead' : r.key === 'caller' ? 'caller' : 'admin')) !== 'caller')
+    .map((r) => r.key);
   const { data, error } = await supabase
     .from('profiles')
     .select('id, full_name, role_key')
     .eq('is_active', true)
-    .in('role_key', ['team_lead', 'admin', 'super_admin'])
+    .in('role_key', keys.length ? keys : ['team_lead', 'admin', 'super_admin'])
     .order('full_name');
 
   if (error) throw toError(error.message);

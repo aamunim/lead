@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { roleLabelOf, useRoleChoices } from '@/features/roles/api';
 import { Stack, router, type Href } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -30,11 +31,6 @@ import {
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
-const ROLES: { key: string; label: string }[] = [
-  { key: 'admin', label: 'Admins' },
-  { key: 'team_lead', label: 'Team Leads' },
-  { key: 'caller', label: 'Callers' },
-];
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: 'Super Admin',
@@ -437,6 +433,7 @@ function WhoPicker({
   users: AssignableUser[];
   onChange: (rule: WhoRule) => void;
 }) {
+  const ROLES = useRoleChoices();
   const toggle = (key: 'roles' | 'user_ids', value: string) =>
     onChange({
       ...rule,
@@ -474,7 +471,7 @@ function WhoPicker({
               <CheckRow
                 key={u.id}
                 label={u.full_name ?? 'No name'}
-                sub={ROLE_LABEL[u.role_key] ?? u.role_key}
+                sub={ROLE_LABEL[u.role_key] ?? roleLabelOf(ROLES, u.role_key)}
                 on={rule.user_ids.includes(u.id)}
                 onPress={() => toggle('user_ids', u.id)}
               />
