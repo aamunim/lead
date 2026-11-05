@@ -1,4 +1,5 @@
 import { router, useFocusEffect, type Href } from 'expo-router';
+import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -94,7 +95,7 @@ function PhoneHome() {
   }, [openSetup]);
 
   // Refresh the approval count, contacts access and reminders every time Home comes into view
-  useFocusEffect(
+  useFocusRefresh(
     useCallback(() => {
       canImportContacts()
         .then(setContactsAllowed)

@@ -1,4 +1,5 @@
 import { supabase } from '@/shared/lib/supabase';
+import { getSetting } from '@/features/settings/api';
 import type { Json } from '@/shared/types/database';
 
 // =====================================================================
@@ -143,7 +144,7 @@ export type CreditSettings = { enabled: boolean; retro: boolean; rules: CreditRu
 
 export async function getCreditSettings(): Promise<CreditSettings> {
   const [{ data: cfg }, { data: rules }] = await Promise.all([
-    supabase.from('app_settings').select('value').eq('key', 'credits').maybeSingle(),
+    getSetting('credits').then((value) => ({ data: value == null ? null : { value } })),
     supabase.rpc('current_credit_rules'),
   ]);
   const v = (cfg?.value ?? {}) as { enabled?: boolean; retro?: boolean };
@@ -365,7 +366,8 @@ export const DEFAULT_EXTRAS: CreditExtras = {
 };
 
 export async function getCreditExtras(): Promise<CreditExtras> {
-  const { data } = await supabase.from('app_settings').select('value').eq('key', 'credit_extras').maybeSingle();
+  const value = await getSetting('credit_extras').catch(() => null);
+  const data = value == null ? null : { value };
   const v = (data?.value ?? {}) as Partial<CreditExtras>;
   return {
     winner: { ...DEFAULT_EXTRAS.winner, ...(v.winner ?? {}) },

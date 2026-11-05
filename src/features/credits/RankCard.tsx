@@ -1,4 +1,5 @@
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { router, type Href } from 'expo-router';
+import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -15,7 +16,7 @@ export function RankCard() {
   );
   const [level, setLevel] = useState<Level | null>(null);
 
-  useFocusEffect(
+  useFocusRefresh(
     useCallback(() => {
       if (!profile?.id) return;
       getMe()

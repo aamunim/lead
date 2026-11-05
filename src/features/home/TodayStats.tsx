@@ -1,4 +1,5 @@
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { router, type Href } from 'expo-router';
+import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -88,7 +89,7 @@ export function TodayStats({ onOpenCalls }: { onOpenCalls?: () => void }) {
   const team = sharedMode || hasPermission('leads.view_all');
   const [s, setS] = useState<Stats | null>(null);
 
-  useFocusEffect(
+  useFocusRefresh(
     useCallback(() => {
       const start = startOfDay(new Date()).toISOString();
       const me = team ? null : (profile?.id ?? null);

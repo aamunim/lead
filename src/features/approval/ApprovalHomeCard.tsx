@@ -1,4 +1,5 @@
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { router, type Href } from 'expo-router';
+import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -14,7 +15,7 @@ export function ApprovalHomeCard() {
   const isAdmin = hasPermission('settings.manage');
   const [work, setWork] = useState({ notSubmitted: 0, ready: 0 });
 
-  useFocusEffect(
+  useFocusRefresh(
     useCallback(() => {
       let live = true;
       getApprovalSettings()
