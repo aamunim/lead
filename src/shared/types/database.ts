@@ -2367,6 +2367,7 @@ export type Database = {
           p_lead_id: string
           p_note?: string
           p_student_ref?: string
+          p_section_id?: string
         }
         Returns: Json
       }
@@ -2536,7 +2537,34 @@ export type Database = {
         Args: { p_at: string; p_lead_id: string; p_note?: string }
         Returns: string
       }
-      preview_student_ref: { Args: { p_course?: string; p_batch?: string }; Returns: string }
+      preview_student_ref: { Args: { p_course?: string; p_batch?: string; p_section?: string }; Returns: string }
+      save_student_id_rule: {
+        Args: {
+          p_level: string
+          p_target: string
+          p_kind: string
+          p_pattern?: string | null
+          p_start?: number | null
+          p_end?: number | null
+        }
+        Returns: undefined
+      }
+      fill_section_ranges: { Args: { p_batch: string; p_start: number; p_per: number }; Returns: Json }
+      student_id_rules_overview: {
+        Args: never
+        Returns: {
+          id: string
+          course_id: string | null
+          batch_id: string | null
+          section_id: string | null
+          kind: string
+          pattern: string | null
+          range_start: number | null
+          range_end: number | null
+          used: number | null
+          label: string
+        }[]
+      }
       student_ref_warnings: {
         Args: never
         Returns: { course_id: string; course_name: string; year: number; batches: string[] }[]

@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-20-a',
+    date: '20 Nov 2026',
+    title: '🎓 Student ID rules for each section',
+    items: [
+      '⚙️ Settings → Student ID rules: each course, batch and section can have its own rule',
+      '🔢 A range per section, e.g. Section A 27001 – 27110, Section B 27111 – 27220 (one tap fills them)',
+      '🏫 Mark admitted now asks for the section; the ID comes from its rule',
+      '🔁 Moving a student to another section gives a new ID; the old one stays in the history',
+    ],
+  },
+  {
     key: '2026-11-19-a',
     date: '19 Nov 2026',
     title: '👤 My profile · 🎓 IDs by batch year',

@@ -28,6 +28,7 @@ import {
   getAdmissionSettings,
   listActiveCourses,
   listAdmissionBatches,
+  listBatchSectionsForAdmit,
   markAdmitted,
   previewStudentRef,
   type AdmissionBatch,
@@ -79,6 +80,9 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
   const [batches, setBatches] = useState<AdmissionBatch[]>([]);
   const [batchesLoading, setBatchesLoading] = useState(false);
   const [batchId, setBatchId] = useState<string | null>(null);
+  // 🏫 the section (needed when the batch has sections); the ID comes from its rule
+  const [sections, setSections] = useState<{ id: string; name: string }[]>([]);
+  const [sectionId, setSectionId] = useState<string | null>(null);
 
   // Required papers not received yet, for the chosen course (null = not checked)
   const [missing, setMissing] = useState<string[] | null>(null);
@@ -142,11 +146,25 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, lead.id]);
 
-  // 🎓 The ID depends on the course and the batch (its start year)
+  useEffect(() => {
+    setSectionId(null);
+    setSections([]);
+    if (!batchId) return;
+    listBatchSectionsForAdmit(batchId).then((list) => {
+      setSections(list);
+      if (list.length === 1) setSectionId(list[0].id);
+    });
+  }, [batchId]);
+
+  // 🎓 The ID depends on the course, the batch (its start year) and the section's rule
+  const [refFull, setRefFull] = useState(false);
   useEffect(() => {
     if (!visible || loading) return;
-    previewStudentRef(courseId, batchId).then(setRefPreview);
-  }, [visible, loading, courseId, batchId]);
+    previewStudentRef(courseId, batchId, sectionId).then((r) => {
+      setRefPreview(r);
+      setRefFull(!!courseId && r === null);
+    });
+  }, [visible, loading, courseId, batchId, sectionId]);
 
   // --- batches of the chosen course ------------------------------------------
   useEffect(() => {
@@ -222,6 +240,10 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
       setError('Please choose a batch.');
       return;
     }
+    if (batchId && sections.length > 0 && !sectionId) {
+      setError('Please choose a section.');
+      return;
+    }
     if (idMode === 'manual' && !studentRef.trim()) {
       setError('Please type the student ID.');
       return;
@@ -275,6 +297,7 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
         leadId: lead.id,
         courseId,
         batchId,
+        sectionId,
         admittedAt,
         studentRef: idMode === 'manual' || (idMode === 'auto' && ownRef) ? studentRef : null,
         note,
@@ -448,6 +471,23 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
                       </View>
                     )}
 
+                    {/* 🏫 Section (needed when the batch has sections) */}
+                    {batchId && sections.length > 0 && (
+                      <View style={styles.field}>
+                        <Text style={styles.label}>Section *</Text>
+                        <View style={styles.batchList}>
+                          {sections.map((s) => (
+                            <BatchRow
+                              key={s.id}
+                              label={`Section ${s.name}`}
+                              selected={sectionId === s.id}
+                              onPress={() => setSectionId(s.id)}
+                            />
+                          ))}
+                        </View>
+                      </View>
+                    )}
+
                     {/* 💰 Fee and a payment now */}
                     {courseId && fee && (
                       <View style={styles.feeBox}>
@@ -537,8 +577,9 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
                         {idMode === 'auto' && !ownRef ? (
                           <>
                             <View style={styles.refPreview}>
-                              <Text style={styles.refPreviewText}>
-                                {lead.studentRef ?? refPreview ?? 'Given automatically'}
+                              <Text style={[styles.refPreviewText, refFull && !lead.studentRef && styles.warnText]}>
+                                {lead.studentRef ??
+                                  (refFull ? '⚠️ No free ID: this section’s range is full' : (refPreview ?? 'Given automatically'))}
                               </Text>
                               <Text style={styles.hint}>{lead.studentRef ? 'Kept from before' : 'Given automatically'}</Text>
                             </View>

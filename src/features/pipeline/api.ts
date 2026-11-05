@@ -398,11 +398,29 @@ export function batchLabel(b: AdmissionBatch): string {
   return `${b.name} · ${b.seatsLeft} of ${b.seatCapacity} left`;
 }
 
+/** 🏫 The sections of a batch (for the Admit sheet) */
+export async function listBatchSectionsForAdmit(batchId: string): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await supabase
+    .from('batch_sections')
+    .select('id, name')
+    .eq('batch_id', batchId)
+    .eq('is_active', true)
+    .order('sort_order')
+    .order('name');
+  if (error) return [];
+  return data ?? [];
+}
+
 /** What the next automatic student ID will be (not used up) */
-export async function previewStudentRef(courseId?: string | null, batchId?: string | null): Promise<string | null> {
+export async function previewStudentRef(
+  courseId?: string | null,
+  batchId?: string | null,
+  sectionId?: string | null,
+): Promise<string | null> {
   const { data, error } = await supabase.rpc('preview_student_ref', {
     p_course: courseId ?? undefined,
     p_batch: batchId ?? undefined,
+    p_section: sectionId ?? undefined,
   });
   if (error) return null;
   return (data as string | null) ?? null;
@@ -423,8 +441,96 @@ export type RenumberResult = {
   students: number;
   changed: number;
   examples: { old: string | null; new: string }[];
+  /** ranges too small for their students */
+  full?: string[];
   applied: boolean;
 };
+
+// ---------------------------------------------------------------------
+// 🎓 Student ID rules: course → batch → section (the most exact wins)
+// ---------------------------------------------------------------------
+export type IdRuleLevel = 'course' | 'batch' | 'section';
+export type IdRule = {
+  id: string;
+  courseId: string | null;
+  batchId: string | null;
+  sectionId: string | null;
+  kind: 'pattern' | 'range';
+  pattern: string | null;
+  start: number | null;
+  end: number | null;
+  used: number | null;
+  label: string;
+};
+
+export type IdRulesData = {
+  rules: IdRule[];
+  courses: { id: string; name: string; code: string | null }[];
+  batches: { id: string; courseId: string; name: string; startDate: string | null; seats: number | null }[];
+  sections: { id: string; batchId: string; name: string }[];
+};
+
+export async function getIdRulesData(): Promise<IdRulesData> {
+  const [r, c, b, s] = await Promise.all([
+    supabase.rpc('student_id_rules_overview'),
+    supabase.from('courses').select('id, name, code').eq('is_active', true).order('sort_order').order('name'),
+    supabase
+      .from('batches')
+      .select('id, course_id, name, start_date, seat_capacity')
+      .eq('is_active', true)
+      .order('start_date', { ascending: false, nullsFirst: false })
+      .order('name'),
+    supabase.from('batch_sections').select('id, batch_id, name').eq('is_active', true).order('sort_order').order('name'),
+  ]);
+  if (r.error) throw toError(r.error);
+  return {
+    rules: (r.data ?? []).map((x) => ({
+      id: x.id,
+      courseId: x.course_id,
+      batchId: x.batch_id,
+      sectionId: x.section_id,
+      kind: x.kind === 'range' ? 'range' : 'pattern',
+      pattern: x.pattern,
+      start: x.range_start == null ? null : Number(x.range_start),
+      end: x.range_end == null ? null : Number(x.range_end),
+      used: x.used == null ? null : Number(x.used),
+      label: x.label,
+    })),
+    courses: (c.data ?? []).map((x) => ({ id: x.id, name: x.name, code: (x as { code?: string | null }).code ?? null })),
+    batches: (b.data ?? []).map((x) => ({
+      id: x.id,
+      courseId: x.course_id,
+      name: x.name,
+      startDate: x.start_date,
+      seats: x.seat_capacity,
+    })),
+    sections: (s.data ?? []).map((x) => ({ id: x.id, batchId: x.batch_id, name: x.name })),
+  };
+}
+
+/** kind 'inherit' = no rule of its own (the one above is used) */
+export async function saveIdRule(
+  level: IdRuleLevel,
+  target: string,
+  kind: 'inherit' | 'pattern' | 'range',
+  value: { pattern?: string; start?: number; end?: number },
+): Promise<void> {
+  const { error } = await supabase.rpc('save_student_id_rule', {
+    p_level: level,
+    p_target: target,
+    p_kind: kind,
+    p_pattern: kind === 'pattern' ? (value.pattern ?? null) : null,
+    p_start: kind === 'range' ? (value.start ?? null) : null,
+    p_end: kind === 'range' ? (value.end ?? null) : null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** One tap: ranges for every section of a batch, one after the other */
+export async function fillSectionRanges(batchId: string, start: number, perSection: number): Promise<void> {
+  const { error } = await supabase.rpc('fill_section_ranges', { p_batch: batchId, p_start: start, p_per: perSection });
+  if (error) throw new Error(error.message);
+}
 
 /** 🔁 Every student gets an ID with the pattern now set (apply = false: only a preview) */
 export async function renumberStudentRefs(apply: boolean): Promise<RenumberResult> {
@@ -439,6 +545,8 @@ export async function renumberStudentRefs(apply: boolean): Promise<RenumberResul
 export type AdmitInput = {
   leadId: string;
   courseId: string;
+  /** 🏫 the section (needed when the batch has sections) */
+  sectionId?: string | null;
   batchId?: string | null;
   admittedAt?: Date | null;
   studentRef?: string | null;
@@ -455,6 +563,7 @@ export async function markAdmitted(input: AdmitInput): Promise<AdmitResult> {
     p_admitted_at: input.admittedAt ? input.admittedAt.toISOString() : null,
     p_student_ref: input.studentRef?.trim() || null,
     p_note: input.note?.trim() || null,
+    ...(input.sectionId ? { p_section_id: input.sectionId } : {}),
   });
   if (error) throw toError(error);
 
