@@ -76,7 +76,7 @@ export default function FeedbackInboxScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
-      const t = setInterval(load, 20000);
+      const t = setInterval(load, 45000);
       return () => clearInterval(t);
     }, [load]),
   );

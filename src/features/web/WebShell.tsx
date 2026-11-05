@@ -109,7 +109,7 @@ export function WebShell({ children }: { children: React.ReactNode }) {
         .then((n) => live && setChatNew(n))
         .catch(() => undefined);
     check();
-    const t = setInterval(check, 30000);
+    const t = setInterval(check, 60000);
     return () => {
       live = false;
       clearInterval(t);

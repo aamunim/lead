@@ -178,7 +178,7 @@ export function ChatView({
       typing: () => setTypingAt(Date.now()),
     });
     // a quiet check, in case the live link is down
-    const timer = setInterval(() => refresh(), 15000);
+    const timer = setInterval(() => refresh(), 30000);
     const sub = AppState.addEventListener('change', (s) => s === 'active' && refresh().then(readNow));
     return () => {
       live.current?.close();
