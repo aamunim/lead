@@ -499,7 +499,10 @@ function SaveSheet({
           (current) => current ?? srcOpts.find((s) => s.label.toLowerCase() === 'phone contact')?.value ?? null,
         );
         setTags(tg.map((t) => ({ value: t.id, label: t.name, color: t.color as string })));
-        setCourses(crs.map((c) => ({ value: c.id, label: c.name })));
+        const courseOpts = crs.map((c) => ({ value: c.id, label: c.name }));
+        setCourses(courseOpts);
+        // 🎓 Only one course → chosen already
+        if (courseOpts.length === 1) setCourseIds((cur) => (cur.length > 0 ? cur : [courseOpts[0].value]));
         setUsers(ppl.map((p) => ({ value: p.id, label: p.full_name ?? 'No name' })));
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load the options.'))
@@ -510,7 +513,13 @@ function SaveSheet({
   const toggleIn = (list: string[], set: (v: string[]) => void, v: string) =>
     set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
+  const needCourse = courses.length > 0 && courseIds.length === 0;
+
   const save = async () => {
+    if (needCourse) {
+      setError('Choose the interested course first.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -550,6 +559,22 @@ function SaveSheet({
             <ActivityIndicator color={colors.primary} style={styles.loader} />
           ) : (
             <ScrollView contentContainerStyle={styles.sheetContent}>
+              <Field label="🎓 Interested course *">
+                {courses.length === 0 ? (
+                  <Text style={styles.muted}>No course is open for you. Ask an admin.</Text>
+                ) : (
+                  <ChipRow
+                    options={courses}
+                    selected={courseIds}
+                    onPress={(v) => {
+                      toggleIn(courseIds, setCourseIds, v);
+                      setError(null);
+                    }}
+                  />
+                )}
+                {needCourse && <Text style={styles.muted}>Required: choose at least one.</Text>}
+              </Field>
+
               <Field label="Source">
                 <ChipRow options={sources} selected={sourceId ? [sourceId] : []} onPress={(v) => setSourceId(sourceId === v ? null : v)} />
               </Field>
@@ -561,12 +586,6 @@ function SaveSheet({
               {tags.length > 0 && (
                 <Field label="Tags">
                   <ChipRow options={tags} selected={tagIds} onPress={(v) => toggleIn(tagIds, setTagIds, v)} />
-                </Field>
-              )}
-
-              {courses.length > 0 && (
-                <Field label="Interested courses">
-                  <ChipRow options={courses} selected={courseIds} onPress={(v) => toggleIn(courseIds, setCourseIds, v)} />
                 </Field>
               )}
 
@@ -594,7 +613,7 @@ function SaveSheet({
                 title={saving ? `Saving… ${progress ?? ''}` : `Save ${rows.length} leads`}
                 onPress={save}
                 loading={saving && !progress}
-                disabled={saving}
+                disabled={saving || needCourse || courses.length === 0}
                 fullWidth
               />
               <Button title="Cancel" variant="ghost" onPress={onClose} disabled={saving} fullWidth />

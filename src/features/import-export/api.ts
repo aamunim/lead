@@ -12,6 +12,8 @@ export type AssignMode = 'none' | 'user' | 'round_robin';
 export type ImportOptions = {
   fileName: string;
   defaultSourceId: string | null;
+  /** 🎓 used for rows with no (known) course */
+  defaultCourseId: string | null;
   duplicateMode: DuplicateMode;
   assignMode: AssignMode;
   assignUserId: string | null;
@@ -67,6 +69,7 @@ export async function runImport(
         batch_id: summary.batchId,
         file_name: options.fileName,
         default_source_id: options.defaultSourceId,
+        default_course_id: options.defaultCourseId,
         duplicate_mode: options.duplicateMode,
         assign_mode: options.assignMode,
         assign_user_id: options.assignUserId,

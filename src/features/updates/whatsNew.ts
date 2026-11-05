@@ -8,6 +8,19 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-29-a',
+    date: '29 Nov 2026',
+    title: '➕ New "Add lead" form',
+    items: [
+      '🎨 A cleaner form: Who → Interested course → Quick details; the rest is folded away',
+      '🎓 Interested course comes right after WhatsApp, and is needed for every lead',
+      '💬 "WhatsApp on this phone number" is ticked already; untick it to give another number or a username',
+      '✓ The phone number is checked while you type',
+      '➕ "Save & next": saves and opens an empty form with the same source and course',
+      '📇 Saving from phone contacts and 📥 Excel import need a course too',
+    ],
+  },
+  {
     key: '2026-11-28-a',
     date: '28 Nov 2026',
     title: '🔎 Find your leads again',

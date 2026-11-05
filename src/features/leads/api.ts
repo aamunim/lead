@@ -745,14 +745,15 @@ async function replaceLinks(leadId: string, courseIds?: string[], tagIds?: strin
     const have = (now ?? []).map((r) => r.course_id as string);
     const remove = have.filter((id) => !courseIds.includes(id) && (!visible || visible.includes(id)));
     const add = courseIds.filter((id) => !have.includes(id));
-    if (remove.length > 0) {
-      const { error } = await supabase.from('lead_courses').delete().eq('lead_id', leadId).in('course_id', remove);
-      if (error) throw toError(error);
-    }
+    // Add first: the last course of a lead can't be taken off
     if (add.length > 0) {
       const { error } = await supabase
         .from('lead_courses')
         .insert(add.map((course_id) => ({ lead_id: leadId, course_id })));
+      if (error) throw toError(error);
+    }
+    if (remove.length > 0) {
+      const { error } = await supabase.from('lead_courses').delete().eq('lead_id', leadId).in('course_id', remove);
       if (error) throw toError(error);
     }
   }
@@ -767,17 +768,15 @@ async function replaceLinks(leadId: string, courseIds?: string[], tagIds?: strin
   }
 }
 
+/** 🎓 The lead, its courses and tags in one go (a course is needed) */
 export async function createLead(input: LeadInput): Promise<string> {
-  const { data, error } = await supabase
-    .from('leads')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .insert(leadColumns(input) as any)
-    .select('id')
-    .single();
-
+  const { data, error } = await supabase.rpc('create_lead' as never, {
+    p_row: leadColumns(input),
+    p_course_ids: input.course_ids ?? [],
+    p_tag_ids: input.tag_ids ?? [],
+  } as never);
   if (error) throw toError(error);
-  await replaceLinks(data.id, input.course_ids, input.tag_ids);
-  return data.id;
+  return String(data);
 }
 
 export async function updateLead(id: string, input: LeadInput): Promise<void> {
