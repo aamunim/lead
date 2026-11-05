@@ -550,8 +550,12 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     if (quick === 'recent' || quick === 'starred') loadSpecial();
   }, [quick, loadSpecial]);
   const recentInfo = useMemo(() => new Map((recentRows ?? []).map((r) => [r.leadId, r])), [recentRows]);
-  const specialIds =
-    special === 'recent' ? (recentRows ?? []).map((r) => r.leadId) : special === 'starred' ? starIds : null;
+  // Kept the same between draws: a new list here would load the leads again (and again)
+  const specialIds = useMemo(
+    () => (special === 'recent' ? (recentRows ?? []).map((r) => r.leadId) : special === 'starred' ? starIds : null),
+    [special, recentRows, starIds],
+  );
+  const specialKey = specialIds ? specialIds.join(',') : '';
   const starSet = useMemo(() => new Set(starIds ?? []), [starIds]);
   // 🕘 Tapping the empty search box: the last few I worked on, to open at once
   const [peek, setPeek] = useState<LeadListItem[]>([]);
@@ -601,7 +605,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       addedQ,
       paidQ,
       special,
-      specialIds,
+      // the ids as text: the same leads again never load again
+      specialKey,
     ],
   );
   const queryKey = useMemo(() => JSON.stringify(listQuery), [listQuery]);
