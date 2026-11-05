@@ -12,8 +12,6 @@ export type AddedDay = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 export const ADDED_DAYS: { value: Exclude<AddedDay, 'custom'>; label: string }[] = [
   { value: 'today', label: 'Today' },
   { value: 'yesterday', label: 'Yesterday' },
-  { value: 'week', label: 'This week' },
-  { value: 'month', label: 'This month' },
 ];
 
 /** The Leads tab's choice: a person (null = everyone I may see) and a period */

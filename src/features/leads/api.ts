@@ -2,12 +2,7 @@ import { supabase } from '@/shared/lib/supabase';
 import type { Json, Tables } from '@/shared/types/database';
 import type { AddedQuery } from '@/features/leads/added';
 
-import {
-  applyLeadFilters,
-  filterSelect,
-  needsClosedLeads,
-  type LeadFilters,
-} from '@/features/leads/filters';
+import { applyLeadFilters, filterSelect, needsClosedLeads, type LeadFilters } from '@/features/leads/filters';
 import { LAST_SELECT, type LeadLast } from '@/features/leads/lastActivity';
 
 // =====================================================================
@@ -156,6 +151,9 @@ export type QuickPatch = {
 
 export type QuickFilter =
   | 'all'
+  // 🔎 Finding a lead again (Leads tab): what I worked on, and my ⭐ list
+  | 'recent'
+  | 'starred'
   | 'mine'
   | 'new'
   | 'hot'
@@ -224,10 +222,20 @@ export const SORT_OPTIONS: { value: LeadSort; label: string; text: string; icon:
   { value: 'newest', label: 'Newest first', text: 'Last added first', icon: '🆕' },
   { value: 'oldest', label: 'Oldest first', text: 'First added first', icon: '📜' },
   { value: 'name', label: 'Name A–Z', text: 'By name', icon: '🔤' },
-  { value: 'not_contacted_longest', label: 'Not contacted longest', text: 'Never called first, then the longest wait', icon: '📞' },
+  {
+    value: 'not_contacted_longest',
+    label: 'Not contacted longest',
+    text: 'Never called first, then the longest wait',
+    icon: '📞',
+  },
   { value: 'recently_contacted', label: 'Recently contacted', text: 'Last talked to first', icon: '🕐' },
   { value: 'visit_date', label: 'Campus visit date', text: 'Earliest visit first, no visit last', icon: '🏫' },
-  { value: 'papers_missing', label: 'Most papers missing', text: 'Most required papers still to collect first', icon: '📄' },
+  {
+    value: 'papers_missing',
+    label: 'Most papers missing',
+    text: 'Most required papers still to collect first',
+    icon: '📄',
+  },
   { value: 'discount_most', label: 'Biggest discount', text: 'Largest discount first, no discount last', icon: '💰' },
   { value: 'fee_latest', label: 'Fee talk: latest', text: 'Last fee talk or discount change first', icon: '💬' },
 ];
@@ -243,7 +251,12 @@ export const STUDENT_SORT_OPTIONS: typeof SORT_OPTIONS = [
   { value: 'last_paid', label: 'Last paid', text: 'Latest payment first', icon: '🧾' },
   { value: 'due_most', label: 'Most due', text: 'Most money still to pay first', icon: '💵' },
   { value: 'next_due', label: 'Next installment', text: 'Earliest installment date first', icon: '📅' },
-  { value: 'papers_missing', label: 'Most papers missing', text: 'Most required papers still to collect first', icon: '📄' },
+  {
+    value: 'papers_missing',
+    label: 'Most papers missing',
+    text: 'Most required papers still to collect first',
+    icon: '📄',
+  },
   { value: 'next_call', label: 'Next call', text: 'Soonest call first', icon: '⏰' },
 ];
 export const DEFAULT_STUDENT_SORT: LeadSort = 'admitted_newest';
@@ -257,7 +270,7 @@ export type LeadQuery = {
   ids?: string[] | null;
   /** 📌 Only these leads, with every other rule as it is (closed leads stay hidden) */
   onlyIds?: string[] | null;
-  userId?: string;       // the signed-in user, for "mine"
+  userId?: string; // the signed-in user, for "mine"
   filters?: LeadFilters;
   closedMode?: ClosedMode;
   sort?: LeadSort;
@@ -368,10 +381,10 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' 
       withCount === 'chips'
         ? CHIP_COLUMNS + filterSelect(filters)
         : withCount === 'paid'
-        ? 'id, fee_paid' + filterSelect(filters)
-        : idOnly
-          ? 'id' + filterSelect(filters)
-          : LIST_SELECT + filterSelect(filters),
+          ? 'id, fee_paid' + filterSelect(filters)
+          : idOnly
+            ? 'id' + filterSelect(filters)
+            : LIST_SELECT + filterSelect(filters),
       withCount === 'only' ? { count: 'exact', head: true } : withCount === true ? { count: 'exact' } : undefined,
     )
     .is('deleted_at', null);
@@ -409,7 +422,8 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' 
   if (quick === 'new') query = query.is('last_contacted_at', null);
 
   // ➕ Added by / when (closed leads count too: they were added all the same)
-  if (added?.by) query = query.in('created_by', added.by.length > 0 ? added.by : ['00000000-0000-0000-0000-000000000000']);
+  if (added?.by)
+    query = query.in('created_by', added.by.length > 0 ? added.by : ['00000000-0000-0000-0000-000000000000']);
   if (added?.from) query = query.gte('created_at', added.from);
   if (added?.to) query = query.lt('created_at', added.to);
 
@@ -475,7 +489,9 @@ function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: 
       q = q.order('last_contacted_at', { ascending: true, nullsFirst: true }).order('created_at', { ascending: true });
       break;
     case 'recently_contacted':
-      q = q.order('last_contacted_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+      q = q
+        .order('last_contacted_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false });
       break;
     case 'visit_date':
       q = q.order('visit_at', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
@@ -514,7 +530,9 @@ function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: 
       q = q.order('fee_next_due', { ascending: true, nullsFirst: false }).order('name', { ascending: true });
       break;
     default:
-      q = q.order('next_follow_up_at', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
+      q = q
+        .order('next_follow_up_at', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false });
   }
   return q.order('id', { ascending: true });
 }
@@ -694,11 +712,7 @@ export async function matchingLeadIds(options: LeadQuery, ids: string[]): Promis
 // One lead
 // =====================================================================
 export async function getLead(id: string): Promise<LeadDetail | null> {
-  const { data, error } = await supabase
-    .from('leads')
-    .select(DETAIL_SELECT)
-    .eq('id', id)
-    .maybeSingle();
+  const { data, error } = await supabase.from('leads').select(DETAIL_SELECT).eq('id', id).maybeSingle();
 
   if (error) throw toError(error);
   return data as unknown as LeadDetail | null;
@@ -736,7 +750,9 @@ async function replaceLinks(leadId: string, courseIds?: string[], tagIds?: strin
       if (error) throw toError(error);
     }
     if (add.length > 0) {
-      const { error } = await supabase.from('lead_courses').insert(add.map((course_id) => ({ lead_id: leadId, course_id })));
+      const { error } = await supabase
+        .from('lead_courses')
+        .insert(add.map((course_id) => ({ lead_id: leadId, course_id })));
       if (error) throw toError(error);
     }
   }
@@ -745,9 +761,7 @@ async function replaceLinks(leadId: string, courseIds?: string[], tagIds?: strin
     const { error: delError } = await supabase.from('lead_tags').delete().eq('lead_id', leadId);
     if (delError) throw toError(delError);
     if (tagIds.length > 0) {
-      const { error } = await supabase
-        .from('lead_tags')
-        .insert(tagIds.map((tag_id) => ({ lead_id: leadId, tag_id })));
+      const { error } = await supabase.from('lead_tags').insert(tagIds.map((tag_id) => ({ lead_id: leadId, tag_id })));
       if (error) throw toError(error);
     }
   }
@@ -778,10 +792,7 @@ export async function updateLead(id: string, input: LeadInput): Promise<void> {
 }
 
 export async function softDeleteLead(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('leads')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id);
+  const { error } = await supabase.from('leads').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) throw toError(error);
 }
 
@@ -862,11 +873,7 @@ export async function removeTagsFromLeads(ids: string[], tagIds: string[]): Prom
   if (ids.length === 0 || tagIds.length === 0) return;
 
   for (const part of chunks(ids)) {
-    const { error } = await supabase
-      .from('lead_tags')
-      .delete()
-      .in('lead_id', part)
-      .in('tag_id', tagIds);
+    const { error } = await supabase.from('lead_tags').delete().in('lead_id', part).in('tag_id', tagIds);
     if (error) throw toError(error);
   }
 }
@@ -922,7 +929,7 @@ export async function listLeadActivity(leadId: string): Promise<ActivityItem[]> 
     for (const p of people ?? []) names.set(p.id, p.full_name);
   }
 
-  return rows.map((r) => ({ ...r, user_name: r.user_id ? names.get(r.user_id) ?? null : null }));
+  return rows.map((r) => ({ ...r, user_name: r.user_id ? (names.get(r.user_id) ?? null) : null }));
 }
 
 // =====================================================================
@@ -934,10 +941,7 @@ export async function listLeadActivity(leadId: string): Promise<ActivityItem[]> 
 export async function listAssignableUsers(
   options: { teamLeadId?: string; includeInactive?: boolean } = {},
 ): Promise<AssignableUser[]> {
-  let query = supabase
-    .from('profiles')
-    .select('id, full_name, role_key, is_active, team_lead_id')
-    .order('full_name');
+  let query = supabase.from('profiles').select('id, full_name, role_key, is_active, team_lead_id').order('full_name');
 
   if (!options.includeInactive) {
     query = query.eq('is_active', true);

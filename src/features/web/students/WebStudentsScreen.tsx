@@ -42,6 +42,7 @@ import { canHandOver } from '@/features/settings/assignment';
 import { canTakePayments, getFeeSettings, type FeeSettings } from '@/features/fees/api';
 import { FeeChangeSheet } from '@/features/fees/FeeChangeSheet';
 import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
+import { listRecent, starredIds } from '@/features/leads/find';
 import { PapersPopup } from '@/features/web/students/PapersPopup';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { money } from '@/features/fees/api';
@@ -180,7 +181,20 @@ const MODE_COLS: Record<Mode, ColKey[]> = {
 };
 const MODE_DEFAULT: Record<Mode, ColKey[]> = {
   // (v4: Paid shown by default)
-  students: ['ref', 'name', 'phone', 'course', 'section', 'fee', 'paid', 'papers', 'approval', 'nu', 'last', 'admitted'],
+  students: [
+    'ref',
+    'name',
+    'phone',
+    'course',
+    'section',
+    'fee',
+    'paid',
+    'papers',
+    'approval',
+    'nu',
+    'last',
+    'admitted',
+  ],
   leads: ['name', 'phone', 'stage', 'rating', 'interest', 'assignee', 'follow', 'last', 'created'],
 };
 const MODE_PANEL: Record<Mode, ColKey[]> = {
@@ -278,10 +292,9 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
 
   const leadQuick: { key: QuickFilter; label: string }[] = [
     { key: 'all', label: 'All open' },
-    ...(assignmentOn && seesOthers ? [{ key: 'mine' as QuickFilter, label: 'Mine' }] : []),
+    { key: 'recent', label: '🕘 Worked on today' },
+    { key: 'starred', label: '⭐ Starred' },
     { key: 'new', label: '🆕 New' },
-    { key: 'hot', label: '🔥 Hot' },
-    ...(assignmentOn && seesOthers ? [{ key: 'unassigned' as QuickFilter, label: 'Unassigned' }] : []),
     { key: 'closed', label: 'Closed' },
   ];
   const quickFilters: { key: QuickFilter; label: string }[] = leadsMode
@@ -352,18 +365,39 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   const [paidRange, setPaidRange] = useState<PaidRange | null>(null);
   const [paidOpen, setPaidOpen] = useState(false);
 
+  // 🕘 Worked on today / ⭐ Starred: the leads by id (any stage, Lost/Admitted too)
+  const special = leadsMode && (quick === 'recent' || quick === 'starred') ? quick : null;
+  const [specialIds, setSpecialIds] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!special) {
+      setSpecialIds(null);
+      return;
+    }
+    let live = true;
+    setSpecialIds(null);
+    (special === 'recent' ? listRecent({ day: 'today' }).then((r) => r.map((x) => x.leadId)) : starredIds())
+      .then((ids) => live && setSpecialIds(ids))
+      .catch(() => live && setSpecialIds([]));
+    return () => {
+      live = false;
+    };
+  }, [special]);
+
   const query = useMemo(
     () => ({
       search: debounced,
-      quick,
-      filters: leadsMode ? filters : {},
+      quick: special ? ('all' as QuickFilter) : quick,
+      filters: leadsMode && !special ? filters : {},
       sort,
       students: !leadsMode,
       userId: profile?.id,
-      closedMode: leadsMode ? ('hide' as const) : ('show' as const),
+      // a search finds Lost/Admitted leads too
+      closedMode: !leadsMode || special || debounced.trim() ? ('show' as const) : ('hide' as const),
       paid: leadsMode ? null : paidRange,
+      onlyIds: special ? (specialIds ?? []) : null,
+      waiting: !!special && specialIds === null,
     }),
-    [debounced, quick, filters, sort, profile?.id, leadsMode, paidRange],
+    [debounced, quick, filters, sort, profile?.id, leadsMode, paidRange, special, specialIds],
   );
 
   // 💵 Paid in all, for the students in the list
@@ -390,6 +424,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
       if (!quiet) setLoading(true);
       setError(null);
       try {
+        if (query.waiting) return;
         const r = await listLeads({ ...query, page: 0 });
         if (no !== reqNo.current) return;
         setRows(r.items);
@@ -545,7 +580,11 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
           courseId: r.admitted_course?.id ?? null,
           batchId: r.admitted_batch?.id ?? null,
           sectionId: r.admitted_section?.id ?? null,
-          place: [r.admitted_course?.name, r.admitted_batch?.name, r.admitted_section ? `Section ${r.admitted_section.name}` : null]
+          place: [
+            r.admitted_course?.name,
+            r.admitted_batch?.name,
+            r.admitted_section ? `Section ${r.admitted_section.name}` : null,
+          ]
             .filter(Boolean)
             .join(' · '),
         }))}
