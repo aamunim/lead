@@ -213,7 +213,7 @@ export default function AppVersionsScreen() {
                     {r.lastSeen ? (
                       <>
                         <Text style={styles.line}>
-                          📱 {r.device ?? 'Phone'}
+                          {r.device?.startsWith('🌐') ? r.device : `📱 ${r.device ?? 'Phone'}`}
                           {r.build ? ` · build ${r.build}` : ''}
                         </Text>
                         <Text style={styles.line}>
