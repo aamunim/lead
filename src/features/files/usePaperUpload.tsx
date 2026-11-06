@@ -176,5 +176,14 @@ export function usePaperUpload(leadId: string, onUploaded: (message: string) => 
     />
   ) : null;
 
-  return { upload, uploading, ui };
+  /** 🌐 A file dropped on the website (drag & drop) */
+  const drop = (paper: UploadPaper | null, file: Blob & { name?: string; type: string }) =>
+    send(paper, {
+      uri: URL.createObjectURL(file),
+      name: file.name || paper?.name || 'File',
+      mimeType: file.type || 'application/octet-stream',
+      blob: file,
+    });
+
+  return { upload, drop, uploading, ui };
 }
