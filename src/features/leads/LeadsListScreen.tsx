@@ -557,17 +557,6 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   );
   const specialKey = specialIds ? specialIds.join(',') : '';
   const starSet = useMemo(() => new Set(starIds ?? []), [starIds]);
-  // 🕘 Tapping the empty search box: the last few I worked on, to open at once
-  const [peek, setPeek] = useState<LeadListItem[]>([]);
-  useEffect(() => {
-    if (students || !searchFocused || search) return;
-    const ids = (recentRows ?? []).slice(0, 5).map((r) => r.leadId);
-    if (ids.length === 0) return setPeek([]);
-    listLeadsByIds(ids)
-      .then(setPeek)
-      .catch(() => setPeek([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [students, searchFocused, search, recentRows]);
   /** 🕘 "2m ago · 📞 Call" on the cards of the Recent list */
   const recentNote = (id: string) => {
     if (special !== 'recent') return null;
@@ -1678,42 +1667,6 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
           )}
         </View>
 
-        {/* 🕘 The last ones I worked on (while the empty search box is tapped) */}
-        {!selecting && searchFocused && !search && peek.length > 0 && (
-          <View style={styles.peekBox}>
-            <Text style={styles.peekTitle}>📞 Just called</Text>
-            {peek.map((l) => {
-              const r = recentInfo.get(l.id);
-              return (
-                <Pressable
-                  key={l.id}
-                  onPress={() => cardHandlers.open(l)}
-                  style={({ pressed }) => [styles.peekRow, pressed && styles.pressed]}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.peekName} numberOfLines={1}>
-                    {starSet.has(l.id) ? '⭐ ' : ''}
-                    {l.name}
-                  </Text>
-                  <Text style={styles.peekWhat} numberOfLines={1}>
-                    {r ? `${recentWhat(r)} · ${recentWhen(r.at)}` : ''}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            <Pressable
-              onPress={() => {
-                setLoading(true);
-                setQuick('recent');
-              }}
-              hitSlop={6}
-              accessibilityRole="button"
-            >
-              <Text style={styles.peekAll}>See all recent ›</Text>
-            </Pressable>
-          </View>
-        )}
-
         {/* 🔍 Recent searches */}
         {!selecting && searchFocused && !search && recent.length > 0 && (
           <ScrollView
@@ -2740,21 +2693,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
   },
   outsideText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.primary },
-  peekBox: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    padding: spacing.md,
-    gap: 2,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  peekTitle: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.textMuted, marginBottom: 2 },
-  peekRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7 },
-  peekName: { flex: 1, fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
-  peekWhat: { fontSize: fontSize.caption, color: colors.textMuted },
-  peekAll: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary, paddingTop: 4 },
   rangeRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
   rangeChip: {
     paddingVertical: 5,
