@@ -2,7 +2,7 @@
   "expo": {
     "name": "ITTC Admission",
     "slug": "lead-management",
-    "version": "2.8.2",
+    "version": "2.8.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "leadmanagement",
@@ -18,8 +18,9 @@
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "blockedPermissions": ["android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"],
       "package": "com.abamunim.leads",
-      "versionCode": 24,
+      "versionCode": 25,
       "adaptiveIcon": {
         "backgroundColor": "#3F5BD3",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -56,7 +57,9 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Lead Management uses the microphone only while you record a voice note."
+          "microphonePermission": "Lead Management uses the microphone only while you record a voice note.",
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false
         }
       ],
       [
