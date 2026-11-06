@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -175,6 +175,9 @@ export function WebLogin() {
               <Text style={styles.link}>Create an account</Text>
             </Pressable>
           </View>
+          <Pressable onPress={() => router.push('/delete-account' as Href)} accessibilityRole="link">
+            <Text style={styles.forgot}>Delete an account</Text>
+          </Pressable>
         </View>
       </View>
     </View>

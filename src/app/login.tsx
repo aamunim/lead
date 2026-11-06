@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -236,6 +236,9 @@ function PhoneLogin() {
             <Text style={styles.footerText}>New to the team?</Text>
             <Button title="Create an account" variant="ghost" onPress={() => router.push('/sign-up')} />
           </View>
+          <Text style={styles.forgot} onPress={() => router.push('/delete-account' as Href)}>
+            Delete an account
+          </Text>
           <SafeAreaView edges={['bottom']}>
             {!!VERSION && <Text style={styles.version}>Version {VERSION}</Text>}
           </SafeAreaView>

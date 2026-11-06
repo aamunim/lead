@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-12-03-a',
+    date: '3 Dec 2026',
+    title: '🗑 Delete my account',
+    items: [
+      '🗑 More → Delete my account (at the bottom): your personal data is removed and the login closed for ever',
+      '🌐 Also on the web: lead.ittc.edu.bd/delete-account, even without signing in (a request to an admin)',
+      '📋 Leads, calls and payments stay with the institute; leads that were yours become Unassigned',
+      '🛠 Admins: Users → Account deletion requests',
+    ],
+  },
+  {
     key: '2026-12-02-a',
     date: '2 Dec 2026',
     title: '🔔 Notifications: check and fix',
