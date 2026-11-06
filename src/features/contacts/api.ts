@@ -5,15 +5,16 @@ import { isValidBdMobile, normalizePhone } from '@/features/leads/api';
 import { getSetting, updateSetting } from '@/features/settings/api';
 import { supabase } from '@/shared/lib/supabase';
 import type { Json } from '@/shared/types/database';
+import { disclose } from '@/shared/ui/Disclosure';
 
 // =====================================================================
 // Types
 // =====================================================================
 export type ContactNumber = {
-  raw: string;          // as written in the phone
-  normalized: string;   // 01711234567
+  raw: string; // as written in the phone
+  normalized: string; // 01711234567
   label: string | null; // "mobile", "home"…
-  valid: boolean;       // a Bangladeshi mobile number
+  valid: boolean; // a Bangladeshi mobile number
 };
 
 export type PhoneContact = {
@@ -63,6 +64,8 @@ export async function getContactsPermission(): Promise<{ status: ContactsPermiss
 }
 
 export async function askContactsPermission(): Promise<{ status: ContactsPermission; canAskAgain: boolean }> {
+  // 🛡 Google Play: say what is read and why, before the phone asks
+  if (!(await disclose('contacts'))) return { status: 'undetermined', canAskAgain: true };
   const { status, canAskAgain } = await Contacts.requestPermissionsAsync();
   return { status: status as ContactsPermission, canAskAgain };
 }
@@ -201,8 +204,8 @@ export type ContactsAccessMode = 'all' | 'roles' | 'users';
 
 export type ContactsAccess = {
   mode: ContactsAccessMode;
-  roles: string[];     // role keys, when mode = 'roles'
-  user_ids: string[];  // user ids, when mode = 'users'
+  roles: string[]; // role keys, when mode = 'roles'
+  user_ids: string[]; // user ids, when mode = 'users'
 };
 
 export const DEFAULT_CONTACTS_ACCESS: ContactsAccess = {

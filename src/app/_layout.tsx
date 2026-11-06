@@ -11,6 +11,7 @@ import { flushCrashes, installCrashHandler, setCrashScreen } from '@/features/fe
 import { onThreeFingers } from '@/features/feedback/screenShot';
 import { clearNativeCallLock } from '@/features/calls/callLock';
 import { colors, isDark } from '@/shared/theme';
+import { DisclosureHost } from '@/shared/ui/Disclosure';
 import { ThemeFollower } from '@/features/settings/appearance';
 import { UpdateBanner } from '@/features/updates/UpdateBanner';
 import { OfflineBanner } from '@/shared/ui/OfflineBanner';
@@ -52,6 +53,7 @@ export default function RootLayout() {
       <KeyboardProvider>
         <AuthProvider>
           <RootNavigator />
+          <DisclosureHost />
         </AuthProvider>
       </KeyboardProvider>
     </ThemeProvider>

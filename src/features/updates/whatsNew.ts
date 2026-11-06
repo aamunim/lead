@@ -8,6 +8,15 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-06-a',
+    date: '6 Nov 2026',
+    title: '🛡 Clear notes before permissions',
+    items: [
+      '🛡 Before the phone asks for call log, contacts, WhatsApp notification access or "display over other apps", the app now explains what is read, what is uploaded and why',
+      '✋ Tap "Not now" to skip; you can turn it on later',
+    ],
+  },
+  {
     key: '2026-12-04-a',
     date: '4 Dec 2026',
     title: '🔒 Privacy policy',
