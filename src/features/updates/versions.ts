@@ -49,8 +49,12 @@ export function newestUpdate(rows: DeviceVersion[]): DeviceVersion | null {
   return best;
 }
 
+/** 🌐 A website line (the website always runs the newest version) */
+export const isWebDevice = (r: Pick<DeviceVersion, 'device'>) => !!r.device?.startsWith('🌐');
+
 export function stateOf(r: DeviceVersion, newest: DeviceVersion | null): VersionState {
   if (!r.lastSeen) return 'never';
+  if (isWebDevice(r)) return 'latest';
   if (!r.updateId) return newest ? 'old' : 'builtin';
   if (!newest || r.updateId === newest.updateId) return 'latest';
   return r.updateAt && newest.updateAt && r.updateAt >= newest.updateAt ? 'latest' : 'old';
