@@ -43,6 +43,7 @@ import {
   type WhatsAppStatus,
 } from '@/features/call-sync/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { disclose } from '@/shared/ui/Disclosure';
 import { Button } from '@/shared/ui/Button';
 import {
   getCallerCard,
@@ -111,7 +112,9 @@ export default function CallSyncScreen() {
   }, []);
 
   useEffect(() => {
-    canSyncCalls().then(setAllowed).catch(() => setAllowed(false));
+    canSyncCalls()
+      .then(setAllowed)
+      .catch(() => setAllowed(false));
     refreshStatus();
   }, [refreshStatus]);
 
@@ -154,10 +157,10 @@ export default function CallSyncScreen() {
     }
   };
 
-  const toggleWhatsApp = (on: boolean) => {
+  const toggleWhatsApp = async (on: boolean) => {
+    // Without access nothing can be read: say why (🛡 Google Play), then take the user to the steps
+    if (on && !whatsAppStatus().access && !(await openNotificationAccess())) return;
     setWa(setWhatsAppSync(on));
-    // Without access nothing can be read: take the user to the steps right away
-    if (on && !whatsAppStatus().access) openNotificationAccess();
   };
 
   const changeNotify = (change: Partial<NotifySettings>) => {
@@ -225,8 +228,8 @@ export default function CallSyncScreen() {
         </View>
         <Text style={styles.bigTitle}>Save lead calls automatically</Text>
         <Text style={styles.centerText}>
-          The app reads your phone’s call history and saves calls with your leads: real call time, incoming and
-          missed calls, even calls made from the phone’s own dialer.
+          The app reads your phone’s call history and saves calls with your leads: real call time, incoming and missed
+          calls, even calls made from the phone’s own dialer.
         </Text>
         <PrivacyNote />
         {permission === 'blocked' ? (
@@ -292,8 +295,8 @@ export default function CallSyncScreen() {
                 {notifyPermission !== 'granted' ? (
                   <>
                     <Text style={styles.helpText}>
-                      Allow notifications to get a reminder to add a note after a lead call, and to see the lead’s
-                      name when they call you.
+                      Allow notifications to get a reminder to add a note after a lead call, and to see the lead’s name
+                      when they call you.
                     </Text>
                     <Button
                       title={notifyPermission === 'blocked' ? 'Open app settings' : 'Allow notifications'}
@@ -307,8 +310,8 @@ export default function CallSyncScreen() {
                       <View style={styles.flex}>
                         <Text style={styles.rowTitle}>After a lead call</Text>
                         <Text style={styles.rowText}>
-                          “📞 Karim · 2m 15s — Tap to add a note”. Not shown for calls made with the app’s Call
-                          button (the app asks there).
+                          “📞 Karim · 2m 15s — Tap to add a note”. Not shown for calls made with the app’s Call button
+                          (the app asks there).
                         </Text>
                       </View>
                       <Switch value={notify.afterCall} onValueChange={(v) => changeNotify({ afterCall: v })} />
@@ -324,8 +327,8 @@ export default function CallSyncScreen() {
                       <Switch value={notify.incoming} onValueChange={(v) => changeNotify({ incoming: v })} />
                     </View>
                     <Text style={styles.hint}>
-                      {savedLeads} lead {savedLeads === 1 ? 'name is' : 'names are'} kept on this phone for this,
-                      and removed when you log out.
+                      {savedLeads} lead {savedLeads === 1 ? 'name is' : 'names are'} kept on this phone for this, and
+                      removed when you log out.
                     </Text>
                   </>
                 )}
@@ -337,15 +340,19 @@ export default function CallSyncScreen() {
                   <Text style={styles.sectionLabel}>📲 CALLER CARD</Text>
                   <View style={styles.card}>
                     <Text style={styles.rowText}>
-                      While a lead calls, a small card shows over the call screen: name, stage, money due, the
-                      last note and the next call. Drag it up or down; it shrinks when you answer.
+                      While a lead calls, a small card shows over the call screen: name, stage, money due, the last note
+                      and the next call. Drag it up or down; it shrinks when you answer.
                     </Text>
                     {!card.allowed ? (
                       <>
                         <Text style={[styles.rowText, styles.warnText]}>
                           ⚠ Allow “Display over other apps” for ITTC Admission. Until then the notification is used.
                         </Text>
-                        <Button title="Allow display over other apps" onPress={() => openOverlaySettings()} fullWidth />
+                        <Button
+                          title="Allow display over other apps"
+                          onPress={async () => (await disclose('overlay')) && openOverlaySettings()}
+                          fullWidth
+                        />
                         <Text style={styles.hint}>
                           Xiaomi / Redmi / POCO: also turn on Other permissions → “Display pop-up windows while running
                           in the background”. Oppo / Realme / Vivo: Floating windows.
@@ -395,8 +402,8 @@ export default function CallSyncScreen() {
                   <View style={styles.flex}>
                     <Text style={styles.rowTitle}>Save WhatsApp calls with leads</Text>
                     <Text style={styles.rowText}>
-                      WhatsApp and WhatsApp Business calls (incoming, outgoing, missed) and when a lead sends a
-                      message. Read from WhatsApp’s notifications; message text is never read.
+                      WhatsApp and WhatsApp Business calls (incoming, outgoing, missed) and when a lead sends a message.
+                      Read from WhatsApp’s notifications; message text is never read.
                     </Text>
                   </View>
                   <Switch value={wa.enabled} onValueChange={toggleWhatsApp} />
@@ -511,8 +518,8 @@ function PrivacyNote() {
     <View style={styles.privacy}>
       <Ionicons name="shield-checkmark" size={18} color={colors.success} />
       <Text style={styles.privacyText}>
-        Only calls with your leads are saved. Other numbers never leave your phone. Numbers are sent as a secure
-        code, not as the number itself.
+        Only calls with your leads are saved. Other numbers never leave your phone. Numbers are sent as a secure code,
+        not as the number itself.
       </Text>
     </View>
   );

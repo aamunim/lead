@@ -5,6 +5,7 @@ import { PermissionsAndroid, Platform } from 'react-native';
 import { getSetting, updateSetting } from '@/features/settings/api';
 import { supabase } from '@/shared/lib/supabase';
 import type { Json } from '@/shared/types/database';
+import { disclose } from '@/shared/ui/Disclosure';
 import {
   callById,
   captureNow,
@@ -28,7 +29,7 @@ import {
   latestCallFor,
   markAppCall,
   openAppDetails,
-  openNotificationAccess,
+  openNotificationAccess as openNotificationAccessNative,
   removePendingCalls,
   removeWhatsAppPending,
   setCallSyncEnabled,
@@ -48,7 +49,6 @@ export {
   hasWhatsAppSync,
   isCallLogAvailable,
   openAppDetails,
-  openNotificationAccess,
   type DeviceCall,
   type NotifySettings,
   type WhatsAppDeviceEvent,
@@ -127,6 +127,9 @@ export function callPermissionState(): CallPermissionState {
 /** Ask for call log + phone state. "blocked" = the user chose "Don't ask again". */
 export async function askCallPermissions(): Promise<CallPermissionState> {
   if (!isCallLogAvailable || Platform.OS !== 'android') return 'unavailable';
+  if (callPermissionState() === 'granted') return 'granted';
+  // 🛡 Google Play: say what is read and why, before the phone asks
+  if (!(await disclose('calls'))) return 'denied';
 
   const result = await PermissionsAndroid.requestMultiple([
     PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
@@ -136,6 +139,13 @@ export async function askCallPermissions(): Promise<CallPermissionState> {
   if (values.every((v) => v === PermissionsAndroid.RESULTS.GRANTED)) return 'granted';
   if (values.some((v) => v === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN)) return 'blocked';
   return 'denied';
+}
+
+/** WhatsApp: the phone's Notification access page, after the disclosure */
+export async function openNotificationAccess(): Promise<boolean> {
+  if (!(await disclose('whatsapp'))) return false;
+  openNotificationAccessNative();
+  return true;
 }
 
 // =====================================================================
@@ -272,9 +282,10 @@ export async function reportSyncStatus(error?: string | null): Promise<void> {
     ...(hasWhatsAppSync ? { wa_on: getWhatsAppStatus().enabled, wa_access: getWhatsAppStatus().access } : {}),
   };
 
-  await supabase
-    .rpc('report_sync_status', { p_device_id: deviceId, p_info: info as unknown as Json })
-    .then(() => undefined, () => undefined);
+  await supabase.rpc('report_sync_status', { p_device_id: deviceId, p_info: info as unknown as Json }).then(
+    () => undefined,
+    () => undefined,
+  );
 }
 
 // =====================================================================
@@ -289,15 +300,20 @@ const isTimeout = (message: string) => /statement timeout|canceling statement|ti
 
 /** A short, plain message instead of the database's own words */
 export function syncErrorText(message: string): string {
-  if (isTimeout(message)) return 'The server was busy. The calls are kept on this phone and will be sent on the next sync.';
-  if (/network request failed|fetch/i.test(message)) return 'No internet. The calls are kept on this phone and will be sent later.';
+  if (isTimeout(message))
+    return 'The server was busy. The calls are kept on this phone and will be sent on the next sync.';
+  if (/network request failed|fetch/i.test(message))
+    return 'No internet. The calls are kept on this phone and will be sent later.';
   return message;
 }
 
 type CallPart = ReturnType<typeof getPendingCalls>;
 
 /** Send one part; if the server runs out of time, try again 10 at a time */
-async function sendCalls(deviceId: string, part: CallPart): Promise<{ added: number; matched: number; ignored: number }> {
+async function sendCalls(
+  deviceId: string,
+  part: CallPart,
+): Promise<{ added: number; matched: number; ignored: number }> {
   const { data, error } = await supabase.rpc('sync_phone_calls', {
     p_device_id: deviceId,
     p_calls: part as unknown as Json,

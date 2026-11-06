@@ -25,6 +25,7 @@ import { isValidBdMobile, normalizePhone } from '@/features/leads/api';
 import { ago } from '@/features/leads/lastActivity';
 import { isWeb } from '@/features/web/api';
 import { colors, fontWeight } from '@/shared/theme';
+import { disclose } from '@/shared/ui/Disclosure';
 import { Modal } from '@/shared/ui/Modal';
 import { hasRecentCalls, recentCalls, type RecentCall } from '../../../modules/call-log';
 
@@ -296,6 +297,7 @@ function RecentSheet({ onClose, onPick }: { onClose: () => void; onPick: (p: Pic
       const perm = PermissionsAndroid.PERMISSIONS.READ_CALL_LOG;
       let ok = await PermissionsAndroid.check(perm);
       if (!ok) {
+        if (!(await disclose('calls'))) return setState('denied');
         const r = await PermissionsAndroid.request(perm);
         if (r === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) return setState('blocked');
         ok = r === PermissionsAndroid.RESULTS.GRANTED;
