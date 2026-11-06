@@ -1,11 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
-import * as Device from 'expo-device';
 import { useEffect, useRef } from 'react';
 import { AppState, View, type AppStateStatus } from 'react-native';
 
 import { getDeviceId, isCallLogAvailable } from '@/features/call-sync/api';
 import { currentVersionInfo } from '@/features/updates/api';
+import { deviceLabel } from '@/shared/lib/deviceLabel';
 import { supabase } from '@/shared/lib/supabase';
 
 // =====================================================================
@@ -51,7 +51,8 @@ function uuid(): string {
   });
 }
 
-const deviceLabel = [Device.manufacturer, Device.modelName].filter(Boolean).join(' ') || undefined;
+// 📱 phone: brand + model · 🌐 website: browser + PC / Mac / phone
+const deviceName = deviceLabel();
 const appVersion = Constants.expoConfig?.version ?? undefined;
 
 function updateInfo(): Pick<Report, 'p_update_id' | 'p_update_at' | 'p_channel'> {
@@ -119,7 +120,7 @@ export function ActivityTracker({ children }: { children: React.ReactNode }) {
         p_active_sec: Math.round(s.activeMs / 1000),
         p_ended: ended,
         p_device_id: deviceId,
-        p_device_label: deviceLabel,
+        p_device_label: deviceName,
         p_app_version: appVersion,
         // 📱 Which EAS update runs (More → App versions)
         ...updateInfo(),

@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { getDeviceId } from '@/features/call-sync/api';
+import { deviceLabel } from '@/shared/lib/deviceLabel';
 import { supabase } from '@/shared/lib/supabase';
 
 // =====================================================================
@@ -90,10 +91,12 @@ export async function pushState(ask = false): Promise<PushState> {
  * Returns false when push can't be used (no permission, emulator, no internet).
  */
 export async function registerForPush(ask = true): Promise<boolean> {
+  // 🌐 The website gets no push (notifications come to the phone app)
+  if (Platform.OS === 'web') return false;
   try {
     const st = await pushState(ask);
     const deviceId = getDeviceId() ?? undefined;
-    const label = [Device.manufacturer, Device.modelName].filter(Boolean).join(' ') || undefined;
+    const label = deviceLabel();
     const { error } = await supabase.rpc(
       'push_check_in' as never,
       {

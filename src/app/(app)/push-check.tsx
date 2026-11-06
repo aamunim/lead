@@ -124,6 +124,12 @@ export default function PushCheckScreen() {
         setTestMsg('⚠ This phone is not registered for notifications yet. Fix the red lines above, then try again.');
         return;
       }
+      if (!state?.token) {
+        setTestMsg(
+          `⚠ This phone is not registered, so the test went only to your other phone${r.phones === 1 ? '' : 's'}. Fix “Phone registered” first.`,
+        );
+        return;
+      }
       setTestMsg('✅ Sent. A “🔔 Test notification” should come in a few seconds.');
       // Expo's answer comes a moment later
       setTimeout(() => myPushStatus().then(setServer), 70_000);
@@ -221,7 +227,7 @@ export default function PushCheckScreen() {
             <Text style={styles.cardTitle}>🔔 Test</Text>
             <Text style={styles.text}>Sends a notification to this phone now.</Text>
             {testMsg && <Text style={styles.testMsg}>{testMsg}</Text>}
-            {server?.lastTest && (
+            {server?.lastTest && state.token && (
               <Text style={styles.muted}>
                 Last test {ago(server.lastTest.at)}:{' '}
                 {server.lastTest.status === 'delivered' || server.lastTest.status === 'accepted'

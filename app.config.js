@@ -61,6 +61,17 @@ function withLocalReleaseSigning(config) {
 module.exports = ({ config }) => {
   const googleServicesFile = process.env.GOOGLE_SERVICES_JSON;
 
+  // 🔔 An Android build without the Firebase file has no push at all
+  //   ("Default FirebaseApp is not initialized" on the phone). Stop the build
+  //   instead of making such an app. (Only on the build machine, EAS or --local.)
+  if (process.env.EAS_BUILD === 'true' && process.env.EAS_BUILD_PLATFORM !== 'ios' && !googleServicesFile) {
+    throw new Error(
+      'GOOGLE_SERVICES_JSON is missing for this build, so push notifications would not work. ' +
+        'expo.dev → this project → Environment variables → GOOGLE_SERVICES_JSON (type File): ' +
+        `tick the "${process.env.EAS_BUILD_PROFILE ?? 'build'}" environment too, then build again.`,
+    );
+  }
+
   return withLocalReleaseSigning(withWhatsAppQueries({
     ...config,
     android: {
