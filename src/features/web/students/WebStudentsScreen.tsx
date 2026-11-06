@@ -568,8 +568,53 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   const [kpiKey, setKpiKey] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   // 👤 The card over a name: where it shows (closes a moment after the mouse leaves)
-  const [card, setCard] = useState<{ row: LeadListItem; x: number; y: number } | null>(null);
+  type Box = { left: number; top: number; right: number; bottom: number };
+  const [card, setCard] = useState<{ row: LeadListItem; x: number; y: number; anchor: Box } | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cardRef = useRef<unknown>(null);
+  // Open while the mouse is on the name, on the card, or on the way between them
+  // (moving to WhatsApp / Copy no longer closes it); closes a moment after it is elsewhere
+  useEffect(() => {
+    if (!card || typeof window === 'undefined') return;
+    const near = (b: Box | DOMRect | undefined, x: number, y: number, pad: number) =>
+      !!b && x >= b.left - pad && x <= b.right + pad && y >= b.top - pad && y <= b.bottom + pad;
+    const onMove = (e: MouseEvent) => {
+      const el = cardRef.current as unknown as HTMLElement | null;
+      const c = el?.getBoundingClientRect?.();
+      const a = card.anchor;
+      const bridge = c
+        ? {
+            left: Math.min(a.left, c.left),
+            right: Math.max(a.right, c.right),
+            top: Math.min(a.bottom, c.top) - 2,
+            bottom: Math.max(a.bottom, c.top) + 2,
+          }
+        : undefined;
+      const keep =
+        near(a, e.clientX, e.clientY, 6) || near(c, e.clientX, e.clientY, 10) || near(bridge, e.clientX, e.clientY, 0);
+      if (keep) {
+        if (hoverTimer.current) clearTimeout(hoverTimer.current);
+        hoverTimer.current = null;
+      } else if (!hoverTimer.current) {
+        hoverTimer.current = setTimeout(() => {
+          hoverTimer.current = null;
+          setCard(null);
+        }, 300);
+      }
+    };
+    const close = () => setCard(null);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', onKey);
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    };
+  }, [card]);
   const act: Act = {
     officer,
     mins: { admission: approval.admission_min_paid, registration: approval.registration_min_paid },
@@ -585,17 +630,32 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
     hover: (r, ev) => {
       if (hoverTimer.current) clearTimeout(hoverTimer.current);
       // under the name (its box), else under the mouse
-      const e = ev as { currentTarget?: unknown; target?: unknown; nativeEvent?: { clientX?: number; clientY?: number } };
+      const e = ev as {
+        currentTarget?: unknown;
+        target?: unknown;
+        nativeEvent?: { clientX?: number; clientY?: number };
+      };
       const el = (e?.currentTarget ?? e?.target) as { getBoundingClientRect?: () => DOMRect } | null;
       const box = el?.getBoundingClientRect?.();
-      if (box && box.width > 0) setCard({ row: r, x: box.left, y: box.bottom + 4 });
-      else if (e?.nativeEvent?.clientX != null)
-        setCard({ row: r, x: e.nativeEvent.clientX - 20, y: (e.nativeEvent.clientY ?? 0) + 14 });
+      if (box && box.width > 0)
+        setCard((old) =>
+          old?.row.id === r.id
+            ? old
+            : {
+                row: r,
+                x: box.left,
+                y: box.bottom + 2,
+                anchor: { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
+              },
+        );
+      else if (e?.nativeEvent?.clientX != null) {
+        const x = e.nativeEvent.clientX;
+        const y = e.nativeEvent.clientY ?? 0;
+        setCard({ row: r, x: x - 20, y: y + 10, anchor: { left: x - 20, top: y - 10, right: x + 20, bottom: y + 10 } });
+      }
     },
-    unhover: () => {
-      if (hoverTimer.current) clearTimeout(hoverTimer.current);
-      hoverTimer.current = setTimeout(() => setCard(null), 220);
-    },
+    // closing is decided by where the mouse goes (see the card's effect above)
+    unhover: () => undefined,
     openRow: (r) => openStudent(r.id),
   };
   const moveSheet = moveOpen ? (
@@ -1245,8 +1305,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
           x={Math.min(card.x, width - 340)}
           y={card.y}
           act={act}
-          onEnter={() => hoverTimer.current && clearTimeout(hoverTimer.current)}
-          onLeave={act.unhover}
+          cardRef={cardRef}
           onWhatsApp={() => openWhatsApp(card.row)}
         />
       )}
@@ -1374,16 +1433,14 @@ function NameCard({
   x,
   y,
   act,
-  onEnter,
-  onLeave,
+  cardRef,
   onWhatsApp,
 }: {
   row: LeadListItem;
   x: number;
   y: number;
   act: Act;
-  onEnter: () => void;
-  onLeave: () => void;
+  cardRef: React.RefObject<unknown>;
   onWhatsApp: () => void;
 }) {
   const phone = r.phone ?? r.whatsapp_number ?? null;
@@ -1410,12 +1467,7 @@ function NameCard({
     </View>
   );
   return (
-    <Pressable
-      onHoverIn={onEnter}
-      onHoverOut={onLeave}
-      onPress={() => undefined}
-      style={[styles.card, { left: Math.max(8, x), top: y } as object]}
-    >
+    <View ref={cardRef as never} style={[styles.card, { left: Math.max(8, x), top: y } as object]}>
       <View style={styles.cardHead}>
         <Avatar name={r.name} size={40} />
         <View style={styles.flex}>
@@ -1448,7 +1500,7 @@ function NameCard({
       <Pressable onPress={() => act.openRow(r)} style={styles.cardOpen} accessibilityRole="button">
         <Text style={styles.cardOpenText}>Open profile ›</Text>
       </Pressable>
-    </Pressable>
+    </View>
   );
 }
 
