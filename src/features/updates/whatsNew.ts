@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-06-b',
+    date: '6 Nov 2026',
+    title: '🔔 Notifications fixed (app 2.8.2)',
+    items: [
+      '🔔 The new app has the Google (Firebase) part notifications need, so they reach every phone',
+      '🔄 If the phone’s push token changes, the app tells the server at once',
+      '🩺 Not getting them? More → Notification check',
+    ],
+  },
+  {
     key: '2026-11-06-a',
     date: '6 Nov 2026',
     title: '🛡 Clear notes before permissions',
