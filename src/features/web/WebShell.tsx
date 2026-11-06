@@ -84,6 +84,8 @@ function pageTitle(path: string): string {
   if (path.startsWith('/feedback')) return 'Contact developer';
   if (path.startsWith('/settings/roles')) return 'Settings › Roles';
   if (path.startsWith('/speed')) return 'Speed check';
+  if (path.startsWith('/push-health')) return 'Push health';
+  if (path.startsWith('/push-check')) return 'Notification check';
   return 'Students';
 }
 
@@ -483,6 +485,18 @@ export function WebShell({ children }: { children: React.ReactNode }) {
                 >
                   <Text style={styles.dropText}>⏱ Speed check</Text>
                 </Pressable>
+                {(hasPermission('settings.manage') || hasPermission('users.manage')) && (
+                  <Pressable
+                    onPress={() => {
+                      setMenuOpen(false);
+                      router.navigate('/push-health' as Href);
+                    }}
+                    style={(state) => [styles.dropItem, (state as { hovered?: boolean }).hovered && styles.topHover]}
+                    accessibilityRole="link"
+                  >
+                    <Text style={styles.dropText}>🔔 Push health</Text>
+                  </Pressable>
+                )}
                 <Pressable
                   onPress={() => {
                     setMenuOpen(false);

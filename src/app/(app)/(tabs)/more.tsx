@@ -394,6 +394,15 @@ function PhoneMore() {
                 onPress={go('/settings')}
               />
             )}
+            {(canManageSettings || canManageUsers) && (
+              <Row
+                icon="notifications-active"
+                tone="orange"
+                title="Push health"
+                subtitle="Whose phone gets no notifications, and why"
+                onPress={go('/push-health')}
+              />
+            )}
             {canManageSettings && (
               <Row
                 icon="system-update"
@@ -493,6 +502,13 @@ function PhoneMore() {
             subtitle="Chat: a problem, an idea or a question"
             pill={!developer && newFeedback > 0 ? { text: `${newFeedback} new`, tone: 'orange' } : undefined}
             onPress={go('/feedback')}
+          />
+          <Row
+            icon="notifications-active"
+            tone="orange"
+            title="Notification check"
+            subtitle="Not getting notifications? Check and test this phone"
+            onPress={go('/push-check')}
           />
           <Row
             icon="speed"

@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-12-02-a',
+    date: '2 Dec 2026',
+    title: '🔔 Notifications: check and fix',
+    items: [
+      '🔔 More → Notification check: is this phone allowed, registered, did the last one arrive? Send a test notification',
+      '🔋 Step-by-step battery settings for your phone brand (Xiaomi, Realme, Oppo, Vivo, Samsung, Infinix…)',
+      '🩺 Admins: More → Push health shows whose phone gets no notifications, and why',
+      '🧹 Old phone registrations that no longer work are removed by themselves',
+    ],
+  },
+  {
     key: '2026-12-01-a',
     date: '1 Dec 2026',
     title: '🎓 New Students page (website) · 🧾 receipts',
