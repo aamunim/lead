@@ -178,6 +178,9 @@ export function WebLogin() {
           <Pressable onPress={() => router.push('/delete-account' as Href)} accessibilityRole="link">
             <Text style={styles.forgot}>Delete an account</Text>
           </Pressable>
+          <Pressable onPress={() => router.push('/privacy' as Href)} accessibilityRole="link">
+            <Text style={styles.forgot}>Privacy policy</Text>
+          </Pressable>
         </View>
       </View>
     </View>

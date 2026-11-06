@@ -174,6 +174,9 @@ export default function DeleteAccountScreen() {
       {!signedIn && (
         <Button title="Back to sign in" variant="ghost" onPress={() => router.replace('/login' as Href)} fullWidth />
       )}
+      <Text style={styles.privacy} onPress={() => router.push('/privacy' as Href)}>
+        🔒 Privacy policy
+      </Text>
     </ScrollView>
   );
 }
@@ -261,6 +264,7 @@ const styles = StyleSheet.create({
   },
   dangerText: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: '#fff' },
   dim: { opacity: 0.6 },
+  privacy: { fontSize: fontSize.small, color: colors.textMuted, textAlign: 'center' },
   seg: { flexDirection: 'row', gap: spacing.sm },
   segBtn: {
     flex: 1,
