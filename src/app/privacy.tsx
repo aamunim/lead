@@ -12,7 +12,8 @@ import { Button } from '@/shared/ui/Button';
 //   and change UPDATED.
 // =====================================================================
 
-const UPDATED = '4 December 2026';
+const UPDATED = '6 November 2026';
+const EMAIL = 'abamunim@gmail.com';
 const SITE = 'https://lead.ittc.edu.bd';
 
 type Section = { title: string; text?: string; items?: string[] };
@@ -89,7 +90,7 @@ const SECTIONS: Section[] = [
   },
   {
     title: '10. Contact',
-    text: `${COLLEGE}. For questions about this policy or your data, contact the institute’s office, or use the account deletion page.`,
+    text: `${COLLEGE}. For questions about this policy or your data, write to ${EMAIL}, or use the account deletion page.`,
   },
 ];
 
@@ -120,6 +121,11 @@ export default function PrivacyScreen() {
           {s.title.startsWith('7.') && (
             <Pressable onPress={() => router.push('/delete-account' as Href)} accessibilityRole="link">
               <Text style={styles.link}>🗑 {SITE.replace('https://', '')}/delete-account</Text>
+            </Pressable>
+          )}
+          {s.title.startsWith('10.') && (
+            <Pressable onPress={() => Linking.openURL(`mailto:${EMAIL}`)} accessibilityRole="link">
+              <Text style={styles.link}>✉ {EMAIL}</Text>
             </Pressable>
           )}
           {s.title.startsWith('10.') && (
