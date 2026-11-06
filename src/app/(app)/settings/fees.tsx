@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { createElement, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import {
@@ -12,6 +12,17 @@ import {
   type PaymentSettings,
 } from '@/features/fees/api';
 import type { WhoRule } from '@/features/pipeline/api';
+import type { ReceiptData } from '@/features/fees/api';
+import {
+  printReceipt,
+  RECEIPT_COLOURS,
+  RECEIPT_SIZES,
+  RECEIPT_TEMPLATES,
+  receiptDesign,
+  receiptHtml,
+  receiptLogo,
+  type ReceiptDesign,
+} from '@/features/fees/receipt';
 import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
 import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -74,7 +85,8 @@ export default function FeeSettingsScreen() {
   const addMethod = () => {
     const m = newMethod.trim();
     if (!m) return;
-    if (!pay.methods.some((x) => x.name.toLowerCase() === m.toLowerCase())) setPay('methods', [...pay.methods, { name: m, txn: false }]);
+    if (!pay.methods.some((x) => x.name.toLowerCase() === m.toLowerCase()))
+      setPay('methods', [...pay.methods, { name: m, txn: false }]);
     setNewMethod('');
   };
 
@@ -152,7 +164,12 @@ export default function FeeSettingsScreen() {
                   ['users', 'Some people'],
                 ] as const
               ).map(([m, label]) => (
-                <Chip key={m} text={label} on={settings.who.mode === m} onPress={() => set('who', { ...settings.who, mode: m })} />
+                <Chip
+                  key={m}
+                  text={label}
+                  on={settings.who.mode === m}
+                  onPress={() => set('who', { ...settings.who, mode: m })}
+                />
               ))}
             </View>
             {settings.who.mode === 'roles' && (
@@ -160,7 +177,12 @@ export default function FeeSettingsScreen() {
                 {roles
                   .filter((r) => r.key !== 'super_admin')
                   .map((r) => (
-                    <Chip key={r.key} text={r.name} on={settings.who.roles.includes(r.key)} onPress={() => toggleWho('roles', r.key)} />
+                    <Chip
+                      key={r.key}
+                      text={r.name}
+                      on={settings.who.roles.includes(r.key)}
+                      onPress={() => toggleWho('roles', r.key)}
+                    />
                   ))}
               </View>
             )}
@@ -215,7 +237,12 @@ export default function FeeSettingsScreen() {
       <View style={styles.card}>
         <View style={styles.chips}>
           {[3, 7, 15, 30, 0].map((d) => (
-            <Chip key={d} text={d === 0 ? 'Always' : `${d} days`} on={settings.valid_days === d} onPress={() => set('valid_days', d)} />
+            <Chip
+              key={d}
+              text={d === 0 ? 'Always' : `${d} days`}
+              on={settings.valid_days === d}
+              onPress={() => set('valid_days', d)}
+            />
           ))}
         </View>
         <Text style={styles.hint}>
@@ -231,12 +258,17 @@ export default function FeeSettingsScreen() {
           {settings.reasons.map((r) => (
             <Pressable
               key={r}
-              onPress={() => set('reasons', settings.reasons.filter((x) => x !== r))}
+              onPress={() =>
+                set(
+                  'reasons',
+                  settings.reasons.filter((x) => x !== r),
+                )
+              }
               style={styles.reason}
               accessibilityRole="button"
               accessibilityLabel={`Remove ${r}`}
             >
-              <Text style={styles.reasonText}>{r}  ✕</Text>
+              <Text style={styles.reasonText}>{r} ✕</Text>
             </Pressable>
           ))}
         </View>
@@ -314,10 +346,20 @@ export default function FeeSettingsScreen() {
                 <Text style={styles.hint}>Txn ID</Text>
                 <Switch
                   value={m.txn}
-                  onValueChange={(v) => setPay('methods', pay.methods.map((x, j) => (j === i ? { ...x, txn: v } : x)))}
+                  onValueChange={(v) =>
+                    setPay(
+                      'methods',
+                      pay.methods.map((x, j) => (j === i ? { ...x, txn: v } : x)),
+                    )
+                  }
                 />
                 <Pressable
-                  onPress={() => setPay('methods', pay.methods.filter((_, j) => j !== i))}
+                  onPress={() =>
+                    setPay(
+                      'methods',
+                      pay.methods.filter((_, j) => j !== i),
+                    )
+                  }
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel={`Remove ${m.name}`}
@@ -386,7 +428,10 @@ export default function FeeSettingsScreen() {
                 : 'Off. No installment notifications.'}
             </Text>
           </View>
-          <Switch value={pay.reminders.enabled} onValueChange={(v) => setPay('reminders', { ...pay.reminders, enabled: v })} />
+          <Switch
+            value={pay.reminders.enabled}
+            onValueChange={(v) => setPay('reminders', { ...pay.reminders, enabled: v })}
+          />
         </View>
         {pay.reminders.enabled && (
           <>
@@ -456,9 +501,178 @@ export default function FeeSettingsScreen() {
         />
       </View>
 
+      <Text style={styles.sectionLabel}>COLLEGE RECEIPT NO.</Text>
+      <View style={styles.card}>
+        <Text style={styles.hint}>The number on the college’s own paper receipt, typed when taking a payment.</Text>
+        <View style={styles.chips}>
+          {(
+            [
+              ['off', 'Don’t ask'],
+              ['optional', 'Ask (optional)'],
+              ['required', 'Must be typed'],
+            ] as const
+          ).map(([k, label]) => (
+            <Chip
+              key={k}
+              text={label}
+              on={(pay.college_receipt ?? 'optional') === k}
+              onPress={() => setPay('college_receipt', k)}
+            />
+          ))}
+        </View>
+      </View>
+
+      <Text style={styles.sectionLabel}>RECEIPT DESIGN</Text>
+      <ReceiptDesigner settings={pay} onChange={(design) => setPay('receipt', { ...pay.receipt, design })} />
+
       {error && <Text style={styles.error}>{error}</Text>}
       <Button title="Save" onPress={save} loading={saving} disabled={!dirty} fullWidth />
     </KeyboardAwareScrollView>
+  );
+}
+
+// ---------------------------------------------------------------------
+// 🧾 How the printed receipt looks (with a live preview on the website)
+// ---------------------------------------------------------------------
+const SAMPLE: ReceiptData = {
+  institute: { name: "Ideal Teachers' Training College", address: 'Dhaka', phone: '01700-000000' },
+  student: { name: 'Rahim Uddin', studentId: 'BBA-26-101', course: 'BBA', batch: '2026 Jan' },
+  payment: {
+    id: 'sample',
+    lead_id: 'sample',
+    receipt_no: 'RCP-2026-00042',
+    amount: 15000,
+    method: 'bKash',
+    txn_id: '9F3K2L7Q',
+    paid_at: new Date().toISOString(),
+    note: null,
+    received_by: null,
+    voided_at: null,
+    voided_by: null,
+    void_reason: null,
+    kind: 'payment',
+    college_receipt_no: '004512',
+  },
+  receivedByName: 'Admin',
+  finalFee: 55000,
+  paidSoFar: 35000,
+};
+
+function ReceiptDesigner({ settings, onChange }: { settings: PaymentSettings; onChange: (d: ReceiptDesign) => void }) {
+  const d = receiptDesign(settings);
+  const put = <K extends keyof ReceiptDesign>(k: K, v: ReceiptDesign[K]) => onChange({ ...d, [k]: v });
+  const [logo, setLogo] = useState<string | null>(null);
+  const [sigText, setSigText] = useState(d.signatures.join(', '));
+  useEffect(() => {
+    receiptLogo().then(setLogo);
+  }, []);
+  const html = receiptHtml(SAMPLE, settings, logo);
+  return (
+    <View style={styles.card}>
+      <Text style={styles.label}>LOOK</Text>
+      <View style={styles.chips}>
+        {RECEIPT_TEMPLATES.map((t) => (
+          <Chip key={t.key} text={t.label} on={d.template === t.key} onPress={() => put('template', t.key)} />
+        ))}
+      </View>
+      <Text style={styles.hint}>{RECEIPT_TEMPLATES.find((t) => t.key === d.template)?.hint}</Text>
+
+      <Text style={styles.label}>PAPER</Text>
+      <View style={styles.chips}>
+        {RECEIPT_SIZES.map((z) => (
+          <Chip key={z.key} text={z.label} on={d.size === z.key} onPress={() => put('size', z.key)} />
+        ))}
+      </View>
+
+      <Text style={styles.label}>COLOUR</Text>
+      <View style={styles.chips}>
+        {RECEIPT_COLOURS.map((c) => (
+          <Pressable
+            key={c}
+            onPress={() => put('accent', c)}
+            style={[styles.swatch, { backgroundColor: c }, d.accent === c && styles.swatchOn]}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: d.accent === c }}
+            accessibilityLabel={`Colour ${c}`}
+          />
+        ))}
+        <TextInput
+          value={d.accent}
+          onChangeText={(v) => /^#[0-9a-fA-F]{6}$/.test(v) && put('accent', v)}
+          placeholder="#1F3A8A"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="characters"
+          style={[styles.input, styles.hexInput]}
+          accessibilityLabel="Colour code"
+        />
+      </View>
+
+      <Text style={styles.label}>TITLE</Text>
+      <TextInput
+        value={d.title}
+        onChangeText={(v) => put('title', v)}
+        placeholder="Money Receipt"
+        placeholderTextColor={colors.textMuted}
+        style={styles.input}
+      />
+      <Text style={styles.label}>LINE UNDER THE COLLEGE NAME</Text>
+      <TextInput
+        value={d.header_line}
+        onChangeText={(v) => put('header_line', v)}
+        placeholder="e.g. Affiliated to National University · EIIN 000000"
+        placeholderTextColor={colors.textMuted}
+        style={styles.input}
+      />
+      <Text style={styles.label}>SIGNATURES (COMMAS BETWEEN)</Text>
+      <TextInput
+        value={sigText}
+        onChangeText={(v) => {
+          setSigText(v);
+          put(
+            'signatures',
+            v
+              .split(',')
+              .map((x) => x.trim())
+              .filter(Boolean)
+              .slice(0, 3),
+          );
+        }}
+        placeholder="Student, Received by"
+        placeholderTextColor={colors.textMuted}
+        style={styles.input}
+      />
+
+      {(
+        [
+          ['show_logo', 'College logo'],
+          ['amount_words', 'Amount in words'],
+          ['paid_stamp', '“PAID” stamp'],
+        ] as const
+      ).map(([k, label]) => (
+        <View key={k} style={styles.switchRow}>
+          <Text style={[styles.rowTitle, styles.flex]}>{label}</Text>
+          <Switch value={d[k]} onValueChange={(v) => put(k, v)} />
+        </View>
+      ))}
+
+      <Text style={styles.label}>PREVIEW</Text>
+      {Platform.OS === 'web' ? (
+        <View style={styles.preview}>
+          {createElement('iframe', {
+            srcDoc: html,
+            title: 'Receipt preview',
+            style: { width: '100%', height: 640, border: 0, background: '#fff', borderRadius: 8 },
+          })}
+        </View>
+      ) : null}
+      <Button
+        title="🖨 Print a sample"
+        variant="secondary"
+        onPress={() => printReceipt(SAMPLE, settings).catch(() => undefined)}
+        fullWidth
+      />
+      <Text style={styles.hint}>Save to use this design for every receipt.</Text>
+    </View>
   );
 }
 
@@ -489,7 +703,12 @@ function WhoPicker({
           {roles
             .filter((r) => !r.unlimited)
             .map((r) => (
-              <Chip key={r.key} text={r.name} on={rule.roles.includes(r.key)} onPress={() => onToggle('roles', r.key)} />
+              <Chip
+                key={r.key}
+                text={r.name}
+                on={rule.roles.includes(r.key)}
+                onPress={() => onToggle('roles', r.key)}
+              />
             ))}
         </View>
       )}
@@ -511,7 +730,12 @@ function WhoPicker({
 
 function Chip({ text, on, onPress }: { text: string; on: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, on && styles.chipOn]} accessibilityRole="button" accessibilityState={{ selected: on }}>
+    <Pressable
+      onPress={onPress}
+      style={[styles.chip, on && styles.chipOn]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+    >
       <Text style={[styles.chipText, on && styles.chipTextOn]}>{text}</Text>
     </Pressable>
   );
@@ -533,6 +757,16 @@ const styles = StyleSheet.create({
   },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  swatch: { width: 30, height: 30, borderRadius: radius.pill, borderWidth: 2, borderColor: 'transparent' },
+  swatchOn: { borderColor: colors.text },
+  hexInput: { width: 110, paddingVertical: 6 },
+  preview: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: 8,
+    backgroundColor: '#E9ECF2',
+  },
   rowTitle: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
   rowText: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
   label: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, letterSpacing: 1, color: colors.textMuted },

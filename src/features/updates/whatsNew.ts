@@ -8,6 +8,20 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-12-01-a',
+    date: '1 Dec 2026',
+    title: '🎓 New Students page (website) · 🧾 receipts',
+    items: [
+      '✨ Website Students page: a new look, with totals on top (a click shows those students) and filters in groups',
+      '💵 Click the Fee: payments, next installment, Take payment and 🖨 print the receipt, right there',
+      '📄 Click Papers: tick, 📎 upload, or drop a file on a paper; open what was uploaded',
+      '👤 Mouse on a name: phone (Copy · WhatsApp), College ID and NU ID (Copy)',
+      '🆔 NU Admission ID comes right after Section; officers type it from the cell',
+      '🧾 College receipt no. with each payment (add or change it later too)',
+      '🎨 Settings → Fee & discount → Receipt design: look, paper (A5, A4, 2 copies, 80 mm), colour, title, signatures, amount in words',
+    ],
+  },
+  {
     key: '2026-11-30-b',
     date: '30 Nov 2026',
     title: '🕘 Recent: your own calls',

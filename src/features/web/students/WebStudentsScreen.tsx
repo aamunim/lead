@@ -44,6 +44,8 @@ import { FeeChangeSheet } from '@/features/fees/FeeChangeSheet';
 import { LeadPeekSheet } from '@/features/leads/LeadPeekSheet';
 import { listRecent, starredIds } from '@/features/leads/find';
 import { PapersPopup } from '@/features/web/students/PapersPopup';
+import { FeePopup } from '@/features/web/students/FeePopup';
+import { StudentKpis } from '@/features/web/students/StudentKpis';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { money } from '@/features/fees/api';
 import { writeAndShareSpreadsheet } from '@/features/import-export/excel';
@@ -61,7 +63,6 @@ import {
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { countActiveFilters, type LeadFilters } from '@/features/leads/filters';
 import { ago, callLineText } from '@/features/leads/lastActivity';
-import { StudentsSummary } from '@/features/students/StudentsSummary';
 import { dialogOpen, loadPref, onKey, savePref, typingInField } from '@/features/web/prefs';
 import { colors, fontSize, fontWeight, isDark, radius, spacing } from '@/shared/theme';
 
@@ -97,7 +98,7 @@ type ColKey =
   | 'created'
   | 'added_by';
 
-type PopupKind = 'menu' | RowAction;
+type PopupKind = 'menu' | 'feepop' | RowAction;
 
 const APPROVAL_KINDS: ApprovalSheetKind[] = ['submit', 'receive', 'undo_submit', 'undo_receive', 'place', 'nu', 'ref'];
 
@@ -109,6 +110,14 @@ type Act = {
   open: (kind: PopupKind, r: LeadListItem) => void;
   /** 📋 copy a value (College ID, NU ID, phone) */
   copy: (value: string, what: string) => void;
+  /** 🎓 the Students list (its new look) */
+  students: boolean;
+  /** 💵 may take payments */
+  canPay: boolean;
+  /** 👤 the card over a name (phone, College ID) */
+  hover: (r: LeadListItem, el: unknown) => void;
+  unhover: () => void;
+  openRow: (r: LeadListItem) => void;
 };
 
 type Col = {
@@ -117,13 +126,15 @@ type Col = {
   width?: number;
   /** grows to fill the row */
   flex?: number;
+  /** narrowest it gets (growing columns) */
+  minWidth?: number;
   /** a click on the header: these sorts, in turn */
   sorts?: LeadSort[];
 };
 
 const COLS: Col[] = [
   { key: 'ref', label: 'College ID', width: 104, sorts: ['student_id'] },
-  { key: 'name', label: 'Name', flex: 1.2, sorts: ['name'] },
+  { key: 'name', label: 'Name', flex: 1.6, minWidth: 230, sorts: ['name'] },
   { key: 'phone', label: 'Phone', width: 130 },
   { key: 'course', label: 'Course · Batch', flex: 1 },
   { key: 'section', label: 'Section', width: 96 },
@@ -155,12 +166,12 @@ const MODE_COLS: Record<Mode, ColKey[]> = {
     'phone',
     'course',
     'section',
+    'nu',
     'fee',
     'paid',
     'next_due',
     'papers',
     'approval',
-    'nu',
     'last',
     'admitted',
     'admitted_by',
@@ -180,21 +191,8 @@ const MODE_COLS: Record<Mode, ColKey[]> = {
   ],
 };
 const MODE_DEFAULT: Record<Mode, ColKey[]> = {
-  // (v4: Paid shown by default)
-  students: [
-    'ref',
-    'name',
-    'phone',
-    'course',
-    'section',
-    'fee',
-    'paid',
-    'papers',
-    'approval',
-    'nu',
-    'last',
-    'admitted',
-  ],
+  // (v5: NU ID after Section · the phone is on the name's card, its column hidden)
+  students: ['ref', 'name', 'course', 'section', 'nu', 'fee', 'paid', 'papers', 'approval', 'last', 'admitted'],
   leads: ['name', 'phone', 'stage', 'rating', 'interest', 'assignee', 'follow', 'last', 'created'],
 };
 const MODE_PANEL: Record<Mode, ColKey[]> = {
@@ -202,7 +200,7 @@ const MODE_PANEL: Record<Mode, ColKey[]> = {
   leads: ['name', 'stage', 'follow'],
 };
 const MODE_KEYS: Record<Mode, { cols: string; sort: string; dense: string; view: string }> = {
-  students: { cols: 'web_students_cols_v4', sort: 'web_students_sort', dense: 'web_students_compact', view: '' },
+  students: { cols: 'web_students_cols_v5', sort: 'web_students_sort', dense: 'web_students_compact', view: '' },
   leads: { cols: 'web_leads_cols_v1', sort: 'web_leads_sort', dense: 'web_leads_compact', view: 'web_leads_view' },
 };
 
@@ -319,9 +317,15 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   const [sort, setSort] = useState<LeadSort>(() =>
     loadPref<LeadSort>(KEYS.sort, leadsMode ? 'next_call' : 'admitted_newest'),
   );
-  const [cols, setCols] = useState<ColKey[]>(() =>
-    loadPref<ColKey[]>(KEYS.cols, DEFAULT_COLS).filter((k) => MODE_COLSET.includes(k)),
-  );
+  const [cols, setCols] = useState<ColKey[]>(() => {
+    // v4 → v5 (students): keep the chosen columns, without the phone (it is on the name's card)
+    const old =
+      !leadsMode && loadPref<ColKey[] | null>(KEYS.cols, null) === null
+        ? loadPref<ColKey[] | null>('web_students_cols_v4', null)
+        : null;
+    const start = old ? old.filter((k) => k !== 'phone').concat(old.includes('nu') ? [] : ['nu']) : null;
+    return loadPref<ColKey[]>(KEYS.cols, start ?? DEFAULT_COLS).filter((k) => MODE_COLSET.includes(k));
+  });
   const [colsOpen, setColsOpen] = useState(false);
   // Row height: comfortable or compact (more students on one screen)
   const [dense, setDense] = useState(() => loadPref(KEYS.dense, false));
@@ -539,7 +543,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   const shown = compact ? chosen.filter((c) => PANEL_COLS.includes(c.key)) : chosen;
   // Too many columns for the screen: the table scrolls sideways
   const [tableW, setTableW] = useState(0);
-  const minW = CHECK_W + MENU_W + shown.reduce((sum, c) => sum + (c.width ?? FLEX_MIN), 0);
+  const minW = CHECK_W + MENU_W + shown.reduce((sum, c) => sum + (c.width ?? c.minWidth ?? FLEX_MIN), 0);
   const innerW = Math.max(tableW, minW);
 
   const doExport = async () => {
@@ -560,6 +564,12 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   };
 
   const nFilters = countActiveFilters(filters);
+  // 🎓 the cards' numbers again (after a payment, a paper…) · the More filters menu
+  const [kpiKey, setKpiKey] = useState(0);
+  const [moreOpen, setMoreOpen] = useState(false);
+  // 👤 The card over a name: where it shows (closes a moment after the mouse leaves)
+  const [card, setCard] = useState<{ row: LeadListItem; x: number; y: number } | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const act: Act = {
     officer,
     mins: { admission: approval.admission_min_paid, registration: approval.registration_min_paid },
@@ -570,6 +580,23 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
         .then(() => showToast(`📋 ${what} copied: ${value}`))
         .catch(() => showToast('Could not copy.'));
     },
+    students: !leadsMode,
+    canPay,
+    hover: (r, ev) => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+      // under the name (its box), else under the mouse
+      const e = ev as { currentTarget?: unknown; target?: unknown; nativeEvent?: { clientX?: number; clientY?: number } };
+      const el = (e?.currentTarget ?? e?.target) as { getBoundingClientRect?: () => DOMRect } | null;
+      const box = el?.getBoundingClientRect?.();
+      if (box && box.width > 0) setCard({ row: r, x: box.left, y: box.bottom + 4 });
+      else if (e?.nativeEvent?.clientX != null)
+        setCard({ row: r, x: e.nativeEvent.clientX - 20, y: (e.nativeEvent.clientY ?? 0) + 14 });
+    },
+    unhover: () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+      hoverTimer.current = setTimeout(() => setCard(null), 220);
+    },
+    openRow: (r) => openStudent(r.id),
   };
   const moveSheet = moveOpen ? (
     <BulkPlacementSheet
@@ -629,10 +656,13 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   };
 
   const table = (
-    <View style={styles.tableWrap} onLayout={(e) => setTableW(e.nativeEvent.layout.width - 2)}>
+    <View
+      style={[styles.tableWrap, !leadsMode && styles.sTableWrap]}
+      onLayout={(e) => setTableW(e.nativeEvent.layout.width - 2)}
+    >
       <ScrollView horizontal style={styles.flex} contentContainerStyle={{ width: innerW, flexDirection: 'column' }}>
         {/* Header */}
-        <View style={styles.headRow}>
+        <View style={[styles.headRow, !leadsMode && styles.sHeadRow]}>
           <Pressable
             style={[styles.cell, { width: CHECK_W }]}
             onPress={() => setTicked(allTicked ? new Set() : new Set(rows.map((r) => r.id)))}
@@ -809,35 +839,103 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
             />
           </View>
 
-          {/* Totals: a tap picks that group */}
-          {!leadsMode && <StudentsSummary onPick={(q) => setQuick(q)} />}
+          {/* 🎓 Totals: a click shows those students */}
+          {!leadsMode && <StudentKpis quick={quick} onPick={(q) => setQuick(q)} reloadKey={kpiKey} />}
+
+          {/* 🎓 Students: the filters in groups (Fee · Papers · ITTC · More) */}
+          {!leadsMode && (
+            <View style={styles.groups}>
+              <FilterChip label="All" on={quick === 'all'} onPress={() => setQuick('all')} />
+              {FILTER_GROUPS.map((g) => (
+                <View key={g.label} style={styles.group}>
+                  <Text style={styles.groupLabel}>{g.label}</Text>
+                  {g.keys
+                    .map((k) => quickFilters.find((f) => f.key === k))
+                    .filter(Boolean)
+                    .map((f) => (
+                      <FilterChip
+                        key={f!.key}
+                        label={f!.label}
+                        on={quick === f!.key}
+                        onPress={() => setQuick(f!.key)}
+                      />
+                    ))}
+                </View>
+              ))}
+              {(() => {
+                const more = quickFilters.filter(
+                  (f) => f.key !== 'all' && !FILTER_GROUPS.some((g) => g.keys.includes(f.key)),
+                );
+                const picked = more.find((f) => f.key === quick);
+                return (
+                  <View>
+                    <FilterChip
+                      label={picked ? `${picked.label} ▾` : 'More ▾'}
+                      on={!!picked}
+                      onPress={() => setMoreOpen((o) => !o)}
+                    />
+                    {moreOpen && (
+                      <View style={styles.moreMenu}>
+                        {more.map((f) => (
+                          <Pressable
+                            key={f.key}
+                            onPress={() => {
+                              setMoreOpen(false);
+                              setQuick(quick === f.key ? 'all' : f.key);
+                            }}
+                            style={(st) => [
+                              styles.moreItem,
+                              (st as { hovered?: boolean }).hovered && styles.moreItemHover,
+                            ]}
+                            accessibilityRole="menuitem"
+                          >
+                            <Text style={[styles.moreText, quick === f.key && styles.moreTextOn]}>
+                              {quick === f.key ? '✓ ' : ''}
+                              {f.label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
+              {nFilters > 0 && (
+                <Pressable onPress={() => setFilters({})} style={styles.chipClear} accessibilityRole="button">
+                  <Text style={styles.chipClearText}>✕ Clear filters</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
 
           {/* Quick filters */}
-          <View style={styles.chips}>
-            {quickFilters.map((f) => {
-              const on = quick === f.key;
-              return (
-                <Pressable
-                  key={f.key}
-                  onPress={() => setQuick(f.key)}
-                  style={(state) => [
-                    styles.chip,
-                    on && styles.chipOn,
-                    !on && (state as { hovered?: boolean }).hovered && styles.chipHover,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                >
-                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{f.label}</Text>
+          {leadsMode && (
+            <View style={styles.chips}>
+              {quickFilters.map((f) => {
+                const on = quick === f.key;
+                return (
+                  <Pressable
+                    key={f.key}
+                    onPress={() => setQuick(f.key)}
+                    style={(state) => [
+                      styles.chip,
+                      on && styles.chipOn,
+                      !on && (state as { hovered?: boolean }).hovered && styles.chipHover,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[styles.chipText, on && styles.chipTextOn]}>{f.label}</Text>
+                  </Pressable>
+                );
+              })}
+              {nFilters > 0 && (
+                <Pressable onPress={() => setFilters({})} style={styles.chipClear} accessibilityRole="button">
+                  <Text style={styles.chipClearText}>✕ Clear filters</Text>
                 </Pressable>
-              );
-            })}
-            {nFilters > 0 && (
-              <Pressable onPress={() => setFilters({})} style={styles.chipClear} accessibilityRole="button">
-                <Text style={styles.chipClearText}>✕ Clear filters</Text>
-              </Pressable>
-            )}
-          </View>
+              )}
+            </View>
+          )}
 
           {/* Ticked: what to do with them */}
           {ticked.size > 0 && (
@@ -902,6 +1000,21 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
           ) : (
             table
           )}
+          {!leadsMode && !loading && rows.length > 0 && (
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>
+                Showing <Text style={styles.footerStrong}>{rows.length.toLocaleString('en-IN')}</Text>
+                {total != null ? ` of ${total.toLocaleString('en-IN')}` : ''} students
+                {hasMore ? ' · scroll for more' : ''}
+              </Text>
+              {paidSum && paidSum.count > 0 && (
+                <Text style={styles.footerText}>
+                  💵 Paid <Text style={styles.footerStrong}>{money(paidSum.total)}</Text>
+                  {paidSum.paying > 0 ? ` · avg ${money(Math.round(paidSum.total / paidSum.paying))}` : ''}
+                </Text>
+              )}
+            </View>
+          )}
         </View>
 
         {/* The open student */}
@@ -933,6 +1046,11 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
         <PapersPopup
           leadId={popup.row.id}
           name={popup.row.name}
+          onChanged={(m) => {
+            showToast(m);
+            load(true);
+            setKpiKey((n) => n + 1);
+          }}
           onClose={() => setPopup(null)}
           onOpen={() => {
             setPopup(null);
@@ -951,6 +1069,27 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
             openStudent(popup.row.id);
           }}
           onAddNote={() => {
+            setPopup(null);
+            openStudent(popup.row.id);
+          }}
+        />
+      )}
+      {popup?.kind === 'feepop' && (
+        <FeePopup
+          row={popup.row}
+          settings={feeSettings}
+          canPay={canPay}
+          canChangeFee={officer}
+          isAdmin={hasPermission('settings.manage')}
+          nameOf={nameOf}
+          onClose={() => setPopup(null)}
+          onChanged={(m) => {
+            showToast(m);
+            load(true);
+            setKpiKey((n) => n + 1);
+          }}
+          onChangeFee={() => setPopup({ kind: 'fee', row: popup.row })}
+          onOpen={() => {
             setPopup(null);
             openStudent(popup.row.id);
           }}
@@ -1099,6 +1238,19 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
         />
       )}
 
+      {/* 👤 The card over a student's name */}
+      {card && !leadsMode && (
+        <NameCard
+          row={card.row}
+          x={Math.min(card.x, width - 340)}
+          y={card.y}
+          act={act}
+          onEnter={() => hoverTimer.current && clearTimeout(hoverTimer.current)}
+          onLeave={act.unhover}
+          onWhatsApp={() => openWhatsApp(card.row)}
+        />
+      )}
+
       {toast && (
         <View style={styles.toast} pointerEvents="none">
           <Text style={styles.toastText}>{toast}</Text>
@@ -1139,6 +1291,7 @@ function Row({
       onPress={onOpen}
       style={(state) => [
         styles.row,
+        act.students && !dense && styles.sRow,
         dense && styles.rowDense,
         zebra && styles.rowZebra,
         (state as { hovered?: boolean }).hovered && styles.rowHover,
@@ -1187,6 +1340,148 @@ function Row({
           ))}
         </>
       )}
+    </Pressable>
+  );
+}
+
+/** 🎓 Students: the quick filters in groups (the rest under More) */
+const FILTER_GROUPS: { label: string; keys: QuickFilter[] }[] = [
+  { label: 'FEE', keys: ['due', 'overdue', 'paid'] },
+  { label: 'PAPERS', keys: ['papers'] },
+  { label: 'ITTC', keys: ['not_submitted', 'submitted', 'ittc_ready', 'received'] },
+];
+
+function FilterChip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={(st) => [
+        styles.fChip,
+        on && styles.fChipOn,
+        !on && (st as { hovered?: boolean }).hovered && styles.fChipHover,
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+    >
+      <Text style={[styles.fChipText, on && styles.fChipTextOn]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** 👤 Over a name: phone (copy · WhatsApp), College ID (copy), course, NU ID */
+function NameCard({
+  row: r,
+  x,
+  y,
+  act,
+  onEnter,
+  onLeave,
+  onWhatsApp,
+}: {
+  row: LeadListItem;
+  x: number;
+  y: number;
+  act: Act;
+  onEnter: () => void;
+  onLeave: () => void;
+  onWhatsApp: () => void;
+}) {
+  const phone = r.phone ?? r.whatsapp_number ?? null;
+  const line = (icon: string, label: string, value: string | null, extra?: React.ReactNode) => (
+    <View style={styles.cardLine}>
+      <Text style={styles.cardIcon}>{icon}</Text>
+      <View style={styles.flex}>
+        <Text style={styles.cardLabel}>{label}</Text>
+        <Text style={[styles.cardValue, !value && styles.dim]} numberOfLines={1}>
+          {value ?? '—'}
+        </Text>
+      </View>
+      {extra}
+      {value && (
+        <Pressable
+          onPress={() => act.copy(value, label)}
+          style={(st) => [styles.cardBtn, (st as { hovered?: boolean }).hovered && styles.cardBtnHover]}
+          accessibilityRole="button"
+          accessibilityLabel={`Copy ${label}`}
+        >
+          <Text style={styles.cardBtnText}>📋 Copy</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+  return (
+    <Pressable
+      onHoverIn={onEnter}
+      onHoverOut={onLeave}
+      onPress={() => undefined}
+      style={[styles.card, { left: Math.max(8, x), top: y } as object]}
+    >
+      <View style={styles.cardHead}>
+        <Avatar name={r.name} size={40} />
+        <View style={styles.flex}>
+          <Text style={styles.cardName} numberOfLines={1}>
+            {r.name}
+          </Text>
+          <Text style={styles.cardSub} numberOfLines={1}>
+            {[r.admitted_course?.name, r.admitted_batch?.name, r.admitted_section?.name].filter(Boolean).join(' · ') ||
+              '—'}
+          </Text>
+        </View>
+      </View>
+      {line(
+        '📞',
+        'Phone',
+        phone,
+        phone ? (
+          <Pressable
+            onPress={onWhatsApp}
+            style={(st) => [styles.waBtn, (st as { hovered?: boolean }).hovered && styles.waBtnHover]}
+            accessibilityRole="button"
+            accessibilityLabel={`WhatsApp ${r.name}`}
+          >
+            <Text style={styles.waText}>WhatsApp</Text>
+          </Pressable>
+        ) : null,
+      )}
+      {line('🎓', 'College ID', r.student_ref)}
+      {!!r.nu_admission_id && line('🆔', 'NU Admission ID', r.nu_admission_id)}
+      <Pressable onPress={() => act.openRow(r)} style={styles.cardOpen} accessibilityRole="button">
+        <Text style={styles.cardOpenText}>Open profile ›</Text>
+      </Pressable>
+    </Pressable>
+  );
+}
+
+/** 🎓 A round face with the first letters (a colour from the name) */
+const FACE = ['#3557D4', '#0F766E', '#B45309', '#7C3AED', '#BE185D', '#0369A1', '#15803D', '#C2410C'];
+function Avatar({ name, size = 30 }: { name: string; size?: number }) {
+  const letters =
+    name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? '')
+      .join('') || '?';
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const bg = FACE[h % FACE.length];
+  return (
+    <View style={[styles.avatar, { width: size, height: size, backgroundColor: `${bg}22` }]}>
+      <Text style={[styles.avatarText, { color: bg, fontSize: size * 0.4 }]}>{letters}</Text>
+    </View>
+  );
+}
+
+/** A small round button on a hovered row */
+function QuickBtn({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={(st) => [styles.quickBtn, (st as { hovered?: boolean }).hovered && styles.quickBtnHover]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text style={styles.quickIcon}>{icon}</Text>
     </Pressable>
   );
 }
@@ -1246,12 +1541,52 @@ function Cell({
       );
     case 'name': {
       const cancelled = r.stage?.kind === 'cancelled';
+      if (!act.students)
+        return (
+          <View style={styles.nameCell}>
+            <Text style={[styles.name, cancelled && styles.struck]} numberOfLines={1}>
+              {r.name}
+            </Text>
+            {cancelled && <Text style={styles.cancelTag}>Cancelled</Text>}
+          </View>
+        );
+      // 🎓 Students: a face, the name (its card on hover), quick buttons on a hovered row
+      const due = Number(r.fee_due ?? 0);
       return (
         <View style={styles.nameCell}>
-          <Text style={[styles.name, cancelled && styles.struck]} numberOfLines={1}>
-            {r.name}
-          </Text>
+          <Avatar name={r.name} />
+          <Pressable
+            onPress={() => act.openRow(r)}
+            onHoverIn={(e) => act.hover(r, e)}
+            onHoverOut={act.unhover}
+            style={styles.shrink}
+            accessibilityRole="link"
+            accessibilityLabel={`Open ${r.name}`}
+          >
+            {(st) => (
+              <Text
+                style={[
+                  styles.name,
+                  cancelled && styles.struck,
+                  (st as { hovered?: boolean }).hovered && styles.nameHover,
+                ]}
+                numberOfLines={1}
+              >
+                {r.name}
+              </Text>
+            )}
+          </Pressable>
           {cancelled && <Text style={styles.cancelTag}>Cancelled</Text>}
+          <View style={styles.flex} />
+          {hovered && (
+            <View style={styles.quick}>
+              {act.canPay && admitted && due > 0 && (
+                <QuickBtn icon="💵" label={`Take payment from ${r.name}`} onPress={() => act.open('feepop', r)} />
+              )}
+              <QuickBtn icon="📄" label={`${r.name}'s papers`} onPress={() => act.open('papers', r)} />
+              <QuickBtn icon="📝" label={`Note for ${r.name}`} onPress={() => act.open('note', r)} />
+            </View>
+          )}
         </View>
       );
     }
@@ -1277,6 +1612,26 @@ function Cell({
       const final = Number(r.fee_final ?? 0);
       if (!final && !due) return <Text style={styles.dim}>—</Text>;
       const paidPart = final > 0 ? Math.min(1, Number(r.fee_paid ?? 0) / final) : 0;
+      if (act.students)
+        return (
+          <Hit onPress={() => act.open('feepop', r)} label={`${r.name}'s fee and payments`}>
+            <View style={styles.feeCell}>
+              <View style={styles.feeTop}>
+                <Text style={[styles.feeMain, due > 0 ? styles.bad : styles.good]} numberOfLines={1}>
+                  {due > 0 ? money(due) : '✓ Paid'}
+                </Text>
+                {due > 0 && <Text style={styles.feeOf}>due</Text>}
+                {act.canPay && admitted && due > 0 && <Text style={styles.payTag}>Pay</Text>}
+              </View>
+              <View style={styles.bar}>
+                <View
+                  style={[styles.barFill, { width: `${Math.round(paidPart * 100)}%` }, due <= 0 && styles.barDone]}
+                />
+              </View>
+              {final > 0 && <Text style={styles.feeOf}>of {money(final)}</Text>}
+            </View>
+          </Hit>
+        );
       const body = (
         <View style={styles.feeCell}>
           <Text style={[styles.text, due > 0 ? styles.bad : styles.good]} numberOfLines={1}>
@@ -1382,15 +1737,25 @@ function Cell({
       ) : (
         <Text style={styles.dim}>—</Text>
       );
-    case 'nu':
+    case 'nu': {
+      const text = (
+        <Text style={[styles.mono, styles.shrink, !r.nu_admission_id && styles.dim]} numberOfLines={1}>
+          {r.nu_admission_id ?? (act.students && act.officer && admitted ? '+ Add' : '—')}
+        </Text>
+      );
       return (
         <View style={styles.withCopy}>
-          <Text style={[styles.mono, styles.shrink, !r.nu_admission_id && styles.dim]} numberOfLines={1}>
-            {r.nu_admission_id ?? '—'}
-          </Text>
+          {act.students && act.officer && admitted ? (
+            <Hit onPress={() => act.open('nu', r)} label={`${r.name}'s NU Admission ID`}>
+              {text}
+            </Hit>
+          ) : (
+            text
+          )}
           {copyBtn(r.nu_admission_id, 'NU Admission ID')}
         </View>
       );
+    }
     case 'last': {
       const last = r.last;
       const call = last ? callLineText(last, nameOf) : null;
@@ -1572,7 +1937,7 @@ function cellText(col: ColKey, r: LeadListItem, nameOf: (id: string | null) => s
 }
 
 function colStyle(c: Col) {
-  return c.flex ? { flex: c.flex, minWidth: FLEX_MIN } : { width: c.width };
+  return c.flex ? { flex: c.flex, minWidth: c.minWidth ?? FLEX_MIN } : { width: c.width };
 }
 
 function Box({ on }: { on: boolean }) {
@@ -1677,6 +2042,149 @@ function ColumnsDialog({
 }
 
 const styles = StyleSheet.create({
+  // ---- 🎓 Students: the new look --------------------------------------
+  avatar: { borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontWeight: fontWeight.bold },
+  nameHover: { color: colors.primary, textDecorationLine: 'underline' },
+  quick: {
+    position: 'absolute',
+    right: -4,
+    flexDirection: 'row',
+    gap: 2,
+    paddingLeft: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: colors.surface,
+    shadowColor: '#0B1A44',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  quickBtn: { width: 28, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  quickBtnHover: { backgroundColor: colors.primarySoft },
+  quickIcon: { fontSize: 14 },
+  feeTop: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+  feeMain: { fontSize: fontSize.small, fontWeight: fontWeight.bold },
+  feeOf: { fontSize: 11, color: colors.textMuted },
+  payTag: {
+    marginLeft: 'auto',
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  groups: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, zIndex: 20 },
+  group: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    padding: 3,
+    paddingLeft: 10,
+    borderRadius: 999,
+    backgroundColor: isDark ? '#141C2E' : '#EEF1F8',
+  },
+  groupLabel: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    color: colors.textMuted,
+    letterSpacing: 0.8,
+    marginRight: 2,
+  },
+  fChip: {
+    height: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    backgroundColor: colors.surface,
+  },
+  fChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  fChipHover: { borderColor: colors.primary },
+  fChipText: { fontSize: 13, fontWeight: fontWeight.semibold, color: colors.text },
+  fChipTextOn: { color: colors.textOnPrimary },
+  moreMenu: {
+    position: 'absolute',
+    top: 36,
+    left: 0,
+    minWidth: 200,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    zIndex: 30,
+  },
+  moreItem: { paddingVertical: 8, paddingHorizontal: 14 },
+  moreItemHover: { backgroundColor: colors.primarySoft },
+  moreText: { fontSize: fontSize.small, color: colors.text },
+  moreTextOn: { color: colors.primary, fontWeight: fontWeight.bold },
+  footer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  footerText: { fontSize: fontSize.caption, color: colors.textMuted },
+  footerStrong: { fontWeight: fontWeight.bold, color: colors.text },
+  card: {
+    position: 'fixed' as 'absolute',
+    width: 330,
+    gap: 6,
+    padding: spacing.md,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    shadowColor: '#0B1A44',
+    shadowOpacity: 0.22,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    zIndex: 1000,
+  },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: 4 },
+  cardName: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  cardSub: { fontSize: fontSize.caption, color: colors.textMuted },
+  cardLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: isDark ? '#141C2E' : '#F5F7FC',
+  },
+  cardIcon: { fontSize: 16, width: 22, textAlign: 'center' },
+  cardLabel: { fontSize: 10, fontWeight: fontWeight.bold, color: colors.textMuted, letterSpacing: 0.5 },
+  cardValue: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
+  cardBtn: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8 },
+  cardBtnHover: { backgroundColor: colors.primarySoft },
+  cardBtnText: { fontSize: 12, fontWeight: fontWeight.bold, color: colors.primary },
+  waBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, backgroundColor: '#25D366' },
+  waBtnHover: { backgroundColor: '#1EBE5A' },
+  waText: { fontSize: 12, fontWeight: fontWeight.bold, color: '#fff' },
+  cardOpen: { alignSelf: 'flex-end', paddingVertical: 4, paddingHorizontal: 4 },
+  cardOpenText: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
+  sTableWrap: {
+    borderRadius: 16,
+    shadowColor: '#0B1A44',
+    shadowOpacity: isDark ? 0 : 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  sHeadRow: { minHeight: 44 },
+  sRow: { minHeight: 58 },
+  sTitleSub: { fontSize: fontSize.small, color: colors.textMuted },
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   body: { flex: 1, flexDirection: 'row', minHeight: 0 },

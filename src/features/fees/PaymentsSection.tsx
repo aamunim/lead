@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
@@ -14,6 +24,7 @@ import {
   paidTotal,
   receiptText,
   recordPayment,
+  setCollegeReceipt,
   recordRefund,
   setInstallments,
   voidPayment,
@@ -25,6 +36,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { ShowMoreButton, useShowMore } from '@/shared/ui/ShowMore';
+import { printReceipt } from '@/features/fees/receipt';
 import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 // =====================================================================
@@ -103,54 +115,85 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
     onChanged(message);
   };
 
+  const receiptFor = async (p: Payment, list: Payment[] = payments) => {
+    // "Paid so far" as of this receipt: this payment and the ones before it
+    const upto = list
+      .filter(
+        (x) => !x.voided_at && (x.paid_at < p.paid_at || (x.paid_at === p.paid_at && x.receipt_no <= p.receipt_no)),
+      )
+      .reduce((t, x) => t + Number(x.amount), 0);
+    return loadReceiptData(p, finalFee, p.voided_at ? paid : upto, nameOf(p.received_by));
+  };
   const share = async (p: Payment) => {
     try {
-      // "Paid so far" as of this receipt: this payment and the ones before it
-      const upto = payments
-        .filter((x) => !x.voided_at && (x.paid_at < p.paid_at || (x.paid_at === p.paid_at && x.receipt_no <= p.receipt_no)))
-        .reduce((t, x) => t + Number(x.amount), 0);
-      const data = await loadReceiptData(p, finalFee, p.voided_at ? paid : upto, nameOf(p.received_by));
-      await Share.share({ message: receiptText(data, settings.payments) });
+      await Share.share({ message: receiptText(await receiptFor(p), settings.payments) });
     } catch (e) {
       Alert.alert('Could not share', e instanceof Error ? e.message : '');
     }
   };
+  // 🖨 The printed receipt (design: Settings → Fee & discount → Receipt design)
+  const print = async (p: Payment, list?: Payment[]) => {
+    try {
+      await printReceipt(await receiptFor(p, list), settings.payments);
+    } catch (e) {
+      Alert.alert('Could not print', e instanceof Error ? e.message : '');
+    }
+  };
+  // 🧾 Add / change the college receipt no.
+  const [collegeFor, setCollegeFor] = useState<Payment | null>(null);
 
   if (loading) return <ActivityIndicator color={colors.primary} />;
 
   // Receipts (payments and refunds), newest first
   const receiptRows = more.visible.map((p) => (
-        <View key={p.id} style={[styles.payRow, p.voided_at && styles.voided]}>
-          <View style={styles.flex}>
-            <Text style={[styles.payAmount, p.voided_at && styles.struck, p.kind === 'refund' && styles.refund]}>
-              {p.kind === 'refund' ? '↩ Refund ' : ''}
-              {money(Number(p.amount))} · {p.method}
-            </Text>
-            <Text style={styles.meta}>
-              {p.kind === 'refund' ? '↩' : '🧾'} {p.receipt_no} · {dayText(p.paid_at)}
-              {nameOf(p.received_by) ? ` · ${nameOf(p.received_by)}` : ''}
-            </Text>
-            {p.txn_id && <Text style={styles.meta}>Txn: {p.txn_id}</Text>}
-            {p.note && <Text style={styles.note}>“{p.note}”</Text>}
-            {p.voided_at && (
-              <Text style={styles.badText}>
-                ✕ Void{p.void_reason ? `: ${p.void_reason}` : ''}
-                {nameOf(p.voided_by) ? ` · ${nameOf(p.voided_by)}` : ''}
-              </Text>
-            )}
-          </View>
-          <View style={styles.payActions}>
-            <Pressable onPress={() => share(p)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Share receipt">
-              <Text style={styles.link}>Share</Text>
+    <View key={p.id} style={[styles.payRow, p.voided_at && styles.voided]}>
+      <View style={styles.flex}>
+        <Text style={[styles.payAmount, p.voided_at && styles.struck, p.kind === 'refund' && styles.refund]}>
+          {p.kind === 'refund' ? '↩ Refund ' : ''}
+          {money(Number(p.amount))} · {p.method}
+        </Text>
+        <Text style={styles.meta}>
+          {p.kind === 'refund' ? '↩' : '🧾'} {p.receipt_no} · {dayText(p.paid_at)}
+          {nameOf(p.received_by) ? ` · ${nameOf(p.received_by)}` : ''}
+        </Text>
+        {p.txn_id && <Text style={styles.meta}>Txn: {p.txn_id}</Text>}
+        {p.college_receipt_no ? <Text style={styles.meta}>College receipt: {p.college_receipt_no}</Text> : null}
+        {p.note && <Text style={styles.note}>“{p.note}”</Text>}
+        {p.voided_at && (
+          <Text style={styles.badText}>
+            ✕ Void{p.void_reason ? `: ${p.void_reason}` : ''}
+            {nameOf(p.voided_by) ? ` · ${nameOf(p.voided_by)}` : ''}
+          </Text>
+        )}
+      </View>
+      <View style={styles.payActions}>
+        <Pressable onPress={() => print(p)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Print receipt">
+          <Text style={styles.link}>🖨 Print</Text>
+        </Pressable>
+        <Pressable onPress={() => share(p)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Share receipt">
+          <Text style={styles.link}>Share</Text>
+        </Pressable>
+        {canTake &&
+          !p.voided_at &&
+          p.kind !== 'refund' &&
+          (settings.payments.college_receipt ?? 'optional') !== 'off' && (
+            <Pressable
+              onPress={() => setCollegeFor(p)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="College receipt no."
+            >
+              <Text style={styles.link}>{p.college_receipt_no ? 'College no.' : '+ College no.'}</Text>
             </Pressable>
-            {canVoid && !p.voided_at && (
-              <Pressable onPress={() => setVoiding(p)} hitSlop={8} accessibilityRole="button">
-                <Text style={styles.voidLink}>Void</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-      ));
+          )}
+        {canVoid && !p.voided_at && (
+          <Pressable onPress={() => setVoiding(p)} hitSlop={8} accessibilityRole="button">
+            <Text style={styles.voidLink}>Void</Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  ));
 
   // A cancelled admission: what was paid, and give it back (refund)
   if (!admitted) {
@@ -218,8 +261,8 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
       </View>
       {next && (
         <Text style={[styles.meta, next.state === 'late' && styles.badText]}>
-          {next.state === 'late' ? '⚠ Late: ' : '📅 Next: '}installment {next.seq} · {money(Number(next.amount) - next.covered)} by{' '}
-          {dayText(next.due_date)}
+          {next.state === 'late' ? '⚠ Late: ' : '📅 Next: '}installment {next.seq} ·{' '}
+          {money(Number(next.amount) - next.covered)} by {dayText(next.due_date)}
         </Text>
       )}
 
@@ -276,9 +319,21 @@ export function PaymentsSection({ leadId, stageKind, finalFee, settings, nameOf,
           if (p) {
             Alert.alert('Payment saved', `${r.receipt_no} · ${money(input.amount)}`, [
               { text: 'Done', style: 'cancel' },
+              { text: '🖨 Print', onPress: () => print(p, fresh?.payments) },
               { text: 'Share receipt', onPress: () => share(p) },
             ]);
           }
+        }}
+      />
+
+      <CollegeReceiptSheet
+        payment={collegeFor}
+        onClose={() => setCollegeFor(null)}
+        onSave={async (no) => {
+          if (!collegeFor) return;
+          await setCollegeReceipt(collegeFor.id, no);
+          setCollegeFor(null);
+          await after(no.trim() ? `🧾 College receipt no. ${no.trim()} saved.` : 'College receipt no. removed.');
         }}
       />
 
@@ -329,9 +384,18 @@ export function PaySheet({
   settings: FeeSettings;
   isAdmin: boolean;
   onClose: () => void;
-  onSave: (input: { amount: number; method: string; txnId: string; paidAt: Date | null; note: string }) => Promise<void>;
+  onSave: (input: {
+    amount: number;
+    method: string;
+    txnId: string;
+    paidAt: Date | null;
+    note: string;
+    collegeReceipt: string;
+  }) => Promise<void>;
 }) {
   const methods = settings.payments.methods;
+  const collegeMode = settings.payments.college_receipt ?? 'optional';
+  const [college, setCollege] = useState('');
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<string | null>(null);
   const [txn, setTxn] = useState('');
@@ -347,6 +411,7 @@ export function PaySheet({
     setTxn('');
     setPaidAt(null);
     setNote('');
+    setCollege('');
     setError(null);
   }, [visible, due, next, methods]);
 
@@ -364,10 +429,18 @@ export function PaySheet({
     if (v > due) return setError(`That is more than the amount due (${money(due)}).`);
     if (!method) return setError('Please choose how it was paid.');
     if (m?.txn && !txn.trim()) return setError(`Please type the transaction ID for ${method}.`);
+    if (collegeMode === 'required' && !college.trim()) return setError('Please type the college receipt no.');
     setSaving(true);
     setError(null);
     try {
-      await onSave({ amount: v, method, txnId: txn, paidAt, note });
+      await onSave({
+        amount: v,
+        method,
+        txnId: txn,
+        paidAt,
+        note,
+        collegeReceipt: collegeMode === 'off' ? '' : college,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save.');
     } finally {
@@ -389,13 +462,21 @@ export function PaySheet({
       />
       <View style={styles.chips}>
         {next != null && next < due && (
-          <Chip text={`Installment ${money(next)}`} on={amount === String(Math.round(next))} onPress={() => setAmount(String(Math.round(next)))} />
+          <Chip
+            text={`Installment ${money(next)}`}
+            on={amount === String(Math.round(next))}
+            onPress={() => setAmount(String(Math.round(next)))}
+          />
         )}
         {/* ⚡ Quick amounts (only when not more than the due) */}
         {QUICK_AMOUNTS.filter((q) => q < due).map((q) => (
           <Chip key={q} text={money(q)} on={amount === String(q)} onPress={() => setAmount(String(q))} />
         ))}
-        <Chip text={`All due ${money(due)}`} on={amount === String(Math.round(due))} onPress={() => setAmount(String(Math.round(due)))} />
+        <Chip
+          text={`All due ${money(due)}`}
+          on={amount === String(Math.round(due))}
+          onPress={() => setAmount(String(Math.round(due)))}
+        />
       </View>
 
       <Text style={styles.label}>Paid by</Text>
@@ -415,6 +496,19 @@ export function PaySheet({
         />
       )}
 
+      {/* 🧾 the college's own (paper) receipt */}
+      {collegeMode !== 'off' && (
+        <TextInput
+          value={college}
+          onChangeText={setCollege}
+          placeholder={`College receipt no.${collegeMode === 'required' ? ' *' : ' (optional)'}`}
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="characters"
+          style={styles.input}
+          accessibilityLabel="College receipt no."
+        />
+      )}
+
       <Text style={styles.label}>Date</Text>
       <DateTimePickerButton
         title={paidAt ? `📅 ${dayText(paidAt.toISOString())}` : '📅 Today (change if paid earlier)'}
@@ -423,7 +517,9 @@ export function PaySheet({
         onPick={setPaidAt}
       />
       {!isAdmin && (
-        <Text style={styles.meta}>Up to {settings.payments.backdate_days} days back. Older payments: ask an admin.</Text>
+        <Text style={styles.meta}>
+          Up to {settings.payments.backdate_days} days back. Older payments: ask an admin.
+        </Text>
       )}
 
       <TextInput
@@ -436,6 +532,58 @@ export function PaySheet({
       <VoiceNoteButton leadId={leadId} context="payment" />
       {error && <Text style={styles.errorText}>{error}</Text>}
       <Button title="Save payment" onPress={save} loading={saving} fullWidth />
+    </SmallSheet>
+  );
+}
+
+// =====================================================================
+// 🧾 The college receipt no. of a payment (add, change, remove)
+// =====================================================================
+function CollegeReceiptSheet({
+  payment,
+  onClose,
+  onSave,
+}: {
+  payment: Payment | null;
+  onClose: () => void;
+  onSave: (no: string) => Promise<void>;
+}) {
+  const [no, setNo] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setNo(payment?.college_receipt_no ?? '');
+    setError(null);
+  }, [payment]);
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(no);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <SmallSheet visible={!!payment} onClose={saving ? undefined : onClose}>
+      <Text style={styles.sheetTitle}>🧾 College receipt no.</Text>
+      <Text style={styles.meta}>
+        {payment?.receipt_no} · {payment ? money(Number(payment.amount)) : ''}
+      </Text>
+      <TextInput
+        value={no}
+        onChangeText={setNo}
+        placeholder="e.g. 004512"
+        placeholderTextColor={colors.textMuted}
+        autoCapitalize="characters"
+        autoFocus
+        style={styles.input}
+      />
+      <Text style={styles.meta}>Leave it empty to remove it.</Text>
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      <Button title="Save" onPress={save} loading={saving} fullWidth />
     </SmallSheet>
   );
 }
@@ -480,7 +628,12 @@ function PlanSheet({
     setError(null);
     if (current.length > 0) {
       setCount(current.length);
-      setRows(current.map((i) => ({ date: new Date(`${i.due_date}T00:00:00`), amount: String(Math.round(Number(i.amount))) })));
+      setRows(
+        current.map((i) => ({
+          date: new Date(`${i.due_date}T00:00:00`),
+          amount: String(Math.round(Number(i.amount))),
+        })),
+      );
     } else {
       setCount(3);
       setGap(30);
@@ -694,8 +847,8 @@ function VoidSheet({
     <SmallSheet visible={!!payment} onClose={saving ? undefined : onClose}>
       <Text style={styles.sheetTitle}>Void {payment?.receipt_no}?</Text>
       <Text style={styles.meta}>
-        {payment ? `${money(Number(payment.amount))} · ${payment.method}` : ''}. It stays in the list, marked void, and is
-        no longer counted as paid.
+        {payment ? `${money(Number(payment.amount))} · ${payment.method}` : ''}. It stays in the list, marked void, and
+        is no longer counted as paid.
       </Text>
       <TextInput
         value={reason}
@@ -723,7 +876,15 @@ function Chip({ text, on, onPress }: { text: string; on: boolean; onPress: () =>
   );
 }
 
-function SmallSheet({ visible, onClose, children }: { visible: boolean; onClose?: () => void; children: React.ReactNode }) {
+function SmallSheet({
+  visible,
+  onClose,
+  children,
+}: {
+  visible: boolean;
+  onClose?: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.backdrop} behavior="padding">

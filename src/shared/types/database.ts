@@ -176,6 +176,7 @@ export type Database = {
       fee_payments: {
         Row: {
           amount: number
+          college_receipt_no: string | null
           course_id: string | null
           created_at: string
           id: string
@@ -193,6 +194,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          college_receipt_no?: string | null
           course_id?: string | null
           created_at?: string
           id?: string
@@ -210,6 +212,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          college_receipt_no?: string | null
           course_id?: string | null
           created_at?: string
           id?: string
@@ -2954,6 +2957,7 @@ export type Database = {
           p_txn_id?: string
           p_paid_at?: string
           p_note?: string
+          p_college_receipt?: string
         }
         Returns: Json
       }

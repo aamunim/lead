@@ -3,6 +3,7 @@ import type { WhoRule } from '@/features/pipeline/api';
 import { getSetting, updateSetting } from '@/features/settings/api';
 import { supabase } from '@/shared/lib/supabase';
 import type { Json } from '@/shared/types/database';
+import { DEFAULT_RECEIPT_DESIGN, type ReceiptDesign } from '@/features/fees/receipt';
 
 // =====================================================================
 // 💰 Fee negotiation and discounts (before admission)
@@ -22,6 +23,7 @@ export type ReceiptField =
   | 'batch'
   | 'method'
   | 'txn'
+  | 'college_receipt'
   | 'received_by'
   | 'paid_due'
   | 'note';
@@ -35,6 +37,7 @@ export const RECEIPT_FIELDS: { key: ReceiptField; label: string }[] = [
   { key: 'batch', label: 'Batch' },
   { key: 'method', label: 'Paid by (method)' },
   { key: 'txn', label: 'Transaction ID' },
+  { key: 'college_receipt', label: 'College receipt no.' },
   { key: 'received_by', label: 'Received by' },
   { key: 'paid_due', label: 'Total paid & due' },
   { key: 'note', label: 'Note' },
@@ -51,7 +54,9 @@ export type PaymentSettings = {
   min_on_admit: number;
   /** a payment date may go this many days back (admins: any) */
   backdate_days: number;
-  receipt: { fields: Record<ReceiptField, boolean>; footer: string };
+  receipt: { fields: Record<ReceiptField, boolean>; footer: string; design?: Partial<ReceiptDesign> };
+  /** 🧾 the college's own receipt number when taking a payment */
+  college_receipt: 'off' | 'optional' | 'required';
   /** Installment reminders (Settings → Fee & discount) */
   reminders: {
     enabled: boolean;
@@ -77,6 +82,7 @@ export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   ],
   min_on_admit: 0,
   backdate_days: 7,
+  college_receipt: 'optional',
   reminders: { enabled: true, days_before: 1, on_day: true, late_after: 3 },
   receipt: {
     fields: Object.fromEntries(RECEIPT_FIELDS.map((f) => [f.key, true])) as Record<ReceiptField, boolean>,
@@ -227,6 +233,7 @@ export async function getFeeSettings(): Promise<FeeSettings> {
         receipt: {
           fields: { ...DEFAULT_PAYMENT_SETTINGS.receipt.fields, ...(saved?.payments?.receipt?.fields ?? {}) },
           footer: saved?.payments?.receipt?.footer ?? DEFAULT_PAYMENT_SETTINGS.receipt.footer,
+          design: { ...DEFAULT_RECEIPT_DESIGN, ...(saved?.payments?.receipt?.design ?? {}) },
         },
       },
     };
@@ -437,6 +444,8 @@ export type Payment = {
   void_reason: string | null;
   /** 'refund' = money given back (its own number RFD-…) */
   kind: 'payment' | 'refund';
+  /** 🧾 the number on the college's own receipt */
+  college_receipt_no?: string | null;
 };
 
 export type Installment = { id: string; seq: number; due_date: string; amount: number };
@@ -498,6 +507,8 @@ export async function recordPayment(input: {
   txnId: string;
   paidAt: Date | null;
   note: string;
+  /** 🧾 the college's own receipt number (optional) */
+  collegeReceipt?: string;
 }): Promise<{ id: string; receipt_no: string; due: number }> {
   const { data, error } = await supabase.rpc('record_payment', {
     p_lead_id: input.leadId,
@@ -506,9 +517,16 @@ export async function recordPayment(input: {
     p_txn_id: input.txnId.trim() || undefined,
     p_paid_at: input.paidAt ? input.paidAt.toISOString() : undefined,
     p_note: input.note.trim() || undefined,
+    ...(input.collegeReceipt?.trim() ? { p_college_receipt: input.collegeReceipt.trim() } : {}),
   });
   if (error) throw toError(error);
   return data as unknown as { id: string; receipt_no: string; due: number };
+}
+
+/** 🧾 Add or change the college receipt no. of a payment (empty = remove) */
+export async function setCollegeReceipt(paymentId: string, no: string): Promise<void> {
+  const { error } = await supabase.rpc('set_college_receipt' as never, { p_payment_id: paymentId, p_no: no.trim() } as never);
+  if (error) throw toError(error);
 }
 
 export async function voidPayment(id: string, reason: string): Promise<void> {
@@ -612,6 +630,7 @@ export function receiptText(d: ReceiptData, s: PaymentSettings): string {
     `*Amount: ${money(Number(p.amount))}*`,
     f.method ? `${p.kind === 'refund' ? 'Returned by' : 'Paid by'}: ${p.method}` : null,
     f.txn && p.txn_id ? `Transaction ID: ${p.txn_id}` : null,
+    f.college_receipt && p.college_receipt_no ? `College receipt no.: ${p.college_receipt_no}` : null,
     p.kind === 'refund' && p.note ? `Reason: ${p.note}` : f.note && p.note ? `Note: ${p.note}` : null,
     f.paid_due ? '' : null,
     f.paid_due ? `Total fee: ${money(d.finalFee)}` : null,
