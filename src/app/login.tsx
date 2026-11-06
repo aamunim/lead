@@ -239,6 +239,9 @@ function PhoneLogin() {
           <Text style={styles.forgot} onPress={() => router.push('/delete-account' as Href)}>
             Delete an account
           </Text>
+          <Text style={styles.forgot} onPress={() => router.push('/privacy' as Href)}>
+            Privacy policy
+          </Text>
           <SafeAreaView edges={['bottom']}>
             {!!VERSION && <Text style={styles.version}>Version {VERSION}</Text>}
           </SafeAreaView>

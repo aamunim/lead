@@ -8,6 +8,15 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-12-04-a',
+    date: '4 Dec 2026',
+    title: '🔒 Privacy policy',
+    items: [
+      '🔒 More → Privacy policy (at the bottom): what the app keeps, why, and for how long',
+      '🌐 Also on the web for everyone: lead.ittc.edu.bd/privacy',
+    ],
+  },
+  {
     key: '2026-12-03-a',
     date: '3 Dec 2026',
     title: '🗑 Delete my account',

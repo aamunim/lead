@@ -549,6 +549,9 @@ function PhoneMore() {
         <Pressable onPress={go('/delete-account')} hitSlop={6} accessibilityRole="button">
           <Text style={styles.deleteLink}>Delete my account</Text>
         </Pressable>
+        <Pressable onPress={go('/privacy')} hitSlop={6} accessibilityRole="link">
+          <Text style={styles.privacyLink}>Privacy policy</Text>
+        </Pressable>
         <Text style={styles.footer}>
           ITTC {APP_PRODUCT} · v{version}
         </Text>
@@ -670,6 +673,7 @@ const card = {
 
 const styles = StyleSheet.create({
   deleteLink: { textAlign: 'center', fontSize: 13, fontWeight: '600', color: md.onErrorC, paddingVertical: 6 },
+  privacyLink: { textAlign: 'center', fontSize: 13, fontWeight: '600', color: colors.textMuted, paddingVertical: 6 },
   screen: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1, minWidth: 0 },
   pressed: { opacity: 0.7 },

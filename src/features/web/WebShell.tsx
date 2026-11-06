@@ -397,7 +397,9 @@ export function WebShell({ children }: { children: React.ReactNode }) {
               value={query}
               onChangeText={search}
               onSubmitEditing={submit}
-              placeholder={onLeads ? 'Search leads: name, phone, WhatsApp…' : 'Search students: name, phone, College ID, NU ID…'}
+              placeholder={
+                onLeads ? 'Search leads: name, phone, WhatsApp…' : 'Search students: name, phone, College ID, NU ID…'
+              }
               placeholderTextColor={colors.textMuted}
               style={styles.searchInput}
               accessibilityLabel="Search students"
@@ -516,6 +518,16 @@ export function WebShell({ children }: { children: React.ReactNode }) {
                   accessibilityRole="link"
                 >
                   <Text style={styles.dropText}>🗑 Delete my account</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setMenuOpen(false);
+                    router.navigate('/privacy' as Href);
+                  }}
+                  style={(state) => [styles.dropItem, (state as { hovered?: boolean }).hovered && styles.topHover]}
+                  accessibilityRole="link"
+                >
+                  <Text style={styles.dropText}>🔒 Privacy policy</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => signOut()}
