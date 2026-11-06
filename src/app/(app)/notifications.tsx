@@ -1,4 +1,4 @@
-import { Stack, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
@@ -122,6 +122,10 @@ export default function NotificationsScreen() {
               </Pressable>
             )}
             {error ? <Text style={styles.error}>{error}</Text> : null}
+            {/* 🔔 Not getting them on the phone? */}
+            <Pressable onPress={() => router.push('/push-check' as Href)} hitSlop={6} accessibilityRole="link">
+              <Text style={styles.checkLink}>🔔 Not getting notifications on this phone? Check ›</Text>
+            </Pressable>
           </>
         }
         ListEmptyComponent={
@@ -161,6 +165,7 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
+  checkLink: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.primary, paddingVertical: spacing.sm },
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   list: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxl },
