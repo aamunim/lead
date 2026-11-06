@@ -1,4 +1,4 @@
-import { router, Stack, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -78,6 +78,11 @@ export default function UsersScreen() {
   return (
     <View style={styles.screen}>
       <Stack.Screen options={{ title: 'Users' }} />
+
+      {/* 🗑 Requests to delete an account (from the web page) */}
+      <Pressable onPress={() => router.push('/users/deletion-requests' as Href)} accessibilityRole="link">
+        <Text style={styles.deletionLink}>🗑 Account deletion requests ›</Text>
+      </Pressable>
 
       {/* Search */}
       <View style={styles.searchWrap}>
@@ -207,6 +212,13 @@ const STATUS_STYLES = {
 } as const;
 
 const styles = StyleSheet.create({
+  deletionLink: {
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.semibold,
+    color: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
   screen: { flex: 1, backgroundColor: colors.background },
   center: {
     flex: 1,

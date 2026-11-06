@@ -508,6 +508,16 @@ export function WebShell({ children }: { children: React.ReactNode }) {
                   <Text style={styles.dropText}>🔐 Change password</Text>
                 </Pressable>
                 <Pressable
+                  onPress={() => {
+                    setMenuOpen(false);
+                    router.navigate('/delete-account' as Href);
+                  }}
+                  style={(state) => [styles.dropItem, (state as { hovered?: boolean }).hovered && styles.topHover]}
+                  accessibilityRole="link"
+                >
+                  <Text style={styles.dropText}>🗑 Delete my account</Text>
+                </Pressable>
+                <Pressable
                   onPress={() => signOut()}
                   style={(state) => [styles.dropItem, (state as { hovered?: boolean }).hovered && styles.topHover]}
                   accessibilityRole="button"

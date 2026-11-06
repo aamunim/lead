@@ -110,6 +110,8 @@ function RootNavigator() {
         <Stack.Protected guard={status === 'active'}>
           <Stack.Screen name="(app)" />
         </Stack.Protected>
+        {/* 🗑 Delete my account: open to everyone (Google Play asks for a web link too) */}
+        <Stack.Screen name="delete-account" />
       </Stack>
       {/* 📵 No internet: shown over every screen */}
       <OfflineBanner />

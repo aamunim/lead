@@ -1,3 +1,4 @@
+import { router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,9 +53,7 @@ export default function PendingScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.content}>
         <View style={[styles.iconCircle, wasDeactivated && styles.iconCircleDanger]}>
-          <Text style={[styles.icon, wasDeactivated && styles.iconDanger]}>
-            {wasDeactivated ? '!' : '⏳'}
-          </Text>
+          <Text style={[styles.icon, wasDeactivated && styles.iconDanger]}>{wasDeactivated ? '!' : '⏳'}</Text>
         </View>
 
         <Text style={styles.title}>
@@ -76,19 +75,18 @@ export default function PendingScreen() {
 
         <View style={styles.actions}>
           <Button title="Check again" onPress={checkAgain} loading={checking} fullWidth />
+          <Button title="Sign out" variant="secondary" onPress={handleSignOut} loading={signingOut} fullWidth />
           <Button
-            title="Sign out"
-            variant="secondary"
-            onPress={handleSignOut}
-            loading={signingOut}
+            title="Delete my account"
+            variant="ghost"
+            onPress={() => router.push('/delete-account' as Href)}
             fullWidth
           />
         </View>
 
         {lastChecked && (
           <Text style={styles.lastChecked}>
-            Last checked at{' '}
-            {lastChecked.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            Last checked at {lastChecked.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
           </Text>
         )}
       </View>
