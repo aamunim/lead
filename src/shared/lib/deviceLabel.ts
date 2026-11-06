@@ -44,6 +44,22 @@ function systemName(ua: string, data: UAData | undefined): string {
 
 let cached: string | undefined;
 
+/**
+ * 🌐 The website's own key for "this device" (no browser version in it, so a
+ * browser update does not make a new line in App versions). Phones: undefined.
+ */
+export function webDeviceKey(): string | undefined {
+  if (Platform.OS !== 'web') return undefined;
+  try {
+    const nav = typeof navigator !== 'undefined' ? navigator : undefined;
+    const ua = nav?.userAgent ?? '';
+    const data = (nav as unknown as { userAgentData?: UAData } | undefined)?.userAgentData;
+    return `web:${browserName(ua, data).replace(/ \d+$/, '')} · ${systemName(ua, data)}`;
+  } catch {
+    return 'web';
+  }
+}
+
 export function deviceLabel(): string | undefined {
   if (cached !== undefined) return cached;
   if (Platform.OS === 'web') {

@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleS
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
+  isWebDevice,
   askToUpdate,
   listAppVersions,
   newestUpdate,
@@ -217,7 +218,12 @@ export default function AppVersionsScreen() {
                           {r.build ? ` · build ${r.build}` : ''}
                         </Text>
                         <Text style={styles.line}>
-                          🔄 {r.updateId ? `${when(r.updateAt)} · ` : 'Built in (no update yet)'}
+                          🔄{' '}
+                          {isWebDevice(r)
+                            ? 'Website: always the newest version'
+                            : r.updateId
+                              ? `${when(r.updateAt)} · `
+                              : 'Built in (no update yet)'}
                           {r.updateId && <Text style={styles.mono}>{shortId(r.updateId)}</Text>}
                         </Text>
                         <Text style={styles.small}>Last opened {ago(r.lastSeen)}</Text>

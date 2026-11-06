@@ -5,7 +5,7 @@ import { AppState, View, type AppStateStatus } from 'react-native';
 
 import { getDeviceId, isCallLogAvailable } from '@/features/call-sync/api';
 import { currentVersionInfo } from '@/features/updates/api';
-import { deviceLabel } from '@/shared/lib/deviceLabel';
+import { deviceLabel, webDeviceKey } from '@/shared/lib/deviceLabel';
 import { supabase } from '@/shared/lib/supabase';
 
 // =====================================================================
@@ -107,7 +107,8 @@ export function ActivityTracker({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let deviceId: string | undefined;
     try {
-      deviceId = (isCallLogAvailable ? getDeviceId() : null) ?? undefined;
+      // 🌐 the website: one key per browser + computer
+      deviceId = (isCallLogAvailable ? getDeviceId() : null) ?? webDeviceKey() ?? undefined;
     } catch {
       deviceId = undefined;
     }
