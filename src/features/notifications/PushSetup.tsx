@@ -49,6 +49,9 @@ export function PushSetup() {
       openResponse(response);
     });
 
+    // 🔔 Google gave this phone a new push token: tell the database right away
+    const token = Notifications.addPushTokenListener(() => registerForPush(false));
+
     // Back to the front: the token may have changed, the badge too
     const state = AppState.addEventListener('change', (s) => {
       if (s !== 'active') return;
@@ -60,6 +63,7 @@ export function PushSetup() {
 
     return () => {
       tap.remove();
+      token.remove();
       state.remove();
     };
   }, []);

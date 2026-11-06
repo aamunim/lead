@@ -10,6 +10,7 @@
 | Channel | Build profile | For |
 |---|---|---|
 | `production` | `production` (AAB, Play Store) | everyone |
+| `production` | `production-apk` (APK) | staff phones, installed directly (gets every App update) |
 | `preview` | `preview` (APK) | testing first |
 | — | `development` | dev client (code from Metro, no updates) |
 
@@ -48,7 +49,7 @@ npx eas-cli@latest update:roll-back-to-embedded --channel production
 ```
 
 ## Making a build without EAS build credits (GitHub Actions)
-GitHub → **Actions** → **Build Android** → **Run workflow** → choose `production` (AAB for Play Store) or `preview` / `development` (APK).
+GitHub → **Actions** → **Build Android** → **Run workflow** → choose `production` (AAB for Play Store), `production-apk` (APK for the staff phones, gets every App update) or `preview` / `development` (APK).
 It runs `eas build --local` on GitHub's machine: no EAS build credits, the same signing key and EAS environment variables.
 The file is under the finished run → **Artifacts** (kept 14 days). Needs the repository secret `EXPO_TOKEN` (expo.dev → Access tokens).
 

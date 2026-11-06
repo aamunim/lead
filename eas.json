@@ -29,6 +29,14 @@
         "credentialsSource": "remote"
       },
       "channel": "production"
+    },
+    "production-apk": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "credentialsSource": "remote"
+      }
     }
   }
 }

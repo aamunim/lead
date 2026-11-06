@@ -6,6 +6,10 @@
 #   (Supabase, GOOGLE_SERVICES_JSON) still come from EAS, exactly as for a
 #   normal EAS build, so the Play Store signing stays the same.
 #   Needs one repository secret: EXPO_TOKEN (expo.dev → Access tokens).
+#   production      → .aab for the Play Store
+#   production-apk  → .apk to install on the staff phones directly; it is on
+#                     the same "production" channel, so "App update" reaches it
+#   preview         → .apk on the "preview" channel (App update does NOT reach it)
 #   The .aab / .apk is attached to the run (Artifacts), kept 14 days.
 # =====================================================================
 name: Build Android
@@ -18,6 +22,7 @@ on:
         type: choice
         options:
           - production
+          - production-apk
           - preview
           - development
         default: production
