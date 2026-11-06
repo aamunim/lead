@@ -8,6 +8,12 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-06-c',
+    date: '6 Nov 2026',
+    title: '🧹 App 2.8.3',
+    items: ['🧹 Voice notes no longer ask to play in the background (fewer permissions, as Google Play asks)'],
+  },
+  {
     key: '2026-11-06-b',
     date: '6 Nov 2026',
     title: '🔔 Notifications fixed (app 2.8.2)',
