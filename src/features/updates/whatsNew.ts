@@ -20,6 +20,12 @@ export const WHATS_NEW: WhatsNew[] = [
     ],
   },
   {
+    key: '2026-11-07-a',
+    date: '7 Nov 2026',
+    title: '🛠 Small fix',
+    items: ['👥 Phone contacts: the group chips at the top are no longer cut in half'],
+  },
+  {
     key: '2026-11-06-d',
     date: '6 Nov 2026',
     title: '🔔 App 2.8.4: notifications for everyone',

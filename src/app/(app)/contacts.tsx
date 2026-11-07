@@ -733,8 +733,10 @@ const styles = StyleSheet.create({
   alumniBtn: { marginHorizontal: spacing.lg, marginTop: spacing.sm },
 
   searchRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
-  groupScroll: { flexGrow: 0, marginTop: spacing.sm },
-  groupRow: { gap: spacing.sm, paddingHorizontal: spacing.lg },
+  // flexShrink 0: a ScrollView shrinks by default, and the long list below squeezed
+  //   this row until the chips were cut in half
+  groupScroll: { flexGrow: 0, flexShrink: 0, marginTop: spacing.sm },
+  groupRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: 2, alignItems: 'center' },
   groupChip: {
     paddingVertical: 6,
     paddingHorizontal: spacing.md,
