@@ -1,5 +1,5 @@
 import { Stack, router, type Href } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Text, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -9,11 +9,14 @@ import {
   canOpenActivity,
   formatDuration,
   getActivitySettings,
+  getTeamLost,
   listTeamActivity,
   previousRange,
   type ActivityPeriod,
+  type TeamLost,
   type TeamMember,
 } from '@/features/activity/api';
+import { LostSection } from '@/features/activity/LostSection';
 import { writeAndShareSpreadsheet } from '@/features/import-export/excel';
 import { ExportWorkSheet } from '@/features/activity/ExportWorkSheet';
 import { getTeamCredits } from '@/features/credits/api';
@@ -77,6 +80,12 @@ export function WebTeamActivity() {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [credits, setCredits] = useState<Map<string, number>>(new Map());
+  // ❌ who marked how many leads Lost (loads by itself)
+  const [lost, setLost] = useState<TeamLost | null>(null);
+  // another period: never show the last period's Lost numbers meanwhile
+  useEffect(() => setLost(null), [period]);
+  const lostAsk = useRef(0);
+  const lostBy = useMemo(() => new Map((lost?.people ?? []).map((p) => [p.user_id, p.count])), [lost]);
 
   useEffect(() => {
     getActivitySettings()
@@ -98,6 +107,11 @@ export function WebTeamActivity() {
       const b = new Map(before.map((x) => [x.user_id, x]));
       setRows(now.map((x) => ({ ...x, before: b.get(x.user_id) ?? null })));
       getTeamCredits(range.from, range.to).then(setCredits);
+      // only the newest answer counts (a quick change of period)
+      const ask = ++lostAsk.current;
+      getTeamLost(range.from, range.to)
+        .then((v) => ask === lostAsk.current && setLost(v))
+        .catch(() => ask === lostAsk.current && setLost(null));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load.');
     } finally {
@@ -226,6 +240,17 @@ export function WebTeamActivity() {
       text: (r) => r.admitted,
     },
     {
+      key: 'lost',
+      label: 'Lost',
+      width: 80,
+      align: 'right',
+      render: (r) => (
+        <CellText tone={(lostBy.get(r.user_id) ?? 0) > 0 ? undefined : 'muted'}>{`❌ ${lostBy.get(r.user_id) ?? 0}`}</CellText>
+      ),
+      sortValue: (r) => lostBy.get(r.user_id) ?? 0,
+      text: (r) => lostBy.get(r.user_id) ?? 0,
+    },
+    {
       key: 'credits',
       label: 'Credits',
       width: 96,
@@ -297,6 +322,7 @@ export function WebTeamActivity() {
             { label: 'WhatsApp', value: String(totals.wa) },
             { label: 'Leads added', value: String(totals.added) },
             { label: 'Admitted', value: String(totals.admitted) },
+            ...(lost ? [{ label: 'Lost', value: String(lost.total) }] : []),
           ].map((t) => (
             <View
               key={t.label}
@@ -330,6 +356,7 @@ export function WebTeamActivity() {
           onRow={(r) => router.push(`/activity/${r.user_id}` as Href)}
           initialSort={{ key: 'calls', desc: true }}
         />
+        {!loading && <LostSection lost={lost} compact />}
       </View>
     </View>
   );
