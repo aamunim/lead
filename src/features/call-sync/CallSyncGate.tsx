@@ -25,6 +25,9 @@ import { isCallLogAvailable } from '../../../modules/call-log';
 //   Not on the website, iPhone or an app without the call log part.
 // =====================================================================
 
+const PROFILE_CHECK_MS = 5 * 60 * 1000;
+let lastProfileCheck = Date.now();
+
 export function CallSyncGate({ children }: { children: ReactNode }) {
   const { profile, refreshProfile } = useAuth();
   const required = !!profile?.call_sync_required && Platform.OS === 'android' && isCallLogAvailable;
@@ -52,6 +55,10 @@ export function CallSyncGate({ children }: { children: ReactNode }) {
     const sub = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
       check();
+      // ⚡ the Super Admin's change: looked up at most every 5 minutes, not
+      //   after every phone call (each look re-drew the whole app)
+      if (Date.now() - lastProfileCheck < PROFILE_CHECK_MS) return;
+      lastProfileCheck = Date.now();
       refreshProfile().catch(() => undefined);
     });
     return () => sub.remove();

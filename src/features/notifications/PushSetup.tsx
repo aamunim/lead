@@ -31,8 +31,12 @@ function openResponse(response: Notifications.NotificationResponse) {
   openNotificationTarget(data);
 }
 
+const REGISTER_MS = 6 * 60 * 60 * 1000;
+let lastRegister = 0;
+
 export function PushSetup() {
   useEffect(() => {
+    lastRegister = Date.now();
     registerForPush();
 
     // The tap that opened the app (it was closed)
@@ -55,7 +59,13 @@ export function PushSetup() {
     // Back to the front: the token may have changed, the badge too
     const state = AppState.addEventListener('change', (s) => {
       if (s !== 'active') return;
-      registerForPush(false);
+      // ⚡ Google + Expo + the database: at most every 6 hours (a new token
+      //   comes through the listener above at once). Before, this ran after
+      //   every phone call and slowed the app down.
+      if (Date.now() - lastRegister >= REGISTER_MS) {
+        lastRegister = Date.now();
+        registerForPush(false);
+      }
       countUnread().then(setBadge);
     });
 
