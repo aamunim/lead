@@ -1,5 +1,6 @@
 import { supabase } from '@/shared/lib/supabase';
 import type { Tables, TablesUpdate } from '@/shared/types/database';
+import { forget } from '@/shared/lib/memo';
 
 // ---------------------------------------------------------------------
 // Types
@@ -43,16 +44,15 @@ function cleanSearch(text: string): string {
 // ---------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------
-export async function listUsers(options: {
-  filter?: UserFilter;
-  search?: string;
-} = {}): Promise<UserRow[]> {
+export async function listUsers(
+  options: {
+    filter?: UserFilter;
+    search?: string;
+  } = {},
+): Promise<UserRow[]> {
   const { filter = 'all', search = '' } = options;
 
-  let query = supabase
-    .from('profiles')
-    .select(USER_SELECT)
-    .order('created_at', { ascending: false });
+  let query = supabase.from('profiles').select(USER_SELECT).order('created_at', { ascending: false });
 
   if (filter === 'pending') {
     // never activated yet
@@ -75,17 +75,14 @@ export async function listUsers(options: {
 }
 
 export async function getUser(userId: string): Promise<UserRow | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select(USER_SELECT)
-    .eq('id', userId)
-    .maybeSingle();
+  const { data, error } = await supabase.from('profiles').select(USER_SELECT).eq('id', userId).maybeSingle();
 
   if (error) throw toError(error.message);
   return data as unknown as UserRow | null;
 }
 
 export async function updateUser(userId: string, changes: UserUpdate): Promise<void> {
+  forget('people:*');
   const { error } = await supabase.from('profiles').update(changes).eq('id', userId);
   if (error) throw toError(error.message);
 }
@@ -118,7 +115,10 @@ export async function listTeamLeads(): Promise<TeamLeadOption[]> {
   // Everyone whose role works like a Team Lead or an Admin (new roles too)
   const { data: roles } = await supabase.from('roles').select('key, acts_as');
   const keys = (roles ?? [])
-    .filter((r) => (r.acts_as ?? (r.key === 'team_lead' ? 'team_lead' : r.key === 'caller' ? 'caller' : 'admin')) !== 'caller')
+    .filter(
+      (r) =>
+        (r.acts_as ?? (r.key === 'team_lead' ? 'team_lead' : r.key === 'caller' ? 'caller' : 'admin')) !== 'caller',
+    )
     .map((r) => r.key);
   const { data, error } = await supabase
     .from('profiles')

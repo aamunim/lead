@@ -87,6 +87,7 @@ import { onVoiceSaved } from '@/features/voice/useVoiceNotes';
 import { isWeb } from '@/features/web/api';
 import { WebStudentLayout } from '@/features/web/student/WebStudentLayout';
 import { ApprovalCard } from '@/features/approval/ApprovalCard';
+import { peekMemo, remember } from '@/shared/lib/memo';
 
 const RATING_COLOR: Record<string, string> = {
   hot: colors.hot,
@@ -177,19 +178,22 @@ export function LeadDetailView({
   const [templateChannel, setTemplateChannel] = useState<TemplateChannel | null>(null);
   const me = profile?.id ?? null;
 
-  const [lead, setLead] = useState<LeadDetail | null>(null);
+  // ⚡ a lead seen a moment ago shows at once (then refreshes)
+  const [lead, setLead] = useState<LeadDetail | null>(() => (id ? (peekMemo<LeadDetail>(`lead:${id}`) ?? null) : null));
   const [filesTick, setFilesTick] = useState(0);
   // ▶ The voice note being played (from the timeline)
   const [playing, setPlaying] = useState<PlayableFile | null>(null);
-  const [activity, setActivity] = useState<ActivityItem[]>([]);
-  const [calls, setCalls] = useState<CallLog[]>([]);
+  const [activity, setActivity] = useState<ActivityItem[]>(() =>
+    id ? (peekMemo<ActivityItem[]>(`lead-activity:${id}`) ?? []) : [],
+  );
+  const [calls, setCalls] = useState<CallLog[]>(() => (id ? (peekMemo<CallLog[]>(`lead-calls:${id}`) ?? []) : []));
   // 🎙 Voice notes (recorded with the 🎙 buttons): shown in Calls & notes
   const [voices, setVoices] = useState<LeadFile[]>([]);
   const [followUp, setFollowUp] = useState<FollowUp | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [stageNames, setStageNames] = useState<Map<string, string>>(new Map());
   const [userNames, setUserNames] = useState<Map<string, string>>(new Map());
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !(id && peekMemo(`lead:${id}`)));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -273,8 +277,10 @@ export function LeadDetailView({
     try {
       setError(null);
       const year = new Date().getFullYear();
-      const [l, a, c, f, stages, users, h1, h2] = await Promise.all([
-        getLead(id),
+      // ⚡ The lead shows as soon as it arrives; the timeline fills in after.
+      //   Stages, people and holidays are remembered (they rarely change).
+      const leadP = getLead(id);
+      const restP = Promise.all([
         listLeadActivity(id),
         listLeadCalls(id),
         getPendingFollowUp(id),
@@ -284,10 +290,17 @@ export function LeadDetailView({
         listHolidays(year).catch(() => []),
         listHolidays(year + 1).catch(() => []),
       ]);
+      restP.catch(() => undefined); // its error is shown below, not as "unhandled"
       loadVoices();
+      const l = await leadP;
       setLead(l);
+      if (l) remember(`lead:${id}`, l);
+      setLoading(false);
+      const [a, c, f, stages, users, h1, h2] = await restP;
       setActivity(a);
       setCalls(c);
+      remember(`lead-activity:${id}`, a);
+      remember(`lead-calls:${id}`, c);
       setFollowUp(f);
       setHolidays([...h1, ...h2]);
       setStageNames(new Map(stages.map((s) => [s.id, s.name])));
@@ -534,7 +547,9 @@ export function LeadDetailView({
       case 'details_changed':
         return 'Name or phone updated';
       case 'alumni_referral':
-        return d.credit ? `🎓 Credited to alumnus ${d.alumni_name ?? ''}` : `🎓 Referred by alumnus ${d.alumni_name ?? ''}`;
+        return d.credit
+          ? `🎓 Credited to alumnus ${d.alumni_name ?? ''}`
+          : `🎓 Referred by alumnus ${d.alumni_name ?? ''}`;
       case 'call_logged': {
         if (d.channel === 'whatsapp') {
           const wa = channelLabel(d.channel, d.media);

@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 
 import { getDeviceId } from '@/features/call-sync/api';
 import { installedAppVersion } from '@/features/updates/StoreUpdateCard';
-import { deviceLabel } from '@/shared/lib/deviceLabel';
+import { deviceLabel, webDeviceKey } from '@/shared/lib/deviceLabel';
 import { supabase } from '@/shared/lib/supabase';
 
 // =====================================================================
@@ -74,7 +74,37 @@ export type PushState = {
   channelOn: boolean | null;
   token: string | null;
   tokenError: string | null;
+  /** the token this phone saved last time (Google did not answer now, or not asked yet) */
+  saved?: boolean;
 };
+
+/** The token this phone registered last time (null: never) */
+async function savedToken(): Promise<string | null> {
+  return AsyncStorage.getItem(TOKEN_KEY).catch(() => null);
+}
+
+/**
+ * ⚡ At once (no Google): permission, channel and the token saved last time.
+ * Notification check shows this first; the fresh token follows.
+ */
+export async function quickPushState(): Promise<PushState> {
+  const out: PushState = { permission: 'undetermined', channelOn: null, token: null, tokenError: null };
+  if (!Device.isDevice) return { ...out, tokenError: 'Not a real phone (emulator)' };
+  try {
+    const { status } = await withTimeout(Notifications.getPermissionsAsync(), 3_000, 'permission');
+    out.permission = status as PushPermission;
+    if (Platform.OS === 'android') {
+      const ch = await withTimeout(Notifications.getNotificationChannelAsync(CHANNEL_ID), 3_000, 'channel').catch(
+        () => null,
+      );
+      out.channelOn = ch ? ch.importance !== Notifications.AndroidImportance.NONE : null;
+    }
+  } catch {
+    // the full check follows
+  }
+  const token = out.permission === 'granted' ? await savedToken() : null;
+  return token ? { ...out, token, saved: true } : out;
+}
 
 export async function pushState(ask = false): Promise<PushState> {
   const out: PushState = { permission: 'undetermined', channelOn: null, token: null, tokenError: null };
@@ -96,6 +126,9 @@ export async function pushState(ask = false): Promise<PushState> {
     try {
       out.token = (await withTimeout(Notifications.getExpoPushTokenAsync({ projectId }), 20_000, 'token')).data;
     } catch (e) {
+      // Google did not answer, but this phone is registered from before: that still works
+      const saved = e instanceof TimeoutError ? await savedToken() : null;
+      if (saved) return { ...out, token: saved, saved: true };
       // e.g. no Google Play services, no internet, blocked by the phone
       out.tokenError =
         e instanceof TimeoutError
@@ -216,13 +249,34 @@ export async function myPushStatus(): Promise<MyPushStatus | null> {
   };
 }
 
-/** On sign out: this phone stops getting this user's pushes */
+/**
+ * On sign out: this device stops getting this user's pushes, and leaves
+ * Push health / Sync health / App versions (only signed-in devices show).
+ */
 export async function unregisterPush(): Promise<void> {
   try {
-    const token = await AsyncStorage.getItem(TOKEN_KEY);
-    if (!token) return;
-    await supabase.rpc('remove_push_token', { p_token: token });
-    await AsyncStorage.removeItem(TOKEN_KEY);
+    const token = Platform.OS === 'web' ? null : await AsyncStorage.getItem(TOKEN_KEY);
+    let deviceId: string | null = null;
+    try {
+      deviceId = getDeviceId() ?? webDeviceKey() ?? null;
+    } catch {
+      deviceId = webDeviceKey() ?? null;
+    }
+    const { error } = await withTimeout(
+      supabase.rpc(
+        'forget_my_device' as never,
+        {
+          p_device_id: deviceId,
+          p_device_label: deviceLabel() ?? null,
+          p_token: token,
+        } as never,
+      ) as unknown as Promise<{ error: unknown }>,
+      8_000,
+      'sign out',
+    );
+    // The database is older: the old way (token only)
+    if (error && token) await supabase.rpc('remove_push_token', { p_token: token });
+    if (token) await AsyncStorage.removeItem(TOKEN_KEY);
   } catch {
     // Signing out must never fail because of this
   }

@@ -8,6 +8,7 @@ import { currentVersionInfo } from '@/features/updates/api';
 import { deviceLabel, webDeviceKey } from '@/shared/lib/deviceLabel';
 import { supabase } from '@/shared/lib/supabase';
 import { installedAppVersion } from '@/features/updates/StoreUpdateCard';
+import { memo } from '@/shared/lib/memo';
 
 // =====================================================================
 // ⏱ Time spent in THIS app (Settings → Team activity)
@@ -163,8 +164,7 @@ export function ActivityTracker({ children }: { children: React.ReactNode }) {
     };
 
     // Settings first, then the first session
-    supabase
-      .rpc('activity_setting')
+    memo('activity_setting', 10 * 60_000, async () => (await supabase.rpc('activity_setting')) as { data: unknown })
       .then(({ data }) => {
         const v = (data ?? {}) as { enabled?: boolean; idle_minutes?: number };
         settings.current = {

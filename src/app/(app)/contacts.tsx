@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Stack, router, type Href } from 'expo-router';
+import { Stack, router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,7 +17,7 @@ import {
 import { Modal } from '@/shared/ui/Modal';
 
 import { importAlumni } from '@/features/alumni/api';
-import { useAlumniAccess } from '@/features/alumni/ui';
+import { alumniChanged, useAlumniAccess } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
     askContactsPermission,
@@ -57,6 +57,10 @@ const RATINGS: Option[] = [
 ];
 
 export default function PhoneContactsScreen() {
+  // 🎓 Alumni → Import → From phone contacts: mark people and save them as alumni
+  //   (old students are often leads already: that does not matter here)
+  const forAlumni = useLocalSearchParams<{ for?: string }>().for === 'alumni';
+  const title = forAlumni ? 'Contacts → Alumni' : 'Phone contacts';
 
   const [stage, setStage] = useState<Stage>('checking');
   const [error, setError] = useState<string | null>(null);
@@ -83,19 +87,20 @@ export default function PhoneContactsScreen() {
       const list = await loadPhoneContacts();
       setContacts(list);
       const phones = list.flatMap((c) => c.numbers.filter((n) => n.valid).map((n) => n.normalized));
-      setExisting(await findExistingLeadPhones(phones));
+      if (!forAlumni) setExisting(await findExistingLeadPhones(phones));
       if (hasContactGroups) getContactGroups().then(setGroups);
       setStage('ready');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not read your contacts.');
       setStage('ready');
     }
-  }, []);
+  }, [forAlumni]);
 
   // --- on open: admin access, then the phone's permission ----------------
   useEffect(() => {
     (async () => {
-      if (!(await canImportContacts())) {
+      // alumni: who may manage alumni decides (checked on the Import screen and by the database)
+      if (!forAlumni && !(await canImportContacts())) {
         setStage('no_access');
         return;
       }
@@ -104,7 +109,7 @@ export default function PhoneContactsScreen() {
       else if (perm.status === 'denied' && !perm.canAskAgain) setStage('blocked');
       else setStage('ask');
     })();
-  }, [loadContacts]);
+  }, [loadContacts, forAlumni]);
 
   const allow = async () => {
     const perm = await askContactsPermission();
@@ -125,7 +130,7 @@ export default function PhoneContactsScreen() {
   const rowState = (c: PhoneContact): RowState => {
     const n = chosenNumber(c);
     if (!n) return 'invalid';
-    if (existing.has(n.normalized)) return 'existing';
+    if (!forAlumni && existing.has(n.normalized)) return 'existing';
     return 'ok';
   };
 
@@ -171,6 +176,25 @@ export default function PhoneContactsScreen() {
     setSavingAlumni(true);
     try {
       const r = await importAlumni(groupAsAlumni);
+      alumniChanged();
+      const msg = `Added ${r.added} · already in Alumni ${r.skipped}${r.failed ? ` · could not add ${r.failed}` : ''}`;
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('🎓 Saved as alumni', msg);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not save.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Could not save', msg);
+    } finally {
+      setSavingAlumni(false);
+    }
+  };
+  // 🎓 Alumni mode: the marked ones → Alumni
+  const saveMarkedAsAlumni = async () => {
+    setSavingAlumni(true);
+    try {
+      const r = await importAlumni(markedRows.map((row) => ({ ...row, from: 'contacts' })));
+      setSelected(new Set());
+      alumniChanged();
       const msg = `Added ${r.added} · already in Alumni ${r.skipped}${r.failed ? ` · could not add ${r.failed}` : ''}`;
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('🎓 Saved as alumni', msg);
@@ -253,7 +277,7 @@ export default function PhoneContactsScreen() {
   if (stage === 'checking' || stage === 'loading') {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Phone contacts' }} />
+        <Stack.Screen options={{ title }} />
         <ActivityIndicator size="large" color={colors.primary} />
         {stage === 'loading' && <Text style={styles.muted}>Reading your contacts…</Text>}
       </View>
@@ -263,7 +287,7 @@ export default function PhoneContactsScreen() {
   if (stage === 'no_access') {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Phone contacts' }} />
+        <Stack.Screen options={{ title }} />
         <Ionicons name="lock-closed" size={40} color={colors.textMuted} />
         <Text style={styles.bigTitle}>Not available for you</Text>
         <Text style={styles.centerText}>An admin can turn this on for you in Settings → Phone contacts access.</Text>
@@ -274,14 +298,14 @@ export default function PhoneContactsScreen() {
   if (stage === 'ask' || stage === 'blocked') {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'Phone contacts' }} />
+        <Stack.Screen options={{ title }} />
         <View style={styles.bigIcon}>
           <Ionicons name="people" size={40} color={colors.primary} />
         </View>
-        <Text style={styles.bigTitle}>Add leads from your contacts</Text>
+        <Text style={styles.bigTitle}>{forAlumni ? 'Add alumni from your contacts' : 'Add leads from your contacts'}</Text>
         <Text style={styles.centerText}>
-          Pick people from your phone’s contact list and save them as leads in one go. Only the contacts you mark are
-          saved. Nothing else leaves your phone.
+          Pick people from your phone’s contact list and save them as {forAlumni ? 'alumni' : 'leads'} in one go. Only
+          the contacts you mark are saved. Nothing else leaves your phone.
         </Text>
         {stage === 'ask' ? (
           <Button title="Allow access to contacts" onPress={allow} fullWidth />
@@ -298,7 +322,7 @@ export default function PhoneContactsScreen() {
   // --- the list -------------------------------------------------------------
   return (
     <View style={styles.screen}>
-      <Stack.Screen options={{ title: 'Phone contacts' }} />
+      <Stack.Screen options={{ title }} />
 
       {/* Search */}
       <View style={styles.searchRow}>
@@ -346,7 +370,7 @@ export default function PhoneContactsScreen() {
         </ScrollView>
       )}
 
-      {group && alumniAccess.manage && groupAsAlumni.length > 0 && (
+      {!forAlumni && group && alumniAccess.manage && groupAsAlumni.length > 0 && (
         <Pressable
           onPress={saveGroupAsAlumni}
           disabled={savingAlumni}
@@ -362,7 +386,7 @@ export default function PhoneContactsScreen() {
       {/* Counts + mark all */}
       <View style={styles.infoRow}>
         <Text style={styles.infoText}>
-          {contacts.length} contacts · {counts.ex} already leads
+          {contacts.length} contacts{forAlumni ? '' : ` · ${counts.ex} already leads`}
           {counts.bad > 0 ? ` · ${counts.bad} not mobile` : ''}
         </Text>
         {selectable.length > 0 && (
@@ -473,7 +497,16 @@ export default function PhoneContactsScreen() {
       {/* Save bar */}
       {selected.size > 0 && (
         <View style={[styles.saveBar, { paddingBottom: spacing.md }]}>
-          <Button title={`Save ${selected.size} as leads`} onPress={() => setSheetOpen(true)} fullWidth />
+          {forAlumni ? (
+            <Button
+              title={`🎓 Save ${selected.size} as alumni`}
+              onPress={saveMarkedAsAlumni}
+              loading={savingAlumni}
+              fullWidth
+            />
+          ) : (
+            <Button title={`Save ${selected.size} as leads`} onPress={() => setSheetOpen(true)} fullWidth />
+          )}
         </View>
       )}
 
