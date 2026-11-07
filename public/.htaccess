@@ -4,6 +4,13 @@
   RewriteEngine On
   RewriteCond %{HTTPS} off
   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+  # A missing code / image / font file is "not found", never the app's page:
+  # an old open tab then gets a clear error and loads the new version
+  # (before, it got index.html as code: "Requiring unknown module")
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_URI} ^/_expo/ [OR]
+  RewriteCond %{REQUEST_URI} \.(js|mjs|css|map|json|wasm|png|jpe?g|svg|gif|webp|ico|ttf|woff2?|tflite)$ [NC]
+  RewriteRule ^ - [R=404,L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^ index.html [L]
