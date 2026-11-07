@@ -86,6 +86,21 @@ jobs:
       - name: Install packages
         run: npm ci
 
+      # 🔔 The Firebase file (push). Optional repository secret GOOGLE_SERVICES_JSON_BASE64
+      #   = the google-services.json in base64. Without it, the EAS variable
+      #   GOOGLE_SERVICES_JSON is used (it must be "Sensitive", not "Secret").
+      - name: Firebase file (from the GitHub secret, if set)
+        env:
+          GS_B64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -n "$GS_B64" ]; then
+            echo "$GS_B64" | base64 -d > "$RUNNER_TEMP/google-services.json"
+            echo "GOOGLE_SERVICES_FILE=$RUNNER_TEMP/google-services.json" >> "$GITHUB_ENV"
+            echo "Using the GitHub secret GOOGLE_SERVICES_JSON_BASE64"
+          else
+            echo "No GitHub secret: the EAS variable GOOGLE_SERVICES_JSON is used"
+          fi
+
       - name: Build (${{ inputs.profile }})
         run: |
           case "${{ inputs.profile }}" in
@@ -98,6 +113,24 @@ jobs:
           echo "OUT=$OUT" >> "$GITHUB_ENV"
           npx eas-cli@latest build --local --non-interactive \
             --platform android --profile "${{ inputs.profile }}" --output "$OUT"
+
+      # 🔔 Never hand out an app without push: Firebase must be inside the file
+      - name: Check push (Firebase) is inside the app
+        run: |
+          python3 - "$OUT" <<'PY'
+          import sys, zipfile
+          z = zipfile.ZipFile(sys.argv[1])
+          names = [n for n in z.namelist() if n.endswith(('resources.arsc', 'resources.pb'))]
+          data = b''.join(z.read(n) for n in names)
+          key = 'google_app_id'
+          if key.encode() in data or key.encode('utf-16-le') in data:
+              print('✅ Firebase (google_app_id) is inside the app: push will work')
+          else:
+              print('::error::This build has no Firebase (google_app_id): push would not work. '
+                    'Make the EAS variable GOOGLE_SERVICES_JSON "Sensitive", or add the GitHub secret '
+                    'GOOGLE_SERVICES_JSON_BASE64, then build again.')
+              sys.exit(1)
+          PY
 
       - name: Keep the file
         uses: actions/upload-artifact@v4
