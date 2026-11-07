@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -74,6 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const profileRef = useRef<MyProfile | null>(null);
+  profileRef.current = profile;
 
   const [assignment, setAssignment] = useState<AssignmentSettings>(DEFAULT_ASSIGNMENT);
 
@@ -101,10 +104,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      setProfileLoading(true);
-      setErrorMessage(null);
+      // ⚡ only "loading" when there is nothing to show yet: a re-check in the
+      //   background must not re-draw every screen
+      if (!profileRef.current) setProfileLoading(true);
+      setErrorMessage((e) => (e === null ? e : null));
       const fresh = await getMyProfile(userId);
-      setProfile(fresh);
+      // the same answer as before: keep the same object, so nothing re-runs
+      setProfile((now) => (now && fresh && JSON.stringify(now) === JSON.stringify(fresh) ? now : fresh));
       // ⚡ kept on the phone: the next start opens at once with it (then checks again)
       if (fresh) AsyncStorage.setItem(PROFILE_KEY + userId, JSON.stringify(fresh)).catch(() => undefined);
       else AsyncStorage.removeItem(PROFILE_KEY + userId).catch(() => undefined);
@@ -119,7 +125,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Never blocks the app: if it can't be read, the defaults are used.
   const refreshAssignment = useCallback(async () => {
     if (!isActive) return;
-    setAssignment(await getAssignmentSettings());
+    const next = await getAssignmentSettings();
+    // unchanged: keep the same object (no re-draw of every screen)
+    setAssignment((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
   }, [isActive]);
 
   // --- session: read once, then listen for login / logout ----------

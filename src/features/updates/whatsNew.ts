@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-07-f',
+    date: '7 Nov 2026',
+    title: '⚡ The app is quick again after a call',
+    items: [
+      '⚡ Coming back to the app (after every call) no longer reloads every screen',
+      '🔔 The push check with Google runs at most every 6 hours, not after every call',
+      '👤 Your account is looked up again at most every 5 minutes',
+    ],
+  },
+  {
     key: '2026-11-07-e',
     date: '7 Nov 2026',
     title: '⚡ Faster lead page · alumni from contacts',

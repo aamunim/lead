@@ -63,8 +63,10 @@ export async function clearSaved() {
 export function useSavedState<T>(key: string | null, initial: T): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(initial);
   const fresh = useRef(false);
+  const last = useRef<string | null>(null);
   useEffect(() => {
     fresh.current = false;
+    last.current = null;
     if (!key) return;
     let live = true;
     readSaved<T>(key).then((v) => {
@@ -77,6 +79,15 @@ export function useSavedState<T>(key: string | null, initial: T): [T, (v: T) => 
   const set = useCallback(
     (v: T) => {
       fresh.current = true;
+      // ⚡ the same answer again: no re-draw, no write
+      let json: string | null = null;
+      try {
+        json = JSON.stringify(v);
+      } catch {
+        json = null;
+      }
+      if (json !== null && json === last.current) return;
+      last.current = json;
       setValue(v);
       if (key) writeSaved(key, v);
     },
