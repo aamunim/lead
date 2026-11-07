@@ -45,6 +45,10 @@ const NAV_THEME = {
   },
 };
 
+// The visitor opened lead.ittc.edu.bd/apply or /refer/<code> (website only)
+const OPENED_PUBLIC_FORM =
+  Platform.OS === 'web' && typeof window !== 'undefined' && /^\/(apply|refer\/)/.test(window.location.pathname);
+
 export default function RootLayout() {
   return (
     // 🌙 Screens, headers and the tab bar take the app's light / dark colours
@@ -116,9 +120,10 @@ function RootNavigator() {
         <Stack.Screen name="delete-account" />
         <Stack.Screen name="privacy" />
         {/* 🔗 Public forms (website only): an alumnus's link, and the interested-person form.
-            ⚠️ Guarded off in the phone app: there, an open screen could fall back to
-            them on start (2.8.5 opened on the form instead of the app). */}
-        <Stack.Protected guard={Platform.OS === 'web'}>
+            ⚠️ Open ONLY when the visitor came with such a link. expo-router falls back to
+            the first open route in A–Z order ("apply" comes right after "(app)"), so an
+            always-open form caught everyone on start (app and website, 7 Nov). */}
+        <Stack.Protected guard={OPENED_PUBLIC_FORM}>
           <Stack.Screen name="refer/[code]" />
           <Stack.Screen name="apply" />
         </Stack.Protected>
