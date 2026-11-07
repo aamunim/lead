@@ -1,3 +1,4 @@
+import { useScoreOn } from '@/features/leads/score';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { readSaved, writeSaved } from '@/shared/lib/saved';
 import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
@@ -169,6 +170,8 @@ const CHIP_CACHE = new Map<string, { at: number; counts: Map<string, number | nu
 // =====================================================================
 export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students' }) {
   const students = mode === 'students';
+  // 🔥 Admission chance on the cards (Settings → Lead score on/off)
+  useScoreOn();
   const { profile, hasPermission, assignmentOn, sharedMode, assignment, refreshProfile } = useAuth();
   // Everyone may give leads to someone (Settings → Lead assignment → Hand over)
   const mayHandOver = canHandOver(assignment, hasPermission);

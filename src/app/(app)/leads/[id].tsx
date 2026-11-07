@@ -1,4 +1,5 @@
 import { LeadReferrer } from '@/features/alumni/LeadReferrer';
+import { LeadScoreRow, showScore, useScoreOn, type ScoreReason } from '@/features/leads/score';
 import { router, Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
 import { myStars, toggleStar } from '@/features/leads/find';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
@@ -133,6 +134,7 @@ function dayKey(d: Date): string {
 }
 
 export default function LeadDetailScreen() {
+  useScoreOn(); // 🔥 admission chance on/off
   // callNote = a call-log id, when opened from the "add a note" notification
   // waCall = a WhatsApp call id, from the WhatsApp "add a note" notification
   // dial = call the lead as soon as the page is open (Home → Next calls → 📞)
@@ -1365,6 +1367,13 @@ export function LeadDetailView({
         <InfoRow label="WhatsApp" value={lead.whatsapp_number} />
         <InfoRow label="WhatsApp username" value={lead.whatsapp_username ? '@' + lead.whatsapp_username : null} />
         <InfoRow label="Area" value={lead.area} />
+        {/* 🔥 Admission chance (Settings → Lead score) */}
+        {showScore(lead) && (
+          <LeadScoreRow
+            score={lead.score}
+            reasons={(lead as unknown as { score_reasons?: ScoreReason[] }).score_reasons}
+          />
+        )}
         <InfoRow label="Source" value={lead.source?.name ?? null} />
         {/* 🎓 The alumnus who referred this lead (Alumni) */}
         <LeadReferrer leadId={lead.id} />

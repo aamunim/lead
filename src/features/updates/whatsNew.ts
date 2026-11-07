@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-07-d',
+    date: '7 Nov 2026',
+    title: '🔥 Admission chance',
+    items: [
+      '🔥 Every open lead shows its admission chance (0–100%), on the card and on the lead page',
+      '❓ Tap it on the lead page to see why: visit, fee talk, answered calls (+) or no contact, missed calls (−)',
+      '↕️ Sort the list: Most likely to join',
+      '⚙️ Admins: Settings → Lead score sets the points. No AI, no cost',
+    ],
+  },
+  {
     key: '2026-11-07-c',
     date: '7 Nov 2026',
     title: '🔔 Notifications: the last step (app 2.8.5)',
