@@ -115,6 +115,9 @@ function RootNavigator() {
         {/* 🗑 Delete my account: open to everyone (Google Play asks for a web link too) */}
         <Stack.Screen name="delete-account" />
         <Stack.Screen name="privacy" />
+        {/* 🔗 Public forms: an alumnus's link, and the interested-person form */}
+        <Stack.Screen name="refer/[code]" />
+        <Stack.Screen name="apply" />
       </Stack>
       {/* 📵 No internet: shown over every screen */}
       <OfflineBanner />
