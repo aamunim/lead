@@ -47,6 +47,7 @@ export type LeadListItem = Pick<
   | 'whatsapp_number'
   | 'whatsapp_username'
   | 'rating'
+  | 'score'
   | 'next_follow_up_at'
   | 'last_contacted_at'
   | 'created_at'
@@ -204,6 +205,7 @@ export type LeadSort =
   | 'papers_missing'
   | 'discount_most'
   | 'fee_latest'
+  | 'score'
   // 🎓 Students list
   | 'admitted_newest'
   | 'admitted_oldest'
@@ -238,6 +240,7 @@ export const SORT_OPTIONS: { value: LeadSort; label: string; text: string; icon:
   },
   { value: 'discount_most', label: 'Biggest discount', text: 'Largest discount first, no discount last', icon: '💰' },
   { value: 'fee_latest', label: 'Fee talk: latest', text: 'Last fee talk or discount change first', icon: '💬' },
+  { value: 'score', label: 'Most likely to join', text: 'Highest admission chance first', icon: '🔥' },
 ];
 
 /** Sorts for the 🎓 Students list */
@@ -320,7 +323,7 @@ function toError(error: { message: string }): Error {
 }
 
 const LIST_SELECT = `
-  id, name, phone, whatsapp_number, whatsapp_username, rating, next_follow_up_at, last_contacted_at, created_at, created_by, assigned_to, stage_id, closed_at, student_ref,
+  id, name, phone, whatsapp_number, whatsapp_username, rating, score, next_follow_up_at, last_contacted_at, created_at, created_by, assigned_to, stage_id, closed_at, student_ref,
   alt_phone, guardian_name, guardian_phone, email, area,
   nu_admission_id, admitted_section_id, submitted_at, received_at, admission_fee_need, admission_fee_ok, fee_last_paid_at, pipeline_course_id,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
@@ -504,6 +507,9 @@ function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: 
       break;
     case 'fee_latest':
       q = q.order('fee_updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+      break;
+    case 'score':
+      q = q.order('score', { ascending: false }).order('next_follow_up_at', { ascending: true, nullsFirst: false });
       break;
     case 'admitted_newest':
       q = q.order('admitted_at', { ascending: false, nullsFirst: false });

@@ -14,6 +14,7 @@ import { clock } from '@/features/voice/format';
 import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { stageBadge } from '@/features/approval/api';
+import { ScoreChip, showScore } from '@/features/leads/score';
 
 // =====================================================================
 // 🗂 One lead's card: the Leads / Students list and the pipeline board
@@ -180,6 +181,8 @@ export function LeadCard({
               {lead.rating.toUpperCase()}
             </Text>
           )}
+          {/* 🔥 Admission chance */}
+          {showScore(lead) && <ScoreChip score={lead.score} compact />}
         </View>
 
         <Highlighted text={metaParts.join(' · ')} search={search} style={styles.meta} />

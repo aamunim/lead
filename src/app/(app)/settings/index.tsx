@@ -42,6 +42,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/students' as Href,
       },
       {
+        title: 'Lead score',
+        description: 'Admission chance: the points for each sign (visit, fee talk, no contact…)',
+        icon: '🔥',
+        href: '/settings/lead-score' as Href,
+      },
+      {
         title: 'Alumni',
         description: 'Who sees and manages alumni, custom fields, referral rewards',
         icon: '🧑‍🎓',
