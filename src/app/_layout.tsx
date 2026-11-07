@@ -2,7 +2,7 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider, usePathname, type ErrorB
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
@@ -16,6 +16,7 @@ import { ThemeFollower } from '@/features/settings/appearance';
 import { UpdateBanner } from '@/features/updates/UpdateBanner';
 import { OfflineBanner } from '@/shared/ui/OfflineBanner';
 import { WebAlertHost, installWebAlert } from '@/shared/web/WebAlert';
+import { installStaleBuildReload, reloadForNewVersion } from '@/shared/web/staleBuild';
 // 🌐 Read the address before the router changes it (reload keeps the page)
 import '@/shared/web/bootUrl';
 
@@ -28,7 +29,17 @@ if (Platform.OS === 'web') installWebAlert();
 if (Platform.OS !== 'web') installCrashHandler();
 
 /** 💥 A screen broke: shown in its place (the error is sent by itself) */
+// 🌐 A newer website version while this tab was open: load the page again
+installStaleBuildReload();
+
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  if (reloadForNewVersion(error)) {
+    return (
+      <View style={[styles.root, styles.updating]}>
+        <Text style={styles.updatingText}>Updating to the new version…</Text>
+      </View>
+    );
+  }
   return <CrashScreen error={error} retry={retry} />;
 }
 
@@ -137,4 +148,8 @@ function RootNavigator() {
   );
 }
 
-const styles = StyleSheet.create({ root: { flex: 1 } });
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  updating: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  updatingText: { fontSize: 16, color: colors.textMuted },
+});

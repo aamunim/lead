@@ -1,6 +1,6 @@
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useState, createElement } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 
@@ -189,6 +189,22 @@ export function RangeSheet({
           <Text style={styles.dateText}>{rangeText(which === 'from' ? from : to, which === 'from' ? from : to)}</Text>
           <Ionicons name="calendar" size={16} color={colors.primary} />
         </Pressable>
+      ) : Platform.OS === 'web' ? (
+        // 🌐 the browser's own date box (the picker package draws nothing on the web)
+        createElement('input', {
+          type: 'date',
+          value: which === 'from' ? from : to,
+          max: today,
+          onChange: (e: { target: { value: string } }) => e.target.value && set(which, parse(e.target.value)),
+          style: {
+            fontSize: 15,
+            padding: 8,
+            borderRadius: 8,
+            border: `1px solid ${colors.border}`,
+            background: colors.background,
+            color: colors.text,
+          },
+        })
       ) : (
         <DateTimePicker
           value={parse(which === 'from' ? from : to)}
