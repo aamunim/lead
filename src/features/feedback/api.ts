@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import { currentVersionInfo } from '@/features/updates/api';
 import { supabase } from '@/shared/lib/supabase';
 import type { Json } from '@/shared/types/database';
+import { installedAppVersion } from '@/features/updates/StoreUpdateCard';
 
 // =====================================================================
 // 💬 Contact developer: problems, ideas, questions. Everyone sends and
@@ -67,7 +68,7 @@ export function appInfo(): Record<string, string> {
   const add = (k: string, v: string | null | undefined) => {
     if (v) info[k] = v;
   };
-  add('app', Constants.expoConfig?.version);
+  add('app', installedAppVersion() ?? Constants.expoConfig?.version);
   add('update', u.builtIn ? 'built in' : u.updateId?.replace(/-/g, '').slice(0, 8));
   add('update_at', !u.builtIn && u.createdAt ? u.createdAt.toISOString() : null);
   add('phone', [Device.manufacturer, Device.modelName].filter(Boolean).join(' '));

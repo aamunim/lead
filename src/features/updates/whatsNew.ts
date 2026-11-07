@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-07-c',
+    date: '7 Nov 2026',
+    title: '🔔 Notifications: the last step (app 2.8.5)',
+    items: [
+      '📲 A phone with an old app (before 2.8.4) now says so on Home and in Notification check, with a Play Store button: only a new install can add what notifications need',
+      '🩺 Push health: Google’s test phones are ignored, old apps are named, and old failures no longer flag people whose latest notification arrived',
+      'ℹ More shows the installed app version',
+    ],
+  },
+  {
     key: '2026-11-07-b',
     date: '7 Nov 2026',
     title: '🎓 Alumni',

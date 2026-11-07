@@ -26,6 +26,7 @@ import { designOf, saveListDesign, type ListDesign } from '@/features/leads/desi
 import { APPEARANCE, currentAppearance, setAppearance } from '@/features/settings/appearance';
 import { useAlumniAccess } from '@/features/alumni/ui';
 import { colors, fontWeight } from '@/shared/theme';
+import { installedAppVersion } from '@/features/updates/StoreUpdateCard';
 
 // =====================================================================
 // ☰ More (phone): Material top bar (🔔 ⚙️), your profile card, four
@@ -79,7 +80,7 @@ function PhoneMore() {
   const [discounts, setDiscounts] = useState(0);
   // 🔄 EAS Update (not in development builds)
   const update = currentVersionInfo();
-  const version = Constants.expoConfig?.version ?? '—';
+  const version = installedAppVersion() ?? Constants.expoConfig?.version ?? '—';
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'ready' | 'latest'>('idle');
   const [whatsNew, setWhatsNew] = useState(false);
   const [exportMine, setExportMine] = useState(false);

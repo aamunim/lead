@@ -32,6 +32,7 @@ import { StreakChip } from '@/features/credits/StreakChip';
 import { colors, fontSize, fontWeight } from '@/shared/theme';
 import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
 import { useAlumniAccess } from '@/features/alumni/ui';
+import { StoreUpdateCard } from '@/features/updates/StoreUpdateCard';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const LOGO = require('../../../../assets/web/ittc-logo-64.png');
@@ -238,6 +239,9 @@ function PhoneHome() {
             {today} · {profile?.role?.name ?? 'No role'}
           </Text>
         </Text>
+
+        {/* 📲 Old app (before 2.8.4): no push until it is updated from the Play Store */}
+        <StoreUpdateCard />
 
         {/* ── Today at a glance ────────────────────── */}
         <TodayStats onOpenCalls={() => scrollRef.current?.scrollTo({ y: callsY.current, animated: true })} />

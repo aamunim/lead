@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { getDeviceId } from '@/features/call-sync/api';
+import { installedAppVersion } from '@/features/updates/StoreUpdateCard';
 import { deviceLabel } from '@/shared/lib/deviceLabel';
 import { supabase } from '@/shared/lib/supabase';
 
@@ -105,7 +106,8 @@ export async function registerForPush(ask = true): Promise<boolean> {
         p_channel_on: st.channelOn,
         p_token: st.token,
         p_platform: Platform.OS,
-        p_app_version: Constants.expoConfig?.version ?? null,
+        // the installed app (an App update changes only the JavaScript version)
+        p_app_version: installedAppVersion() ?? Constants.expoConfig?.version ?? null,
         p_device_label: label ?? null,
         p_token_error: st.tokenError,
       } as never,

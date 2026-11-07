@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
+import { compareVersions, isMissingFirebase, MIN_NATIVE_FOR_PUSH } from '@/features/updates/StoreUpdateCard';
 import { isWeb } from '@/features/web/api';
 import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -41,12 +42,37 @@ type Row = {
 
 type Verdict = { tone: 'good' | 'warn' | 'bad'; text: string; why: string };
 
+// 🧪 Google's own test phones (Play review / pre-launch report): emulators, not staff phones
+function isTestPhone(d: Device): boolean {
+  return /sdk_gphone|emulator|android sdk built|generic_x86|google sdk/i.test(d.device ?? '');
+}
+
+const OK_STATUS = ['accepted', 'delivered', 'sent'];
+
 function verdict(r: Row): Verdict {
-  const d = r.devices[0];
+  const real = r.devices.filter((x) => !isTestPhone(x));
+  if (r.devices.length > 0 && real.length === 0)
+    return {
+      tone: 'good',
+      text: 'Test phones only',
+      why: 'Only Google’s Play test phones (emulators) used this account. Ignored.',
+    };
+  const d = real[0];
   if (d?.permission === 'denied')
     return { tone: 'bad', text: 'Blocked', why: 'Notifications are not allowed on the phone' };
   if (d?.channel_on === false)
     return { tone: 'bad', text: 'Channel off', why: '“Leads” notifications are switched off' };
+  // An app from before 2.8.4 has no Firebase part: only the Play Store fixes it
+  if (
+    d &&
+    !d.has_token &&
+    (isMissingFirebase(d.token_error) || (d.app && compareVersions(d.app, MIN_NATIVE_FOR_PUSH) < 0))
+  )
+    return {
+      tone: 'bad',
+      text: 'Old app',
+      why: `App ${d.app ?? '?'} on this phone can’t get notifications. Ask them to update to ${MIN_NATIVE_FOR_PUSH} or newer from the Play Store (Home shows them a button).`,
+    };
   if (r.tokens === 0) {
     if (d?.token_error) return { tone: 'bad', text: 'No token', why: d.token_error };
     if (!d)
@@ -57,11 +83,19 @@ function verdict(r: Row): Verdict {
       };
     return { tone: 'bad', text: 'Not registered', why: 'No phone can get this person’s notifications' };
   }
-  if (r.failed_7d > 0 && r.failed_7d >= r.ok_7d)
+  // The latest one reached the phone: older failures (before a fix) don't count
+  const lastOk = OK_STATUS.includes(r.last_status ?? '');
+  if (r.failed_7d > 0 && r.failed_7d >= r.ok_7d && !lastOk)
     return { tone: 'bad', text: 'Failing', why: r.last_error ?? 'The push service refused them' };
-  if (r.failed_7d > 0)
+  if (r.failed_7d > 0 && !lastOk)
     return { tone: 'warn', text: 'Some fail', why: r.last_error ?? 'Some pushes did not reach the phone' };
-  return { tone: 'good', text: 'OK', why: r.last_ok_at ? `Last reached ${ago(r.last_ok_at)}` : 'Registered' };
+  return {
+    tone: 'good',
+    text: 'OK',
+    why:
+      (r.last_ok_at ? `Last reached ${ago(r.last_ok_at)}` : 'Registered') +
+      (r.failed_7d > 0 ? ` · ${r.failed_7d} failed earlier this week` : ''),
+  };
 }
 
 const ago = (iso: string | null) => {
@@ -165,8 +199,9 @@ export default function PushHealthScreen() {
               </View>
               <Text style={[styles.why, v.tone === 'bad' && styles.bad]}>{v.why}</Text>
               {r.devices.slice(0, 3).map((d, i) => (
-                <Text key={i} style={styles.device} numberOfLines={2}>
-                  📱 {d.device ?? d.platform ?? 'Phone'} · app {d.app ?? '?'} ·{' '}
+                <Text key={i} style={[styles.device, isTestPhone(d) && styles.testPhone]} numberOfLines={2}>
+                  {isTestPhone(d) ? '🧪 Google test phone (ignored) · ' : '📱 '}
+                  {d.device ?? d.platform ?? 'Phone'} · app {d.app ?? '?'} ·{' '}
                   {d.permission === 'granted' ? 'allowed' : (d.permission ?? '?')}
                   {d.channel_on === false ? ' · channel off' : ''} · {d.has_token ? 'registered' : 'no token'} · checked{' '}
                   {ago(d.checked_at)}
@@ -230,5 +265,6 @@ const styles = StyleSheet.create({
   why: { fontSize: fontSize.small, color: colors.text },
   bad: { color: colors.danger },
   device: { fontSize: fontSize.caption, color: colors.textMuted },
+  testPhone: { opacity: 0.55 },
   stats: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
 });
