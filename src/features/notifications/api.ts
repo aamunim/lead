@@ -22,7 +22,8 @@ export type NotificationKind =
   | 'payment'
   | 'feedback'
   | 'scorecard'
-  | 'leaderboard';
+  | 'leaderboard'
+  | 'alumni';
 
 export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; text: string }[] = [
   { kind: 'assigned', icon: '👥', title: 'Lead given to you', text: 'Someone hands you a lead (with their note)' },
@@ -42,6 +43,7 @@ export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; t
     text: 'Friday’s winner, “you are now #2”, “only 25 credits to #3”',
   },
   { kind: 'scorecard', icon: '🏁', title: 'Weekly scorecard', text: 'Sunday morning: last week’s totals, to admins' },
+  { kind: 'alumni', icon: '🎓', title: 'Alumni referrals', text: 'A new referral, a referral lead given to you, a referral admitted' },
   { kind: 'feedback', icon: '💬', title: 'Contact developer', text: 'An answer to your message; new messages to the developer' },
   { kind: 'payment', icon: '📅', title: 'Installments', text: 'Before and on the date; late ones to Team Lead and admins' },
 ];
@@ -68,6 +70,7 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
     feedback: true,
     scorecard: true,
     leaderboard: true,
+    alumni: true,
   },
   assigned_in_quiet_hours: true,
 };

@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { signOut } from '@/features/auth/api';
+import { useAlumniAccess } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { canSeeStudents, getStudentsSettings } from '@/features/students/api';
 import { canApprove, countWaitingApproval, getApprovalSettings } from '@/features/approval/api';
@@ -81,6 +82,8 @@ function pageTitle(path: string): string {
   if (path.startsWith('/settings/uploads')) return 'Settings › Upload rules';
   if (path.startsWith('/photo-studio')) return 'Photo Studio';
   if (path.startsWith('/scorecard')) return 'Weekly scorecard';
+  if (path.startsWith('/alumni/referrals')) return 'Referral inbox';
+  if (path.startsWith('/alumni')) return 'Alumni';
   if (path.startsWith('/feedback')) return 'Contact developer';
   if (path.startsWith('/settings/roles')) return 'Settings › Roles';
   if (path.startsWith('/speed')) return 'Speed check';
@@ -96,6 +99,7 @@ export function WebShell({ children }: { children: React.ReactNode }) {
   const params = useGlobalSearchParams<{ q?: string }>();
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [students, setStudents] = useState(false);
+  const alumni = useAlumniAccess();
   const [small, setSmall] = useState(() => loadPref(SMALL_KEY, false));
   const [query, setQuery] = useState(typeof params.q === 'string' ? params.q : '');
   const [help, setHelp] = useState(false);
@@ -230,6 +234,9 @@ export function WebShell({ children }: { children: React.ReactNode }) {
             badge: officer && waiting ? waiting : undefined,
           },
         ]
+      : []),
+    ...(alumni.view
+      ? [{ label: 'Alumni', icon: '🧑‍🎓', href: '/alumni', match: (p: string) => p.startsWith('/alumni') }]
       : []),
     ...(reportsOk
       ? [{ label: 'Reports', icon: '📊', href: '/reports', match: (p: string) => p.startsWith('/reports') }]

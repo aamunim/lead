@@ -3,8 +3,10 @@ import { Stack, router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +16,8 @@ import {
 } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 
+import { importAlumni } from '@/features/alumni/api';
+import { useAlumniAccess } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
     askContactsPermission,
@@ -155,6 +159,29 @@ export default function PhoneContactsScreen() {
   }, [contacts, search, inGroup]);
 
   const selectable = visible.filter((c) => rowState(c) === 'ok');
+
+  // 🎓 A group (e.g. "Alumni ITTC") → Alumni, all at once. Old students are
+  //   often leads already: that does not matter here.
+  const alumniAccess = useAlumniAccess();
+  const [savingAlumni, setSavingAlumni] = useState(false);
+  const groupAsAlumni = visible
+    .map((c) => ({ name: c.name, phone: chosenNumber(c)?.normalized ?? '', from: 'contacts' }))
+    .filter((r) => r.phone && r.name.trim());
+  const saveGroupAsAlumni = async () => {
+    setSavingAlumni(true);
+    try {
+      const r = await importAlumni(groupAsAlumni);
+      const msg = `Added ${r.added} · already in Alumni ${r.skipped}${r.failed ? ` · could not add ${r.failed}` : ''}`;
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('🎓 Saved as alumni', msg);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not save.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Could not save', msg);
+    } finally {
+      setSavingAlumni(false);
+    }
+  };
   const allVisibleMarked = selectable.length > 0 && selectable.every((c) => selected.has(c.id));
 
   const toggle = (c: PhoneContact) => {
@@ -317,6 +344,19 @@ export default function PhoneContactsScreen() {
             );
           })}
         </ScrollView>
+      )}
+
+      {group && alumniAccess.manage && groupAsAlumni.length > 0 && (
+        <Pressable
+          onPress={saveGroupAsAlumni}
+          disabled={savingAlumni}
+          style={[styles.alumniBtn, savingAlumni && styles.pressed]}
+          accessibilityRole="button"
+        >
+          <Text style={styles.link}>
+            {savingAlumni ? 'Saving…' : `🎓 Save the ${groupAsAlumni.length} in “${group.title}” as alumni`}
+          </Text>
+        </Pressable>
       )}
 
       {/* Counts + mark all */}
@@ -690,6 +730,7 @@ const styles = StyleSheet.create({
   muted: { fontSize: fontSize.small, color: colors.textMuted },
   pressed: { opacity: 0.7 },
   link: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
+  alumniBtn: { marginHorizontal: spacing.lg, marginTop: spacing.sm },
 
   searchRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   groupScroll: { flexGrow: 0, marginTop: spacing.sm },

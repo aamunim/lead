@@ -351,6 +351,8 @@ export function describeChange(
       };
     case 'rating_changed':
       return { text: `${q(d.from)} → ${q(d.to)}`, warn: false };
+    case 'alumni_referral':
+      return { text: `🎓 ${d.credit ? 'Credited to' : 'Referred by'} ${String(d.alumni_name ?? 'an alumnus')}`, warn: false };
     case 'details_changed':
       return {
         text: [

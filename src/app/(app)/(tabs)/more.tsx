@@ -24,6 +24,7 @@ import { canSeeReports, getReportSettings } from '@/features/reports/api';
 import { countPendingUsers } from '@/features/users/api';
 import { designOf, saveListDesign, type ListDesign } from '@/features/leads/design';
 import { APPEARANCE, currentAppearance, setAppearance } from '@/features/settings/appearance';
+import { useAlumniAccess } from '@/features/alumni/ui';
 import { colors, fontWeight } from '@/shared/theme';
 
 // =====================================================================
@@ -51,6 +52,7 @@ type Tone = keyof typeof TONE;
 
 function PhoneMore() {
   const { profile, session, hasPermission, refreshProfile } = useAuth();
+  const alumni = useAlumniAccess();
   const [signingOut, setSigningOut] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [contactsAllowed, setContactsAllowed] = useState(false);
@@ -264,6 +266,26 @@ function PhoneMore() {
             </Pressable>
           ))}
         </View>
+
+        {/* 🎓 Alumni (Settings → Alumni decides who) */}
+        {alumni.view && (
+          <Section title="ALUMNI">
+            <Row
+              icon="school"
+              tone="green"
+              title="Alumni"
+              subtitle="Passed students, their referrals and rewards"
+              onPress={go('/alumni')}
+            />
+            <Row
+              icon="move-to-inbox"
+              tone="blue"
+              title="Referral inbox"
+              subtitle="Import referrals as leads, give credit"
+              onPress={go('/alumni/referrals')}
+            />
+          </Section>
+        )}
 
         {/* 📊 Reports (Settings → Reports decides who); everyone sees the scorecard */}
         <Section title="REPORTS">

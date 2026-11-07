@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-07-b',
+    date: '7 Nov 2026',
+    title: '🎓 Alumni',
+    items: [
+      '🎓 Alumni: passed students in one list (Home → Alumni, More → Alumni). Call, WhatsApp, notes, custom fields',
+      '📨 Referrals: add a referral on an alumnus’s page; admins import it as a lead (course + person) or give credit',
+      '🎯 The lead shows “Alumni referral: <name>”; when it is admitted the alumnus gets the credit (and a reward, if on)',
+      '📥 Add alumni from Students (a whole batch), Excel, or a phone contacts group',
+      '⚙️ Settings → Alumni: who sees / manages, custom fields, rewards by course',
+    ],
+  },
+  {
     key: '2026-11-06-d',
     date: '6 Nov 2026',
     title: '🔔 App 2.8.4: notifications for everyone',

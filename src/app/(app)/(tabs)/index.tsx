@@ -31,6 +31,7 @@ import { RankCard } from '@/features/credits/RankCard';
 import { StreakChip } from '@/features/credits/StreakChip';
 import { colors, fontSize, fontWeight } from '@/shared/theme';
 import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
+import { useAlumniAccess } from '@/features/alumni/ui';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const LOGO = require('../../../../assets/web/ittc-logo-64.png');
@@ -158,6 +159,8 @@ function PhoneHome() {
 
   // Reports in Quick actions only for people allowed (Settings → Reports)
   const [reportsAllowed, setReportsAllowed] = useState(false);
+  // 🎓 Alumni takes the Scorecard's place (Scorecard: More → Weekly scorecard)
+  const alumni = useAlumniAccess();
   useEffect(() => {
     getReportSettings()
       .then((r) => setReportsAllowed(canSeeReports(r, profile, hasPermission('settings.manage'))))
@@ -179,7 +182,9 @@ function PhoneHome() {
   const quick: { icon: MIconName; label: string; href: Href; show: boolean }[] = [
     { icon: 'groups', label: 'All leads', href: '/leads', show: true },
     { icon: 'contacts', label: 'Contacts', href: '/contacts', show: contactsAllowed },
-    { icon: 'emoji-events', label: 'Scorecard', href: '/scorecard' as Href, show: true },
+    alumni.view
+      ? { icon: 'school', label: 'Alumni', href: '/alumni' as Href, show: true }
+      : { icon: 'emoji-events', label: 'Scorecard', href: '/scorecard' as Href, show: true },
     { icon: 'insights', label: 'Reports', href: '/reports', show: reportsAllowed },
   ];
 
