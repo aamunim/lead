@@ -546,6 +546,10 @@ export function LeadDetailView({
         return `${d.to ? `Assigned to ${userNames.get(d.to) ?? 'a removed user'}` : 'Unassigned'}${d.note ? ` · “${d.note}”` : ''}`;
       case 'details_changed':
         return 'Name or phone updated';
+      case 'web_form':
+        return d.again
+          ? `🙋 Filled the website form again${d.name ? ` as “${d.name}”` : ''}${d.note ? ` · “${d.note}”` : ''}`
+          : '🙋 Came from the website form';
       case 'alumni_referral':
         return d.credit
           ? `🎓 Credited to alumnus ${d.alumni_name ?? ''}`

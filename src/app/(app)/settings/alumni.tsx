@@ -18,7 +18,11 @@ import {
   deleteAlumniField,
   FIELD_TYPES,
   fieldKeyFor,
+  applyLink,
   getAlumniSettings,
+  getPublicForms,
+  savePublicForms,
+  type PublicForms,
   listAlumniFields,
   saveAlumniField,
   saveAlumniSettings,
@@ -33,6 +37,8 @@ import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
 import { listCourses, type CourseWithDetails } from '@/features/settings/api';
 import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { copyLink, shareLink } from '@/shared/lib/shareLink';
+import { COLLEGE } from '@/features/web/brand';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
 
@@ -178,6 +184,8 @@ export default function AlumniSettingsScreen() {
 
       {error && <Text style={ui.error}>{error}</Text>}
       <Button title="Save" onPress={save} loading={saving} disabled={!dirty} fullWidth />
+
+      <PublicLinksCard />
 
       {/* 🧩 Custom fields (saved one by one) */}
       <FieldsCard fields={fields} reload={() => loadFields().then(alumniChanged)} />
@@ -406,4 +414,71 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   off: { opacity: 0.55 },
+});
+
+// 🔗 Public links (website, no sign-in): each alumnus's referral link, and
+//   the interested-person form. Saved as soon as a switch changes.
+function PublicLinksCard() {
+  const [v, setV] = useState<PublicForms | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    getPublicForms()
+      .then(setV)
+      .catch(() => setV({ refer: true, apply: true }));
+  }, []);
+  const change = async (next: PublicForms) => {
+    const before = v;
+    setV(next);
+    setErr(null);
+    try {
+      await savePublicForms(next);
+    } catch (e) {
+      setV(before);
+      setErr(e instanceof Error ? e.message : 'Could not save.');
+    }
+  };
+  if (!v) return null;
+  return (
+    <View style={ui.card}>
+      <Text style={ui.label}>🔗 PUBLIC LINKS</Text>
+      <View style={linkStyles.row}>
+        <View style={linkStyles.flex}>
+          <Text style={linkStyles.title}>Alumni referral links</Text>
+          <Text style={ui.muted}>Each alumnus shares their own link; friends who fill it come to the Referral inbox.</Text>
+        </View>
+        <Switch value={v.refer} onValueChange={(x) => change({ ...v, refer: x })} />
+      </View>
+      <View style={linkStyles.row}>
+        <View style={linkStyles.flex}>
+          <Text style={linkStyles.title}>Interested-person form</Text>
+          <Text style={ui.muted}>
+            For the college page, posters and QR codes. Each form becomes a new lead (source “Website form”), given out by
+            the usual assignment rules. A known number adds a line to that lead instead.
+          </Text>
+        </View>
+        <Switch value={v.apply} onValueChange={(x) => change({ ...v, apply: x })} />
+      </View>
+      {v.apply && (
+        <View style={linkStyles.linkRow}>
+          <Text style={linkStyles.link} onPress={() => copyLink(applyLink())} numberOfLines={1}>
+            {applyLink().replace('https://', '')}
+          </Text>
+          <Button
+            title="Share"
+            variant="secondary"
+            onPress={() => shareLink(`Admission at ${COLLEGE}: leave your number and we will call you.`, applyLink())}
+          />
+        </View>
+      )}
+      {err && <Text style={ui.error}>{err}</Text>}
+    </View>
+  );
+}
+
+const linkStyles = StyleSheet.create({
+  flex: { flex: 1 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  title: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  link: { flex: 1, fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
 });

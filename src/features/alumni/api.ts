@@ -217,15 +217,16 @@ export type AlumniQuery = {
   courseId?: string | null;
   batchId?: string | null;
   district?: string | null;
-  only?: 'referred' | 'never_contacted' | 'do_not_contact' | null;
+  only?: 'referred' | 'never_contacted' | 'do_not_contact' | 'no_course' | null;
   sort?: AlumniSort;
   page?: number;
 };
 
 export const ALUMNI_PAGE = 50;
 
-export async function listAlumni(q: AlumniQuery = {}): Promise<{ rows: Alumnus[]; total: number }> {
-  let query = supabase.from('alumni_overview' as never).select('*', { count: 'exact' });
+// The search and filters (the list, and "select all that match")
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function alumniFilters<Q extends { or: any; eq: any; ilike: any; gt: any; is: any }>(query: Q, q: AlumniQuery): Q {
   const s = (q.search ?? '').trim();
   if (s) {
     const digits = s.replace(/\D/g, '');
@@ -245,6 +246,12 @@ export async function listAlumni(q: AlumniQuery = {}): Promise<{ rows: Alumnus[]
   if (q.only === 'referred') query = query.gt('referrals' as never, 0 as never);
   if (q.only === 'never_contacted') query = query.is('last_contacted_at' as never, null as never);
   if (q.only === 'do_not_contact') query = query.eq('do_not_contact' as never, true as never);
+  if (q.only === 'no_course') query = query.is('course_id' as never, null as never);
+  return query;
+}
+
+export async function listAlumni(q: AlumniQuery = {}): Promise<{ rows: Alumnus[]; total: number }> {
+  let query = alumniFilters(supabase.from('alumni_overview' as never).select('*', { count: 'exact' }), q);
   switch (q.sort ?? 'name') {
     case 'newest':
       query = query.order('created_at' as never, { ascending: false });
@@ -268,6 +275,13 @@ export async function listAlumni(q: AlumniQuery = {}): Promise<{ rows: Alumnus[]
   const { data, error, count } = await query;
   if (error) throw toError(error);
   return { rows: (data ?? []) as unknown as Alumnus[], total: count ?? 0 };
+}
+
+/** "Select all that match": only the ids (asked when tapped, at most 5000) */
+export async function listAlumniIds(q: AlumniQuery = {}): Promise<string[]> {
+  const { data, error } = await alumniFilters(supabase.from('alumni_overview' as never).select('id'), q).limit(5000);
+  if (error) throw toError(error);
+  return ((data ?? []) as { id: string }[]).map((r) => r.id);
 }
 
 export async function getAlumnus(id: string): Promise<Alumnus | null> {
@@ -619,4 +633,41 @@ export function customText(v: Json | undefined, type: AlumniFieldType): string {
   if (v === null || v === undefined || v === '') return '';
   if (type === 'yes_no') return v === true || v === 'true' || v === 'yes' ? 'Yes' : 'No';
   return String(v);
+}
+
+// ---------------------------------------------------------------------
+// 🎓 Marked alumni, all at once (alumni_bulk)
+// ---------------------------------------------------------------------
+export type AlumniBulkAction =
+  | { action: 'course'; courseId: string; batchId?: string | null }
+  | { action: 'unassign' }
+  | { action: 'delete' };
+
+export async function alumniBulk(ids: string[], a: AlumniBulkAction): Promise<number> {
+  const { data, error } = await rpc<number>('alumni_bulk', {
+    p_ids: ids,
+    p_action: a.action,
+    p_course_id: a.action === 'course' ? a.courseId : null,
+    p_batch_id: a.action === 'course' ? (a.batchId ?? null) : null,
+  });
+  if (error) throw toError(error);
+  return Number(data ?? 0);
+}
+
+// ---------------------------------------------------------------------
+// 🔗 Public links (website, no sign-in)
+// ---------------------------------------------------------------------
+export const PUBLIC_SITE = 'https://lead.ittc.edu.bd';
+export const referLink = (code: string) => `${PUBLIC_SITE}/refer/${code}`;
+export const applyLink = () => `${PUBLIC_SITE}/apply`;
+
+export type PublicForms = { refer: boolean; apply: boolean };
+
+export async function getPublicForms(): Promise<PublicForms> {
+  const v = await getSetting<Partial<PublicForms>>('public_forms').catch(() => null);
+  return { refer: v?.refer !== false, apply: v?.apply !== false };
+}
+
+export async function savePublicForms(v: PublicForms): Promise<void> {
+  await updateSetting('public_forms', v as unknown as Json);
 }

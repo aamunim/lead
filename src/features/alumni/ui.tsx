@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
+import { MIcon, md } from '@/features/home/md';
 import { useSavedState } from '@/shared/lib/saved';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 import { alumniAllows, getAlumniSettings } from './api';
 
 // =====================================================================
-// 🎓 Shared bits of the Alumni screens
+// 🎓 Shared bits of the Alumni screens (Material 3: tonal cards, filter
+//   chips, tonal avatars — the same look as Home)
 // =====================================================================
 
 /** Can I see / manage alumni? (last answer at once, then checked again) */
@@ -35,10 +37,12 @@ export function Chip({ text, on, onPress, count }: { text: string; on: boolean; 
   return (
     <Pressable
       onPress={onPress}
+      android_ripple={{ color: md.ripple }}
       style={[s.chip, on && s.chipOn]}
       accessibilityRole="button"
       accessibilityState={{ selected: on }}
     >
+      {on && <MIcon name="check" size={16} color={md.onPrimaryC} />}
       <Text style={[s.chipText, on && s.chipTextOn]} numberOfLines={1}>
         {text}
         {count !== undefined ? ` · ${count}` : ''}
@@ -47,7 +51,17 @@ export function Chip({ text, on, onPress, count }: { text: string; on: boolean; 
   );
 }
 
-const TINTS = ['#3557D4', '#0F9D58', '#E37400', '#8E24AA', '#00897B', '#C2185B', '#5D4037', '#1E88E5'];
+// Tonal pairs (container / on-container), the same for a name every time
+const TONES: [string, string][] = [
+  [md.primaryC, md.onPrimaryC],
+  [md.okC, md.onOkC],
+  [md.peachC, md.onPeachC],
+  [md.purpleC, md.onPurpleC],
+  [md.skyC, md.onSkyC],
+  [md.warnC, md.onWarnC],
+  [md.waC, md.onWaC],
+  [md.goldC, md.onGoldC],
+];
 
 export function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   const initials = name
@@ -56,12 +70,13 @@ export function Avatar({ name, size = 44 }: { name: string; size?: number }) {
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase())
     .join('');
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const bg = TINTS[h % TINTS.length];
+  // (×31 then % 8 gave every name the same colour: mix the bits well)
+  let h = 2166136261;
+  for (const ch of name) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  const [bg, fg] = TONES[(h >>> 8) % TONES.length];
   return (
     <View style={[s.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}>
-      <Text style={[s.avatarText, { fontSize: size * 0.38 }]}>{initials || '?'}</Text>
+      <Text style={[s.avatarText, { fontSize: size * 0.38, color: fg }]}>{initials || '?'}</Text>
     </View>
   );
 }
@@ -112,31 +127,35 @@ export function useAlumniVersion(): number {
 }
 
 export const s = StyleSheet.create({
+  // Material 3 filter chip
   chip: {
-    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 32,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: md.outline,
+    backgroundColor: colors.background,
+    overflow: 'hidden',
   },
-  chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
-  chipTextOn: { color: colors.textOnPrimary },
+  chipOn: { backgroundColor: md.primaryC, borderColor: md.primaryC, paddingLeft: spacing.sm },
+  chipText: { fontSize: fontSize.small, fontWeight: fontWeight.medium, color: colors.text },
+  chipTextOn: { color: md.onPrimaryC, fontWeight: fontWeight.semibold },
   avatar: { alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontWeight: fontWeight.bold },
+  avatarText: { fontWeight: fontWeight.bold },
   stat: { flex: 1, alignItems: 'center', gap: 2 },
   statValue: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
   statLabel: { fontSize: fontSize.caption, color: colors.textMuted, textAlign: 'center' },
+  // Material 3 filled card (tonal, no border)
   card: {
     gap: spacing.sm,
     padding: spacing.lg,
     borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: md.surface1,
   },
-  label: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, letterSpacing: 1, color: colors.textMuted },
+  label: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, letterSpacing: 0.8, color: colors.primary },
   muted: { fontSize: fontSize.small, color: colors.textMuted },
   error: { fontSize: fontSize.small, color: colors.danger },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },

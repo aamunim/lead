@@ -24,6 +24,7 @@ import {
   listAlumniFields,
   listReferrals,
   listRewards,
+  referLink,
   setReward,
   type AlumniEvent,
   type AlumniField,
@@ -41,8 +42,11 @@ import {
   useAlumniVersion,
   when,
 } from '@/features/alumni/ui';
+import { MIcon, md, Tap, type MIconName } from '@/features/home/md';
 import { openWhatsApp } from '@/features/leads/contact';
 import { isWeb } from '@/features/web/api';
+import { COLLEGE } from '@/features/web/brand';
+import { copyLink, shareLink } from '@/shared/lib/shareLink';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
@@ -204,51 +208,80 @@ export default function AlumnusScreen() {
           title: a.name,
           headerRight: access.manage
             ? () => (
-                <Pressable
+                <Tap
                   onPress={() => router.push(`/alumni/edit?id=${a.id}` as Href)}
-                  hitSlop={8}
+                  borderless
+                  label="Edit"
                   style={styles.headBtn}
                 >
-                  <Text style={styles.headBtnText}>Edit</Text>
-                </Pressable>
+                  <MIcon name="edit" color={colors.textOnPrimary} />
+                </Tap>
               )
             : undefined,
         }}
       />
 
-      {/* Who */}
-      <View style={[ui.card, styles.hero]}>
-        <Avatar name={a.name} size={64} />
+      {/* Who (like the phone's own Contacts app) */}
+      <View style={styles.hero}>
+        <Avatar name={a.name} size={88} />
         <Text style={styles.name}>{a.name}</Text>
-        {!!study && <Text style={styles.sub}>🎓 {study}</Text>}
-        {!!work && <Text style={styles.sub}>🏫 {work}</Text>}
-        {!!place && <Text style={styles.sub}>📍 {place}</Text>}
-        {a.do_not_contact && <Text style={styles.dnc}>⛔ Do not contact</Text>}
-        <Text style={ui.muted}>Last contacted: {ago(a.last_contacted_at)}</Text>
-        {!!a.phone && !a.do_not_contact && (
-          <View style={styles.contactRow}>
-            <Pressable
-              style={[styles.contactBtn, styles.call]}
-              onPress={() => {
-                Linking.openURL(`tel:${a.phone}`);
-                log('call');
-              }}
-              accessibilityRole="button"
-            >
-              <Text style={styles.contactText}>📞 Call</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.contactBtn, styles.wa]}
-              onPress={() => {
-                openWhatsApp({ phone: a.phone, whatsapp_number: a.whatsapp_number });
-                log('whatsapp');
-              }}
-              accessibilityRole="button"
-            >
-              <Text style={styles.contactText}>💬 WhatsApp</Text>
-            </Pressable>
+        {!!study && <InfoLine icon="school" text={study} />}
+        {!!work && <InfoLine icon="work-outline" text={work} />}
+        {!!place && <InfoLine icon="place" text={place} />}
+        {a.do_not_contact && (
+          <View style={styles.dncPill}>
+            <MIcon name="do-not-disturb-on" size={16} color={md.onErrorC} />
+            <Text style={styles.dnc}>Do not contact</Text>
           </View>
         )}
+        <Text style={ui.muted}>Last contacted {ago(a.last_contacted_at)}</Text>
+        <View style={styles.contactRow}>
+          {!!a.phone && !a.do_not_contact && (
+            <>
+              <RoundAction
+                icon="call"
+                label="Call"
+                bg={md.okC}
+                fg={md.onOkC}
+                onPress={() => {
+                  Linking.openURL(`tel:${a.phone}`);
+                  log('call');
+                }}
+              />
+              <RoundAction
+                icon="chat"
+                label="WhatsApp"
+                bg={md.waC}
+                fg={md.onWaC}
+                onPress={() => {
+                  openWhatsApp({ phone: a.phone, whatsapp_number: a.whatsapp_number });
+                  log('whatsapp');
+                }}
+              />
+            </>
+          )}
+          <RoundAction
+            icon="share"
+            label="Referral link"
+            bg={md.primaryC}
+            fg={md.onPrimaryC}
+            onPress={() =>
+              shareLink(
+                `${a.name}, your own referral link for ${COLLEGE}: share it with friends who want admission.`,
+                referLink(a.ref_code),
+              )
+            }
+          />
+          {access.manage && (
+            <RoundAction
+              icon="edit"
+              label="Edit"
+              bg={md.surface2}
+              fg={colors.text}
+              onPress={() => router.push(`/alumni/edit?id=${a.id}` as Href)}
+            />
+          )}
+        </View>
       </View>
 
       {/* Numbers + refer */}
@@ -259,9 +292,27 @@ export default function AlumnusScreen() {
           <Stat value={a.referred_admitted} label="Admitted" tint={colors.success} />
           {access.manage && due > 0 && <Stat value={`৳${due}`} label="Reward due" tint={colors.warning} />}
         </View>
-        <Button title="📨 Add a referral" onPress={() => setReferring(true)} fullWidth />
-        <Text style={ui.muted}>
-          Referral code: <Text style={styles.code}>{a.ref_code}</Text>
+        <View style={styles.referRow}>
+          <View style={styles.flex}>
+            <Button title="📨 Add a referral" onPress={() => setReferring(true)} fullWidth />
+          </View>
+          <View style={styles.flex}>
+            <Button
+              title="🔗 Share link"
+              variant="secondary"
+              onPress={() =>
+                shareLink(
+                  `${a.name}, your own referral link for ${COLLEGE}: share it with friends who want admission.`,
+                  referLink(a.ref_code),
+                )
+              }
+              fullWidth
+            />
+          </View>
+        </View>
+        <Text style={ui.muted} onPress={() => copyLink(referLink(a.ref_code))}>
+          Referral code: <Text style={styles.code}>{a.ref_code}</Text> · tap to copy the link. Friends who fill it come
+          to the Referral inbox with {a.name.split(' ')[0]}’s name.
         </Text>
       </View>
 
@@ -432,17 +483,38 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     ...(isWeb ? { maxWidth: 760, width: '100%', alignSelf: 'center' } : {}),
   },
-  headBtn: { paddingHorizontal: spacing.md },
-  headBtnText: { color: colors.textOnPrimary, fontWeight: fontWeight.bold, fontSize: fontSize.body },
-  hero: { alignItems: 'center' },
-  name: { fontSize: fontSize.heading, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
-  sub: { fontSize: fontSize.small, color: colors.text, textAlign: 'center' },
-  dnc: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.danger },
-  contactRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs, alignSelf: 'stretch' },
-  contactBtn: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm + 2, borderRadius: radius.md },
-  call: { backgroundColor: colors.primary },
-  wa: { backgroundColor: '#25D366' },
-  contactText: { color: '#fff', fontWeight: fontWeight.bold, fontSize: fontSize.body },
+  headBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  hero: { alignItems: 'center', gap: 6, paddingVertical: spacing.md },
+  name: {
+    fontSize: fontSize.heading,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
+  infoLine: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%' },
+  sub: { flexShrink: 1, fontSize: fontSize.small, color: colors.textMuted, textAlign: 'center' },
+  dncPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: md.errorC,
+  },
+  dnc: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: md.onErrorC },
+  contactRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xl, marginTop: spacing.md },
+  round: { alignItems: 'center', gap: 6, width: 72 },
+  roundBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  roundLabel: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.text, textAlign: 'center' },
   stats: { flexDirection: 'row', paddingVertical: spacing.xs },
   code: { fontWeight: fontWeight.bold, color: colors.text, letterSpacing: 2 },
   detail: { flexDirection: 'row', gap: spacing.md },
@@ -459,6 +531,7 @@ const styles = StyleSheet.create({
   },
   notes: { fontSize: fontSize.small, color: colors.text, fontStyle: 'italic' },
   link: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
+  referRow: { flexDirection: 'row', gap: spacing.sm },
   refRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -488,3 +561,39 @@ const styles = StyleSheet.create({
   eventIcon: { width: 22, fontSize: 15, textAlign: 'center' },
   eventText: { fontSize: fontSize.small, color: colors.text },
 });
+
+function InfoLine({ icon, text }: { icon: MIconName; text: string }) {
+  return (
+    <View style={styles.infoLine}>
+      <MIcon name={icon} size={16} color={colors.textMuted} />
+      <Text style={styles.sub} numberOfLines={2}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+function RoundAction({
+  icon,
+  label,
+  bg,
+  fg,
+  onPress,
+}: {
+  icon: MIconName;
+  label: string;
+  bg: string;
+  fg: string;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.round}>
+      <Tap onPress={onPress} style={[styles.roundBtn, { backgroundColor: bg }]} label={label}>
+        <MIcon name={icon} color={fg} />
+      </Tap>
+      <Text style={styles.roundLabel} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}

@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-a',
+    date: '8 Nov 2026',
+    title: '🎓 Alumni: links, mark many, new look',
+    items: [
+      '🔗 Every alumnus has a referral link: friends fill it on the website and come to the Referral inbox',
+      '🙋 A form for anyone interested (lead.ittc.edu.bd/apply): each one becomes a new lead. Settings → Alumni → Public links',
+      '☑ Alumni: hold one (or tap ☑ at the top) to mark many → course, no course or delete',
+      '🎨 Alumni has a new look, like the phone’s own apps',
+    ],
+  },
+  {
     key: '2026-11-07-g',
     date: '7 Nov 2026',
     title: '⚡ Fixed: the app getting slow after a few minutes',
