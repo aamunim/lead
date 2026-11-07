@@ -15,14 +15,17 @@ stable
 security invoker
 set search_path = public
 as $$
-  with lost as (
+  -- ⚡ whose activity I may see: asked once per person, not once per row
+  with people as materialized (
+    select p.id from public.profiles p where public.can_see_activity(p.id)
+  ),
+  lost as materialized (
     select h.lead_id, h.changed_by, h.changed_at, h.note
     from public.lead_stage_history h
     join public.pipeline_stages s on s.id = h.to_stage_id and s.kind = 'lost'
+    join people pp on pp.id = h.changed_by
     where h.changed_at >= (p_from::timestamp at time zone 'Asia/Dhaka')
       and h.changed_at <  ((p_to + 1)::timestamp at time zone 'Asia/Dhaka')
-      and h.changed_by is not null
-      and public.can_see_activity(h.changed_by)
   )
   select jsonb_build_object(
     'total', (select count(*) from lost),

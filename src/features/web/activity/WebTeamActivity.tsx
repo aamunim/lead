@@ -1,5 +1,5 @@
 import { Stack, router, type Href } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Text, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -82,6 +82,9 @@ export function WebTeamActivity() {
   const [credits, setCredits] = useState<Map<string, number>>(new Map());
   // ❌ who marked how many leads Lost (loads by itself)
   const [lost, setLost] = useState<TeamLost | null>(null);
+  // another period: never show the last period's Lost numbers meanwhile
+  useEffect(() => setLost(null), [period]);
+  const lostAsk = useRef(0);
   const lostBy = useMemo(() => new Map((lost?.people ?? []).map((p) => [p.user_id, p.count])), [lost]);
 
   useEffect(() => {
@@ -104,9 +107,11 @@ export function WebTeamActivity() {
       const b = new Map(before.map((x) => [x.user_id, x]));
       setRows(now.map((x) => ({ ...x, before: b.get(x.user_id) ?? null })));
       getTeamCredits(range.from, range.to).then(setCredits);
+      // only the newest answer counts (a quick change of period)
+      const ask = ++lostAsk.current;
       getTeamLost(range.from, range.to)
-        .then(setLost)
-        .catch(() => setLost(null));
+        .then((v) => ask === lostAsk.current && setLost(v))
+        .catch(() => ask === lostAsk.current && setLost(null));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load.');
     } finally {
