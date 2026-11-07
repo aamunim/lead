@@ -127,6 +127,46 @@ export async function listTeamActivity(from: string, to: string): Promise<TeamMe
   return (data ?? []) as TeamMember[];
 }
 
+// ---------------------------------------------------------------------
+// ❌ Who marked how many leads Lost in the period (with the notes)
+// ---------------------------------------------------------------------
+export type LostItem = {
+  lead_id: string;
+  lead_name: string;
+  phone: string | null;
+  at: string;
+  user_id: string;
+  user_name: string | null;
+  /** "Lost: <reason> · <note>" as saved with the move */
+  note: string | null;
+  /** false: the lead was opened again later */
+  still_lost: boolean;
+};
+export type TeamLost = {
+  total: number;
+  people: { user_id: string; name: string | null; count: number }[];
+  items: LostItem[];
+};
+
+export async function getTeamLost(from: string, to: string): Promise<TeamLost> {
+  const { data, error } = await supabase.rpc('team_lost' as never, { p_from: from, p_to: to } as never);
+  if (error) {
+    // an older database: no Lost section yet
+    if (/could not find the function/i.test(error.message)) return { total: 0, people: [], items: [] };
+    throw toError(error);
+  }
+  const d = (data ?? {}) as Partial<TeamLost>;
+  return { total: Number(d.total ?? 0), people: d.people ?? [], items: d.items ?? [] };
+}
+
+/** "Lost: Fee too high · they want a cheaper college" → reason + note */
+export function splitLostNote(note: string | null): { reason: string | null; note: string | null } {
+  if (!note) return { reason: null, note: null };
+  const t = note.replace(/^Lost:\s*/i, '');
+  const i = t.indexOf(' · ');
+  return i < 0 ? { reason: t || null, note: null } : { reason: t.slice(0, i) || null, note: t.slice(i + 3) || null };
+}
+
 export type FeedItem = {
   id: string;
   created_at: string;

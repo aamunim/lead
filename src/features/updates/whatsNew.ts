@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-b',
+    date: '8 Nov 2026',
+    title: '❌ Team activity: who marked leads Lost',
+    items: [
+      '❌ Team activity shows how many leads each person marked Lost, and the total',
+      '📝 Tap a person in “Marked Lost” to see the leads, the reason and the note; tap a lead to open it',
+      '♻️ “Opened again” shows when a lost lead was brought back later',
+    ],
+  },
+  {
     key: '2026-11-08-a',
     date: '8 Nov 2026',
     title: '🎓 Alumni: links, mark many, new look',

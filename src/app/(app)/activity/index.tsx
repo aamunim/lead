@@ -23,11 +23,14 @@ import {
   canOpenActivity,
   formatDuration,
   getActivitySettings,
+  getTeamLost,
   listTeamActivity,
   type ActivityPeriod,
   type ActivitySettings,
+  type TeamLost,
   type TeamMember,
 } from '@/features/activity/api';
+import { LostSection } from '@/features/activity/LostSection';
 import { getSetting } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
@@ -94,6 +97,8 @@ function TeamActivityScreen() {
   const [exporting, setExporting] = useState(false);
   // 🏆 credits in the period
   const [credits, setCredits] = useState<Map<string, number>>(new Map());
+  // ❌ who marked how many leads Lost (loads by itself: never holds up the list)
+  const [lost, setLost] = useState<TeamLost | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +122,9 @@ function TeamActivityScreen() {
       setError(null);
       setRows(await listTeamActivity(from, to));
       getTeamCredits(from, to).then(setCredits);
+      getTeamLost(from, to)
+        .then(setLost)
+        .catch(() => setLost(null));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the activity.');
     } finally {
@@ -175,6 +183,8 @@ function TeamActivityScreen() {
     }),
     { app: 0, calls: 0, actions: 0, admitted: 0, added: 0 },
   );
+
+  const lostBy = new Map((lost?.people ?? []).map((p) => [p.user_id, p.count]));
 
   // ➕ The Leads tab, showing the leads this person added in the period
   const openAdded = (userId: string) =>
@@ -235,6 +245,7 @@ function TeamActivityScreen() {
           <Total value={String(totals.actions)} label="changes" />
           <Total value={String(totals.added)} label="leads added" />
           <Total value={String(totals.admitted)} label="admitted" />
+          {lost && <Total value={String(lost.total)} label="lost" />}
         </View>
       )}
 
@@ -278,6 +289,7 @@ function TeamActivityScreen() {
                   <Stat value={`➕${m.leads_added ?? 0}`} label="leads" />
                 </Pressable>
                 <Stat value={String(m.admitted)} label="🎓" />
+                {lost && <Stat value={`❌${lostBy.get(m.user_id) ?? 0}`} label="lost" />}
                 {credits.size > 0 && <Stat value={`⭐${Math.round(credits.get(m.user_id) ?? 0)}`} label="credits" />}
               </View>
 
@@ -290,6 +302,8 @@ function TeamActivityScreen() {
           );
         })
       )}
+
+      {!loading && <LostSection lost={lost} />}
 
       <Pressable
         onPress={() => router.push('/changes' as Href)}
