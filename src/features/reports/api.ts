@@ -1,6 +1,7 @@
 import type { MyProfile } from '@/features/auth/api';
 import type { WhoRule } from '@/features/pipeline/api';
 import { getSetting, updateSetting } from '@/features/settings/api';
+import { forget, memo } from '@/shared/lib/memo';
 import { supabase } from '@/shared/lib/supabase';
 import type { Json } from '@/shared/types/database';
 
@@ -213,7 +214,17 @@ function toError(error: { message: string }): Error {
   return new Error(error.message);
 }
 
-export async function getLeadReport(q: ReportQuery, withCalls: boolean): Promise<LeadReport> {
+/**
+ * ⚡ Kept 2 minutes (Home card and the Reports screen ask the same; each is
+ *   ~0.4 s of server work). force: ask again now (pull to refresh).
+ */
+export async function getLeadReport(q: ReportQuery, withCalls: boolean, force = false): Promise<LeadReport> {
+  const key = `report:${q.from}:${q.to}:${q.userId ?? ''}:${q.courseId ?? ''}:${withCalls ? 'calls' : ''}`;
+  if (force) forget(key);
+  return memo(key, 2 * 60_000, () => loadLeadReport(q, withCalls));
+}
+
+async function loadLeadReport(q: ReportQuery, withCalls: boolean): Promise<LeadReport> {
   const [report, calls] = await Promise.all([
     supabase.rpc('lead_report', {
       p_from: q.from,

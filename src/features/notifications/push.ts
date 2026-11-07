@@ -154,14 +154,23 @@ export async function pushState(ask = false): Promise<PushState> {
  * phone can do (allowed? channel on? token?), so admins see why pushes fail.
  * Returns false when push can't be used (no permission, emulator, no internet).
  */
+// ⚡ One at a time: a second call while one runs gets the same answer
+let registering: Promise<boolean> | null = null;
+
 export async function registerForPush(ask = true): Promise<boolean> {
   // 🌐 The website gets no push (notifications come to the phone app)
   if (Platform.OS === 'web') return false;
-  try {
-    return await checkIn(await pushState(ask));
-  } catch {
-    return false;
-  }
+  if (registering) return registering;
+  registering = (async () => {
+    try {
+      return await checkIn(await pushState(ask));
+    } catch {
+      return false;
+    }
+  })().finally(() => {
+    registering = null;
+  });
+  return registering;
 }
 
 /**

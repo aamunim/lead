@@ -33,6 +33,9 @@ function openResponse(response: Notifications.NotificationResponse) {
 
 const REGISTER_MS = 6 * 60 * 60 * 1000;
 let lastRegister = 0;
+const TOKEN_REGISTER_MS = 10 * 60 * 1000;
+let lastTokenRegister = 0;
+let lastDeviceToken: string | null = null;
 
 export function PushSetup() {
   useEffect(() => {
@@ -53,8 +56,21 @@ export function PushSetup() {
       openResponse(response);
     });
 
-    // 🔔 Google gave this phone a new push token: tell the database right away
-    const token = Notifications.addPushTokenListener(() => registerForPush(false));
+    // 🔔 Google gave this phone a new push token: tell the database right away.
+    //   ⚠️ Android also sends this event every time the app itself asks for the
+    //   token (registerForPush does), so reacting to every event made an endless
+    //   loop: Google + Expo + the database, again and again, all day (2.8.2–2.8.5).
+    //   Now: only a token that is really different, and at most every 10 minutes.
+    const token = Notifications.addPushTokenListener(({ data }) => {
+      const t = typeof data === 'string' ? data : JSON.stringify(data);
+      if (t === lastDeviceToken) return;
+      const first = lastDeviceToken === null;
+      lastDeviceToken = t;
+      if (first) return; // the answer to our own request on start
+      if (Date.now() - lastTokenRegister < TOKEN_REGISTER_MS) return;
+      lastTokenRegister = Date.now();
+      registerForPush(false);
+    });
 
     // Back to the front: the token may have changed, the badge too
     const state = AppState.addEventListener('change', (s) => {

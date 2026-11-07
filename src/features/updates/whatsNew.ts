@@ -8,6 +8,15 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-07-g',
+    date: '7 Nov 2026',
+    title: '⚡ Fixed: the app getting slow after a few minutes',
+    items: [
+      '⚡ The phone kept asking Google for its notification number again and again, all day: stopped',
+      '📊 Reports, leaderboard and your level are kept for a few minutes instead of asked every time (pull down for fresh numbers)',
+    ],
+  },
+  {
     key: '2026-11-07-f',
     date: '7 Nov 2026',
     title: '⚡ The app is quick again after a call',

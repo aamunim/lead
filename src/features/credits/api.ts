@@ -1,7 +1,7 @@
 import { supabase } from '@/shared/lib/supabase';
 import { getSetting } from '@/features/settings/api';
 import type { Json } from '@/shared/types/database';
-import { memo } from '@/shared/lib/memo';
+import { forget, memo } from '@/shared/lib/memo';
 
 // =====================================================================
 // 🏆 Credits and the leaderboard (worked out on the server from the work
@@ -128,8 +128,9 @@ export type BoardRow = {
 };
 
 export async function getLeaderboard(from: string, to: string): Promise<BoardRow[]> {
-  // ⚡ Home asks for it twice at the same moment: one request, kept 30 seconds
-  return memo(`leaderboard:${from}:${to}`, 30_000, async () => {
+  // ⚡ Home asks for it twice at the same moment: one request, kept 5 minutes
+  //   (a heavy question for the server: ~0.5 s each)
+  return memo(`leaderboard:${from}:${to}`, 5 * 60_000, async () => {
     const { data, error } = await supabase.rpc('leaderboard', { p_from: from, p_to: to });
     if (error) throw new Error(error.message);
     return ((data ?? []) as BoardRow[]).map((r) => ({ ...r, total: Number(r.total) }));
@@ -329,20 +330,16 @@ export async function getLevels(): Promise<Map<string, Level>> {
 
 export type Me = { streak: number; enabled: boolean; level: Level | null };
 
-// The Home bar and the rank card both ask; one call per 30 seconds is enough.
-let meCache: { at: number; p: Promise<Me | null> } | null = null;
-
+// The Home bar and the rank card both ask: one call per 5 minutes is enough
+//   (a heavy question for the server: ~0.6 s each). Forgotten on sign out.
 export function getMe(force = false): Promise<Me | null> {
-  if (!force && meCache && Date.now() - meCache.at < 30_000) return meCache.p;
-  const p = (async () => {
+  if (force) forget('credit_me');
+  return memo('credit_me', 5 * 60_000, async () => {
     const { data, error } = await supabase.rpc('credit_me');
-    if (error || !data) return null;
+    if (error || !data) throw new Error('credit_me');
     const d = data as unknown as { streak: number; enabled: boolean; level: unknown };
-    return { streak: Number(d.streak ?? 0), enabled: d.enabled !== false, level: toLevel(d.level) };
-  })();
-  meCache = { at: Date.now(), p };
-  p.catch(() => (meCache = null));
-  return p;
+    return { streak: Number(d.streak ?? 0), enabled: d.enabled !== false, level: toLevel(d.level) } as Me;
+  }).catch(() => null);
 }
 
 export async function getTeamCredits(from: string, to: string): Promise<Map<string, number>> {
