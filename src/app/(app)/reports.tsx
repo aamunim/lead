@@ -92,12 +92,12 @@ export default function ReportsScreen() {
   const range = periodRange(period);
   const show = settings.sections;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     const q = { ...periodRange(period), userId: person?.id ?? null, courseId: course?.id ?? null };
     try {
       setError(null);
       const [r, h, w, t, c, a] = await Promise.all([
-        getLeadReport(q, show.team),
+        getLeadReport(q, show.team, fresh),
         show.heatmap ? getCallHeatmap(q) : Promise.resolve([]),
         show.whatsapp ? getWhatsAppReport(q) : Promise.resolve(null),
         // An older database without the report: just leave the card out
@@ -198,7 +198,7 @@ export default function ReportsScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              load();
+              load(true);
             }}
           />
         }
