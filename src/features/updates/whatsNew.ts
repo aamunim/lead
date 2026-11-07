@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-07-e',
+    date: '7 Nov 2026',
+    title: '⚡ Faster lead page · alumni from contacts',
+    items: [
+      '⚡ The lead page and the note peek sheet open at once: the lead shows first, the rest follows',
+      '⚡ Lists that rarely change (stages, sources, people, holidays) are asked once, not on every screen',
+      '🔔 Notification check opens at once; a registered phone no longer shows “No answer from Google”',
+      '🎓 Alumni → Import → From phone contacts: mark people (or a whole group) → Save as alumni',
+      '📱 Push health, Sync health and App versions show only devices someone is signed in on; signing out removes the device',
+    ],
+  },
+  {
     key: '2026-11-07-d',
     date: '7 Nov 2026',
     title: '🔥 Admission chance',

@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { Modal } from '@/shared/ui/Modal';
 
 import { channelLabel, formatDuration, listLeadCalls, outcomeInfo } from '@/features/calls/api';
-import { isRecordedVoice, listLeadFiles } from '@/features/files/api';
+import { isRecordedVoice, listLeadVoiceNotes } from '@/features/files/api';
 import type { LeadListItem } from '@/features/leads/api';
 import { ago, callDot } from '@/features/leads/lastActivity';
 import { VOICE_CONTEXT, clock } from '@/features/voice/format';
@@ -12,6 +12,7 @@ import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
+import { peekMemo, remember } from '@/shared/lib/memo';
 
 // =====================================================================
 // 👁 Peek: the last calls and notes of a lead (whole notes), from the
@@ -49,13 +50,15 @@ export function LeadPeekSheet({
   onOpen: () => void;
   onAddNote: () => void;
 }) {
-  const [items, setItems] = useState<Item[] | null>(null);
+  // ⚡ opened a moment ago: the same list shows at once (then refreshes)
+  const memoKey = `peek:${lead.id}:${all ? 'all' : 'few'}`;
+  const [items, setItems] = useState<Item[] | null>(() => peekMemo<Item[]>(memoKey) ?? null);
   const [playing, setPlaying] = useState<PlayableFile | null>(null);
 
   useEffect(() => {
     let live = true;
     Promise.all([
-      listLeadCalls(lead.id).catch(() => []),
+      listLeadCalls(lead.id, all ? ALL : SHOW).catch(() => []),
       supabase
         .from('lead_activity')
         .select('id, created_at, user_id, details')
@@ -64,7 +67,7 @@ export function LeadPeekSheet({
         .order('created_at', { ascending: false })
         .limit(all ? ALL : SHOW)
         .then(({ data }) => data ?? []),
-      listLeadFiles(lead.id).catch(() => []),
+      listLeadVoiceNotes(lead.id, all ? ALL : SHOW).catch(() => []),
     ]).then(([calls, notes, files]) => {
       if (!live) return;
       const list: Item[] = [
@@ -112,11 +115,12 @@ export function LeadPeekSheet({
         .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
         .slice(0, all ? ALL * 3 : SHOW);
       setItems(list);
+      remember(memoKey, list);
     });
     return () => {
       live = false;
     };
-  }, [lead.id, all]);
+  }, [lead.id, all, memoKey]);
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -183,7 +187,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl,
   },
-  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, marginVertical: spacing.sm },
+  handle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.border,
+    marginVertical: spacing.sm,
+  },
   title: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
   sub: { fontSize: fontSize.caption, color: colors.textMuted, marginBottom: spacing.sm },
   list: { gap: spacing.md, paddingVertical: spacing.sm },

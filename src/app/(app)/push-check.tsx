@@ -10,6 +10,7 @@ import {
   type MyPushStatus,
   type PushState,
   checkPushNow,
+  quickPushState,
 } from '@/features/notifications/push';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -109,7 +110,12 @@ export default function PushCheckScreen() {
       .then(setServer)
       .catch(() => undefined);
     try {
-      // asked once, with time limits (never loads for ever)
+      // ⚡ at once: permission, channel and the token saved last time (no Google)
+      if (!ask)
+        quickPushState()
+          .then((q) => setState((cur) => cur ?? q))
+          .catch(() => undefined);
+      // then asked once, with time limits (never loads for ever)
       setState(await checkPushNow(ask));
       // the server's view again, after this phone checked in
       setTimeout(
@@ -196,9 +202,9 @@ export default function PushCheckScreen() {
           : []),
         {
           ok: !!state.token,
-          title: 'Phone registered',
+          title: state.token ? 'Phone registered' : 'Phone not registered',
           text: state.token
-            ? `Registered${server ? ` · ${server.tokens} phone${server.tokens === 1 ? '' : 's'} on your account` : ''}.`
+            ? `Registered${state.saved ? (busy ? ' (checking with Google…)' : '') : ''}${server ? ` · ${server.tokens} phone${server.tokens === 1 ? '' : 's'} on your account` : ''}.`
             : isMissingFirebase(state.tokenError)
               ? 'This app is too old: it is missing the part notifications need. Update it from the Play Store (above).'
               : (state.tokenError ?? 'Not registered (notifications not allowed yet).'),

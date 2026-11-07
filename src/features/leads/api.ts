@@ -4,6 +4,7 @@ import type { AddedQuery } from '@/features/leads/added';
 
 import { applyLeadFilters, filterSelect, needsClosedLeads, type LeadFilters } from '@/features/leads/filters';
 import { LAST_SELECT, type LeadLast } from '@/features/leads/lastActivity';
+import { memo } from '@/shared/lib/memo';
 
 // =====================================================================
 // Phone helpers (same rules as the database)
@@ -776,11 +777,14 @@ async function replaceLinks(leadId: string, courseIds?: string[], tagIds?: strin
 
 /** 🎓 The lead, its courses and tags in one go (a course is needed) */
 export async function createLead(input: LeadInput): Promise<string> {
-  const { data, error } = await supabase.rpc('create_lead' as never, {
-    p_row: leadColumns(input),
-    p_course_ids: input.course_ids ?? [],
-    p_tag_ids: input.tag_ids ?? [],
-  } as never);
+  const { data, error } = await supabase.rpc(
+    'create_lead' as never,
+    {
+      p_row: leadColumns(input),
+      p_course_ids: input.course_ids ?? [],
+      p_tag_ids: input.tag_ids ?? [],
+    } as never,
+  );
   if (error) throw toError(error);
   return String(data);
 }
@@ -944,6 +948,15 @@ export async function listLeadActivity(leadId: string): Promise<ActivityItem[]> 
 //   - includeInactive: deactivated users too (for names in timelines)
 // =====================================================================
 export async function listAssignableUsers(
+  options: { teamLeadId?: string; includeInactive?: boolean } = {},
+): Promise<AssignableUser[]> {
+  // ⚡ the same people for 2 minutes (several cards ask at the same moment)
+  return memo(`people:${options.teamLeadId ?? ''}:${options.includeInactive ? 'all' : 'active'}`, 2 * 60_000, () =>
+    loadAssignableUsers(options),
+  );
+}
+
+async function loadAssignableUsers(
   options: { teamLeadId?: string; includeInactive?: boolean } = {},
 ): Promise<AssignableUser[]> {
   let query = supabase.from('profiles').select('id, full_name, role_key, is_active, team_lead_id').order('full_name');

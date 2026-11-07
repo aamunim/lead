@@ -1,5 +1,6 @@
 import { supabase } from '@/shared/lib/supabase';
 import type { Json, Tables, TablesInsert } from '@/shared/types/database';
+import { forget, memo } from '@/shared/lib/memo';
 
 // =====================================================================
 // Errors
@@ -46,22 +47,19 @@ export type ListItem = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const table = (name: ListTable) => supabase.from(name) as any;
 
-export async function listItems(
-  name: ListTable,
-  options: { includeInactive?: boolean } = {},
-): Promise<ListItem[]> {
-  let query = table(name).select('*').order('sort_order').order('name');
-  if (!options.includeInactive) query = query.eq('is_active', true);
+export async function listItems(name: ListTable, options: { includeInactive?: boolean } = {}): Promise<ListItem[]> {
+  // ⚡ remembered for 5 minutes (forgotten when one is added / changed)
+  return memo(`list:${name}:${options.includeInactive ? 'all' : 'active'}`, 5 * 60_000, async () => {
+    let query = table(name).select('*').order('sort_order').order('name');
+    if (!options.includeInactive) query = query.eq('is_active', true);
 
-  const { data, error } = await query;
-  if (error) throw toError(error);
-  return (data ?? []) as ListItem[];
+    const { data, error } = await query;
+    if (error) throw toError(error);
+    return (data ?? []) as ListItem[];
+  });
 }
 
-export async function createItem(
-  name: ListTable,
-  values: Record<string, unknown>,
-): Promise<ListItem> {
+export async function createItem(name: ListTable, values: Record<string, unknown>): Promise<ListItem> {
   // Put the new item at the end of the list
   const { data: last } = await table(name)
     .select('sort_order')
@@ -69,6 +67,7 @@ export async function createItem(
     .limit(1)
     .maybeSingle();
 
+  forget(`list:${name}:*`);
   const { data, error } = await table(name)
     .insert({ ...values, sort_order: (last?.sort_order ?? 0) + 1 })
     .select('*')
@@ -78,11 +77,8 @@ export async function createItem(
   return data as ListItem;
 }
 
-export async function updateItem(
-  name: ListTable,
-  id: string,
-  values: Record<string, unknown>,
-): Promise<void> {
+export async function updateItem(name: ListTable, id: string, values: Record<string, unknown>): Promise<void> {
+  forget(`list:${name}:*`);
   const { error } = await table(name).update(values).eq('id', id);
   if (error) throw toError(error);
 }
@@ -93,8 +89,13 @@ export async function setItemActive(name: ListTable, id: string, active: boolean
 
 /** Save a new order: ids in the order they should appear. */
 export async function reorderItems(name: ListTable, ids: string[]): Promise<void> {
+  forget(`list:${name}:*`);
   const results = await Promise.all(
-    ids.map((id, index) => table(name).update({ sort_order: index + 1 }).eq('id', id)),
+    ids.map((id, index) =>
+      table(name)
+        .update({ sort_order: index + 1 })
+        .eq('id', id),
+    ),
   );
   const failed = results.find((r: { error: DbError | null }) => r.error);
   if (failed?.error) throw toError(failed.error);
@@ -115,11 +116,7 @@ export type CourseWithDetails = Course & {
 export type FeeInput = { id?: string; name: string; amount: number };
 
 export async function listCourses(includeInactive = false): Promise<CourseWithDetails[]> {
-  let query = supabase
-    .from('courses')
-    .select('*, course_fees(*), batches(*)')
-    .order('sort_order')
-    .order('name');
+  let query = supabase.from('courses').select('*, course_fees(*), batches(*)').order('sort_order').order('name');
   if (!includeInactive) query = query.eq('is_active', true);
 
   const { data, error } = await query;
@@ -143,9 +140,7 @@ export async function getCourse(id: string): Promise<CourseWithDetails | null> {
   return course;
 }
 
-export async function saveCourse(
-  values: TablesInsert<'courses'> & { id?: string },
-): Promise<Course> {
+export async function saveCourse(values: TablesInsert<'courses'> & { id?: string }): Promise<Course> {
   const { id, ...rest } = values;
   const query = id
     ? supabase.from('courses').update(rest).eq('id', id).select('*').single()
@@ -174,9 +169,7 @@ export async function saveCourseFees(courseId: string, fees: FeeInput[]): Promis
   }
 
   // 2. Update the lines that already exist (one by one: names, amounts, order)
-  const updates = fees
-    .map((f, index) => ({ ...f, sort_order: index + 1 }))
-    .filter((f) => f.id);
+  const updates = fees.map((f, index) => ({ ...f, sort_order: index + 1 })).filter((f) => f.id);
 
   for (const f of updates) {
     const { error } = await supabase
@@ -240,21 +233,23 @@ export async function saveBatch(values: TablesInsert<'batches'> & { id?: string 
 export type Holiday = Tables<'holidays'>;
 
 export async function listHolidays(year: number): Promise<Holiday[]> {
-  const { data, error } = await supabase
-    .from('holidays')
-    .select('*')
-    .lte('start_date', `${year}-12-31`)
-    .gte('end_date', `${year}-01-01`)
-    .order('start_date');
+  // ⚡ holidays change rarely: remembered for 30 minutes
+  return memo(`holidays:${year}`, 30 * 60_000, async () => {
+    const { data, error } = await supabase
+      .from('holidays')
+      .select('*')
+      .lte('start_date', `${year}-12-31`)
+      .gte('end_date', `${year}-01-01`)
+      .order('start_date');
 
-  if (error) throw toError(error);
-  return data ?? [];
+    if (error) throw toError(error);
+    return data ?? [];
+  });
 }
 
-export async function saveHoliday(
-  values: TablesInsert<'holidays'> & { id?: string },
-): Promise<void> {
+export async function saveHoliday(values: TablesInsert<'holidays'> & { id?: string }): Promise<void> {
   const { id, ...rest } = values;
+  forget('holidays:*');
   const { error } = id
     ? await supabase.from('holidays').update(rest).eq('id', id)
     : await supabase.from('holidays').insert(rest);
@@ -262,6 +257,7 @@ export async function saveHoliday(
 }
 
 export async function deleteHoliday(id: string): Promise<void> {
+  forget('holidays:*');
   const { error } = await supabase.from('holidays').delete().eq('id', id);
   if (error) throw toError(error);
 }

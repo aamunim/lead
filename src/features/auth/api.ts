@@ -1,6 +1,7 @@
 import { unregisterPush } from '@/features/notifications/push';
 import { supabase } from '@/shared/lib/supabase';
 import type { Tables } from '@/shared/types/database';
+import { forgetAll } from '@/shared/lib/memo';
 
 // ---------------------------------------------------------------------
 // Types
@@ -102,7 +103,8 @@ export async function signIn(input: SignInInput) {
 export async function changeMyPassword(password: string): Promise<void> {
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
-    if (/different from the old/i.test(error.message)) throw new Error('Please choose a password different from the old one.');
+    if (/different from the old/i.test(error.message))
+      throw new Error('Please choose a password different from the old one.');
     throw new Error(friendlyAuthError(error.message));
   }
   const { error: flagError } = await supabase.rpc('password_changed');
@@ -114,6 +116,8 @@ export async function signOut() {
   await unregisterPush();
   const { error } = await supabase.auth.signOut();
   if (error) throw new Error(friendlyAuthError(error.message));
+  // ⚡ nothing remembered from this person stays for the next one
+  forgetAll();
 }
 
 // ---------------------------------------------------------------------

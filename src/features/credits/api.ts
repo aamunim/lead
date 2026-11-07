@@ -1,6 +1,7 @@
 import { supabase } from '@/shared/lib/supabase';
 import { getSetting } from '@/features/settings/api';
 import type { Json } from '@/shared/types/database';
+import { memo } from '@/shared/lib/memo';
 
 // =====================================================================
 // 🏆 Credits and the leaderboard (worked out on the server from the work
@@ -127,9 +128,12 @@ export type BoardRow = {
 };
 
 export async function getLeaderboard(from: string, to: string): Promise<BoardRow[]> {
-  const { data, error } = await supabase.rpc('leaderboard', { p_from: from, p_to: to });
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as BoardRow[]).map((r) => ({ ...r, total: Number(r.total) }));
+  // ⚡ Home asks for it twice at the same moment: one request, kept 30 seconds
+  return memo(`leaderboard:${from}:${to}`, 30_000, async () => {
+    const { data, error } = await supabase.rpc('leaderboard', { p_from: from, p_to: to });
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as BoardRow[]).map((r) => ({ ...r, total: Number(r.total) }));
+  });
 }
 
 export type BreakdownRow = { kind: string; qty: number; points: number };

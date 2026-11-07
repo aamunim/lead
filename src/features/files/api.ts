@@ -246,6 +246,22 @@ export async function linkVoiceNotes(fileIds: string[], callId: string): Promise
 /** 🎙 Voice notes recorded with the 🎙 button (they show in Calls & notes, not in Files) */
 export const isRecordedVoice = (f: Pick<LeadFile, 'kind' | 'context'>) => f.kind === 'voice' && !!f.context;
 
+/** ⚡ Only the recorded voice notes (newest first), e.g. for the peek sheet */
+export async function listLeadVoiceNotes(leadId: string, limit = 20): Promise<LeadFile[]> {
+  const { data, error } = await supabase
+    .from('lead_files')
+    .select(
+      'id, lead_id, kind, paper_id, call_id, name, mime_type, size_bytes, duration_sec, context, uploaded_by, created_at',
+    )
+    .eq('lead_id', leadId)
+    .eq('kind', 'voice')
+    .not('context', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw toError(error);
+  return (data ?? []) as unknown as LeadFile[];
+}
+
 // ---------------------------------------------------------------------
 // 🌐 Website: no phone file system; the browser downloads / shows it
 // ---------------------------------------------------------------------

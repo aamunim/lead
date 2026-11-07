@@ -1,9 +1,4 @@
-import {
-  getWhatsAppEvent,
-  syncCallsNow,
-  type DeviceCall,
-  type WhatsAppDeviceEvent,
-} from '@/features/call-sync/api';
+import { getWhatsAppEvent, syncCallsNow, type DeviceCall, type WhatsAppDeviceEvent } from '@/features/call-sync/api';
 import { supabase } from '@/shared/lib/supabase';
 import { colors } from '@/shared/theme';
 import type { Tables } from '@/shared/types/database';
@@ -13,13 +8,7 @@ import type { Tables } from '@/shared/types/database';
 //   The first six are chosen by hand in the popup.
 //   "missed" and "rejected" only come from the phone's call log.
 // =====================================================================
-export type CallOutcome =
-  | 'connected'
-  | 'no_answer'
-  | 'busy'
-  | 'switched_off'
-  | 'wrong_number'
-  | 'call_back';
+export type CallOutcome = 'connected' | 'no_answer' | 'busy' | 'switched_off' | 'wrong_number' | 'call_back';
 
 export type AnyOutcome = CallOutcome | 'missed' | 'rejected' | 'message';
 
@@ -354,13 +343,14 @@ export async function addNoteToWhatsAppCall(input: {
 // =====================================================================
 // Calls of one lead (newest first)
 // =====================================================================
-export async function listLeadCalls(leadId: string): Promise<CallLog[]> {
+export async function listLeadCalls(leadId: string, limit = 50): Promise<CallLog[]> {
   const { data, error } = await supabase
     .from('call_logs')
     .select(CALL_SELECT)
     .eq('lead_id', leadId)
+    .is('deleted_at', null)
     .order('called_at', { ascending: false })
-    .limit(50);
+    .limit(limit);
 
   if (error) throw toError(error);
   return (data ?? []) as unknown as CallLog[];

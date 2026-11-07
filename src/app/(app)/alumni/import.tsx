@@ -1,6 +1,6 @@
 import { router, Stack, type Href } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import {
   ALUMNI_IMPORT_FIELDS,
@@ -64,9 +64,22 @@ export default function AlumniImportScreen() {
       <FromExcel courses={courses} fields={fields} onResult={setResult} onError={setError} />
       <View style={ui.card}>
         <Text style={styles.h}>📱 From phone contacts</Text>
-        <Text style={ui.muted}>
-          Coming in the next update: Phone contacts → a group (e.g. “Alumni ITTC”) → Save as alumni.
-        </Text>
+        {Platform.OS === 'web' ? (
+          <Text style={ui.muted}>Open this on the phone: contacts are on the phone.</Text>
+        ) : (
+          <>
+            <Text style={ui.muted}>
+              Mark people in your phone’s contacts (or pick a group like “Alumni ITTC” → Mark all), then Save as alumni.
+              People who are leads already can be saved too.
+            </Text>
+            <Button
+              title="Open phone contacts"
+              variant="secondary"
+              onPress={() => router.push('/contacts?for=alumni' as Href)}
+              fullWidth
+            />
+          </>
+        )}
       </View>
       {error && <Text style={ui.error}>{error}</Text>}
       {result && <ResultCard r={result} />}
