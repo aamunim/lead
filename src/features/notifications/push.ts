@@ -18,6 +18,24 @@ import { supabase } from '@/shared/lib/supabase';
 
 const TOKEN_KEY = 'push.token';
 
+/** ⏱ Never wait for ever: Google / Expo can hang on a weak connection */
+class TimeoutError extends Error {}
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new TimeoutError(what)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 /** The channel the database sends to (channelId 'leads') */
 const CHANNEL_ID = 'leads';
 
@@ -63,24 +81,36 @@ export async function pushState(ask = false): Promise<PushState> {
   if (!Device.isDevice) return { ...out, tokenError: 'Not a real phone (emulator)' };
   try {
     // The channel must exist before Android 13 shows the permission prompt
-    await ensureChannel();
-    let { status } = await Notifications.getPermissionsAsync();
+    await withTimeout(ensureChannel(), 10_000, 'channel');
+    let { status } = await withTimeout(Notifications.getPermissionsAsync(), 10_000, 'permission');
     if (status !== 'granted' && ask) ({ status } = await Notifications.requestPermissionsAsync());
     out.permission = status as PushPermission;
     if (Platform.OS === 'android') {
-      const ch = await Notifications.getNotificationChannelAsync(CHANNEL_ID).catch(() => null);
+      const ch = await withTimeout(Notifications.getNotificationChannelAsync(CHANNEL_ID), 10_000, 'channel').catch(
+        () => null,
+      );
       out.channelOn = ch ? ch.importance !== Notifications.AndroidImportance.NONE : null;
     }
     if (status !== 'granted') return out;
     const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
     try {
-      out.token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+      out.token = (await withTimeout(Notifications.getExpoPushTokenAsync({ projectId }), 20_000, 'token')).data;
     } catch (e) {
       // e.g. no Google Play services, no internet, blocked by the phone
-      out.tokenError = e instanceof Error ? e.message.slice(0, 280) : 'Could not get a push token';
+      out.tokenError =
+        e instanceof TimeoutError
+          ? 'No answer from Google for 20 seconds (weak internet, or Google Play services busy). Check the internet and tap Try again.'
+          : e instanceof Error
+            ? e.message.slice(0, 280)
+            : 'Could not get a push token';
     }
   } catch (e) {
-    out.tokenError = e instanceof Error ? e.message.slice(0, 280) : 'Push is not available';
+    out.tokenError =
+      e instanceof TimeoutError
+        ? 'The phone did not answer in time. Tap Try again.'
+        : e instanceof Error
+          ? e.message.slice(0, 280)
+          : 'Push is not available';
   }
   return out;
 }
@@ -95,7 +125,26 @@ export async function registerForPush(ask = true): Promise<boolean> {
   // 🌐 The website gets no push (notifications come to the phone app)
   if (Platform.OS === 'web') return false;
   try {
-    const st = await pushState(ask);
+    return await checkIn(await pushState(ask));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Notification check: the phone's state (asked once) + tell the database.
+ * The state comes back even when the database can't be reached.
+ */
+export async function checkPushNow(ask = false): Promise<PushState> {
+  const st = await pushState(ask);
+  // telling the database runs in the background: the lines show at once
+  if (Platform.OS !== 'web') withTimeout(checkIn(st), 15_000, 'check-in').catch(() => false);
+  return st;
+}
+
+/** Tell the database what this phone can do (and save the token) */
+async function checkIn(st: PushState): Promise<boolean> {
+  try {
     const deviceId = getDeviceId() ?? undefined;
     const label = deviceLabel();
     const { error } = await supabase.rpc(
@@ -147,7 +196,11 @@ export type MyPushStatus = {
 };
 
 export async function myPushStatus(): Promise<MyPushStatus | null> {
-  const { data, error } = await supabase.rpc('my_push_status' as never);
+  const { data, error } = await withTimeout(
+    supabase.rpc('my_push_status' as never) as unknown as Promise<{ data: unknown; error: unknown }>,
+    15_000,
+    'status',
+  ).catch(() => ({ data: null, error: true }));
   if (error || !data) return null;
   const d = data as {
     tokens?: number;

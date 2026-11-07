@@ -5,11 +5,11 @@ import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Text, Vie
 
 import {
   myPushStatus,
-  pushState,
   registerForPush,
   sendTestPush,
   type MyPushStatus,
   type PushState,
+  checkPushNow,
 } from '@/features/notifications/push';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -104,10 +104,28 @@ export default function PushCheckScreen() {
 
   const check = useCallback(async (ask = false) => {
     setBusy(true);
+    // The server's part loads by itself: a slow server never holds up the phone's lines
+    myPushStatus()
+      .then(setServer)
+      .catch(() => undefined);
     try {
-      await registerForPush(ask);
-      setState(await pushState(false));
-      setServer(await myPushStatus());
+      // asked once, with time limits (never loads for ever)
+      setState(await checkPushNow(ask));
+      // the server's view again, after this phone checked in
+      setTimeout(
+        () =>
+          myPushStatus()
+            .then(setServer)
+            .catch(() => undefined),
+        2500,
+      );
+    } catch (e) {
+      setState({
+        permission: 'undetermined',
+        channelOn: null,
+        token: null,
+        tokenError: e instanceof Error ? e.message : 'Could not check this phone. Tap Try again.',
+      });
     } finally {
       setBusy(false);
     }

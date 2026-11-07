@@ -16,6 +16,7 @@ export const WHATS_NEW: WhatsNew[] = [
       '❓ Tap it on the lead page to see why: visit, fee talk, answered calls (+) or no contact, missed calls (−)',
       '↕️ Sort the list: Most likely to join',
       '⚙️ Admins: Settings → Lead score sets the points. No AI, no cost',
+      '🔔 Notification check no longer keeps loading: after 20 seconds without an answer it says why',
     ],
   },
   {
