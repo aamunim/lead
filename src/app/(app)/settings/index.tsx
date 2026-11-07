@@ -42,6 +42,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/students' as Href,
       },
       {
+        title: 'Alumni',
+        description: 'Who sees and manages alumni, custom fields, referral rewards',
+        icon: '🧑‍🎓',
+        href: '/settings/alumni' as Href,
+      },
+      {
         title: 'Admission flow',
         description: 'Submitted Online → Received by ITTC: who does it, the admission fee',
         icon: '🏛',

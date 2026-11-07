@@ -13,6 +13,7 @@ import {
 } from '@/features/notifications/push';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
+import { isMissingFirebase, StoreUpdateCard } from '@/features/updates/StoreUpdateCard';
 
 // =====================================================================
 // 🔔 Notification check: why this phone gets no notifications, and a
@@ -180,7 +181,9 @@ export default function PushCheckScreen() {
           title: 'Phone registered',
           text: state.token
             ? `Registered${server ? ` · ${server.tokens} phone${server.tokens === 1 ? '' : 's'} on your account` : ''}.`
-            : (state.tokenError ?? 'Not registered (notifications not allowed yet).'),
+            : isMissingFirebase(state.tokenError)
+              ? 'This app is too old: it is missing the part notifications need. Update it from the Play Store (above).'
+              : (state.tokenError ?? 'Not registered (notifications not allowed yet).'),
           fix: state.token ? undefined : { label: 'Try again', run: () => check(true) },
         },
         {
@@ -200,6 +203,8 @@ export default function PushCheckScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: 'Notification check' }} />
+      {/* 📲 An app from before 2.8.4 can't get push at all: only the Play Store fixes it */}
+      {!web && <StoreUpdateCard always />}
       {web ? (
         <Text style={styles.muted}>Open this on the phone: notifications come to the phone app.</Text>
       ) : !state ? (

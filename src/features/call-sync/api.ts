@@ -43,6 +43,7 @@ import {
   type WhatsAppDeviceEvent,
   type WhatsAppStatus,
 } from '../../../modules/call-log';
+import { installedAppVersion } from '@/features/updates/StoreUpdateCard';
 
 export {
   hasCallNotifications,
@@ -273,7 +274,7 @@ export async function reportSyncStatus(error?: string | null): Promise<void> {
 
   const info = {
     device_label: `${Constants.deviceName ?? 'Android'} · Android ${Platform.Version}`,
-    app_version: Constants.expoConfig?.version ?? null,
+    app_version: installedAppVersion() ?? Constants.expoConfig?.version ?? null,
     permission_ok: callPermissionState() === 'granted',
     sync_on: isCallSyncEnabled(),
     sim_label: simLabel(),

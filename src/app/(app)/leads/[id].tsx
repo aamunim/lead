@@ -1,3 +1,4 @@
+import { LeadReferrer } from '@/features/alumni/LeadReferrer';
 import { router, Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
 import { myStars, toggleStar } from '@/features/leads/find';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
@@ -530,6 +531,8 @@ export function LeadDetailView({
         return `${d.to ? `Assigned to ${userNames.get(d.to) ?? 'a removed user'}` : 'Unassigned'}${d.note ? ` · “${d.note}”` : ''}`;
       case 'details_changed':
         return 'Name or phone updated';
+      case 'alumni_referral':
+        return d.credit ? `🎓 Credited to alumnus ${d.alumni_name ?? ''}` : `🎓 Referred by alumnus ${d.alumni_name ?? ''}`;
       case 'call_logged': {
         if (d.channel === 'whatsapp') {
           const wa = channelLabel(d.channel, d.media);
@@ -1363,6 +1366,8 @@ export function LeadDetailView({
         <InfoRow label="WhatsApp username" value={lead.whatsapp_username ? '@' + lead.whatsapp_username : null} />
         <InfoRow label="Area" value={lead.area} />
         <InfoRow label="Source" value={lead.source?.name ?? null} />
+        {/* 🎓 The alumnus who referred this lead (Alumni) */}
+        <LeadReferrer leadId={lead.id} />
         {detailsOpen && (
           <>
             {lead.alt_phone && <PhoneRow label="Alternative" phone={lead.alt_phone} onCall={call} />}

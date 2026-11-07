@@ -8,6 +8,34 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-07-c',
+    date: '7 Nov 2026',
+    title: '🔔 Notifications: the last step (app 2.8.5)',
+    items: [
+      '📲 A phone with an old app (before 2.8.4) now says so on Home and in Notification check, with a Play Store button: only a new install can add what notifications need',
+      '🩺 Push health: Google’s test phones are ignored, old apps are named, and old failures no longer flag people whose latest notification arrived',
+      'ℹ More shows the installed app version',
+    ],
+  },
+  {
+    key: '2026-11-07-b',
+    date: '7 Nov 2026',
+    title: '🎓 Alumni',
+    items: [
+      '🎓 Alumni: passed students in one list (Home → Alumni, More → Alumni). Call, WhatsApp, notes, custom fields',
+      '📨 Referrals: add a referral on an alumnus’s page; admins import it as a lead (course + person) or give credit',
+      '🎯 The lead shows “Alumni referral: <name>”; when it is admitted the alumnus gets the credit (and a reward, if on)',
+      '📥 Add alumni from Students (a whole batch), Excel, or a phone contacts group',
+      '⚙️ Settings → Alumni: who sees / manages, custom fields, rewards by course',
+    ],
+  },
+  {
+    key: '2026-11-07-a',
+    date: '7 Nov 2026',
+    title: '🛠 Small fix',
+    items: ['👥 Phone contacts: the group chips at the top are no longer cut in half'],
+  },
+  {
     key: '2026-11-06-d',
     date: '6 Nov 2026',
     title: '🔔 App 2.8.4: notifications for everyone',
