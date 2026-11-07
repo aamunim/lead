@@ -162,6 +162,8 @@ create trigger leads_zz_score before insert or update on public.leads
   for each row execute function public.leads_score_calc();
 
 -- Work it out again for some leads (calls, visits, the night job, Settings)
+--   Lead by lead: an old lead that breaks a newer rule (e.g. an old WhatsApp
+--   number) is skipped instead of stopping all the others (and this update).
 create or replace function public.refresh_lead_scores(p_lead_ids uuid[] default null)
 returns int
 language plpgsql
@@ -169,19 +171,31 @@ security definer
 set search_path = public
 as $$
 declare
-  n int;
+  n      int := 0;
+  v_id   uuid;
+  v_skip int := 0;
   -- put the flags back as they were (a caller may have turned them on)
   v_keep text := coalesce(current_setting('app.keep_updated_at', true), '');
   v_pipe text := coalesce(current_setting('app.pipeline_action', true), '');
 begin
   perform set_config('app.keep_updated_at', 'on', true);
   perform set_config('app.pipeline_action', 'on', true);   -- not a stage move: let the guard through
-  update public.leads l set score_at = now()
-  where l.deleted_at is null
-    and (p_lead_ids is null or l.id = any (p_lead_ids));
-  get diagnostics n = row_count;
+  for v_id in
+    select l.id from public.leads l
+    where l.deleted_at is null and (p_lead_ids is null or l.id = any (p_lead_ids))
+  loop
+    begin
+      update public.leads set score_at = now() where id = v_id;
+      n := n + 1;
+    exception when others then
+      v_skip := v_skip + 1;
+    end;
+  end loop;
   perform set_config('app.pipeline_action', v_pipe, true);
   perform set_config('app.keep_updated_at', v_keep, true);
+  if v_skip > 0 then
+    raise notice 'Lead score: % lead(s) skipped (their data breaks a newer rule)', v_skip;
+  end if;
   return n;
 end;
 $$;
