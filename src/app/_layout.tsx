@@ -115,9 +115,13 @@ function RootNavigator() {
         {/* 🗑 Delete my account: open to everyone (Google Play asks for a web link too) */}
         <Stack.Screen name="delete-account" />
         <Stack.Screen name="privacy" />
-        {/* 🔗 Public forms: an alumnus's link, and the interested-person form */}
-        <Stack.Screen name="refer/[code]" />
-        <Stack.Screen name="apply" />
+        {/* 🔗 Public forms (website only): an alumnus's link, and the interested-person form.
+            ⚠️ Guarded off in the phone app: there, an open screen could fall back to
+            them on start (2.8.5 opened on the form instead of the app). */}
+        <Stack.Protected guard={Platform.OS === 'web'}>
+          <Stack.Screen name="refer/[code]" />
+          <Stack.Screen name="apply" />
+        </Stack.Protected>
       </Stack>
       {/* 📵 No internet: shown over every screen */}
       <OfflineBanner />
