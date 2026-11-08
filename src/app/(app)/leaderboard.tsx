@@ -496,7 +496,9 @@ function BreakdownSheet({
                           ? `৳${fmt(b.qty)} taken`
                           : b.kind === 'app_time' || b.kind === 'talk_minute'
                             ? `${fmt(b.qty)} min`
-                            : `${fmt(b.qty)} ×`}
+                            : b.kind === 'admitted' && !Number.isInteger(Number(b.qty))
+                              ? `${Number(Number(b.qty).toFixed(2))} × (🤖 AI share)`
+                              : `${fmt(b.qty)} ×`}
                       </Text>
                     </View>
                   </View>

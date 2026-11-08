@@ -86,6 +86,7 @@ import { deleteLeadFile, isRecordedVoice, listLeadFiles, type LeadFile } from '@
 import { onVoiceSaved } from '@/features/voice/useVoiceNotes';
 import { isWeb } from '@/features/web/api';
 import { WebStudentLayout } from '@/features/web/student/WebStudentLayout';
+import { AdmissionCreditCard } from '@/features/aiCredit/AdmissionCreditCard';
 import { ApprovalCard } from '@/features/approval/ApprovalCard';
 import { peekMemo, remember } from '@/shared/lib/memo';
 
@@ -1075,6 +1076,10 @@ export function LeadDetailView({
             load();
           }}
         />
+      )}
+      {/* 🤝 Who did how much (AI); only for people Settings → AI allows */}
+      {stageKind === 'won' && !!lead.admitted_at && (
+        <AdmissionCreditCard leadId={lead.id} stateKey={lead.admitted_at} nameOf={nameOf} />
       )}
     </>
   );
