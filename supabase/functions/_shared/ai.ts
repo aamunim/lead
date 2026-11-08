@@ -16,7 +16,10 @@ export { Anthropic, admin, json };
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 export const DEFAULT_MODEL = 'claude-sonnet-5-5';
-const CALL_TIMEOUT_MS = 90_000;
+// A run must end inside the Edge Function's time limit (150 s on the free plan):
+// new leads start for 45 s, and one call may take 75 s (no retry; a failed one
+// waits in the queue for the next run)
+const CALL_TIMEOUT_MS = 75_000;
 
 export type AiSettings = {
   enabled?: boolean;
@@ -48,7 +51,7 @@ export function aiClient(cfg: AiConfig): Anthropic {
   return new Anthropic({
     apiKey: cfg.key!,
     timeout: CALL_TIMEOUT_MS,
-    maxRetries: 1,
+    maxRetries: 0,
   });
 }
 
@@ -184,7 +187,7 @@ export async function drainQueue(
   claim: (n: number) => Promise<string[]>,
   one: (id: string) => Promise<'ok' | 'stop'>,
   parallel = 3,
-  startNewUntilMs = 70_000,
+  startNewUntilMs = 45_000,
 ) {
   const started = Date.now();
   while (Date.now() - started < startNewUntilMs) {
