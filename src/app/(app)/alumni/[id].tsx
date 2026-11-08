@@ -1,8 +1,9 @@
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Linking,
   Platform,
   Pressable,
@@ -14,11 +15,18 @@ import {
 } from 'react-native';
 
 import { AddReferralSheet } from '@/features/alumni/AddReferralSheet';
+import { AlumniContactSheet } from '@/features/alumni/AlumniContactSheet';
 import {
   addAlumniEvent,
+  canDeleteAlumniEvent,
+  CONTACT_KINDS,
   customText,
+  deleteAlumniEvent,
   deleteAlumnus,
   EVENT_TEXT,
+  pinAlumniEvent,
+  restoreAlumniEvent,
+  setAlumniNextContact,
   getAlumnus,
   listAlumniEvents,
   listAlumniFields,
@@ -36,12 +44,17 @@ import {
   ago,
   alumniChanged,
   Avatar,
+  Chip,
   s as ui,
   Stat,
   useAlumniAccess,
   useAlumniVersion,
   when,
 } from '@/features/alumni/ui';
+import { MenuSheet, NextContactSheet, whenText } from '@/features/alumni/sheets';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { channelLabel, directionInfo, findWhatsAppCall, formatDuration, outcomeInfo } from '@/features/calls/api';
+import { getDeviceId, markCallFromApp, type WhatsAppDeviceEvent } from '@/features/call-sync/api';
 import { MIcon, md, Tap, type MIconName } from '@/features/home/md';
 import { openWhatsApp } from '@/features/leads/contact';
 import { isWeb } from '@/features/web/api';
@@ -51,9 +64,59 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
 // =====================================================================
-// 🎓 One alumnus: contact, details (with custom fields), referrals,
-//   rewards and the history (notes, calls, messages)
+// 🎓 One alumnus: contact, next contact, details (with custom fields),
+//   referrals, rewards and the history (notes, calls, messages)
+//   📞 Call / 💬 WhatsApp from here: when you come back, a popup asks
+//   what happened, a note and the next contact (like on a lead).
+//   Opened with ?dial=1 / ?wa=1 (list buttons) → calls / opens WhatsApp;
+//   ?callNote=<phone call id> / ?waCall=<id> (the phone's "add a note"
+//   alert) → the popup for that call.
+//   Notes: 📌 pin, long-press → delete (↩ undo for 10 minutes).
 // =====================================================================
+
+type Show = 'all' | 'contacts' | 'notes' | 'referrals' | 'changes';
+const SHOWS: { key: Show; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'contacts', label: 'Calls & WhatsApp' },
+  { key: 'notes', label: 'Notes' },
+  { key: 'referrals', label: 'Referrals' },
+  { key: 'changes', label: 'Changes' },
+];
+const REFERRAL_KINDS = [
+  'referral',
+  'referral_imported',
+  'referral_credited',
+  'referral_rejected',
+  'admitted',
+  'reward',
+];
+
+function shownIn(e: AlumniEvent, show: Show): boolean {
+  switch (show) {
+    case 'contacts':
+      return CONTACT_KINDS.includes(e.kind);
+    case 'notes':
+      return !!e.body && ['note', 'call', 'whatsapp', 'message'].includes(e.kind);
+    case 'referrals':
+      return REFERRAL_KINDS.includes(e.kind);
+    case 'changes':
+      return ['created', 'edited', 'deleted', 'restored', 'next_contact'].includes(e.kind);
+    default:
+      return true;
+  }
+}
+
+/** "5 May" (+ age if the year is known) */
+function birthdayText(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  if (now.getMonth() < d.getMonth() || (now.getMonth() === d.getMonth() && now.getDate() < d.getDate())) age--;
+  const today = now.getMonth() === d.getMonth() && now.getDate() === d.getDate();
+  return `${today ? '🎉 Birthday today · ' : ''}${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}${
+    age > 0 && age < 120 ? ` · ${age} years` : ''
+  }`;
+}
 
 const STATUS: Record<Referral['status'], { text: string; color: string }> = {
   new: { text: 'In the inbox', color: colors.primary },
@@ -75,8 +138,15 @@ function ask(title: string, text: string, ok: string, run: () => void) {
 }
 
 export default function AlumnusScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, dial, wa, callNote, waCall } = useLocalSearchParams<{
+    id: string;
+    dial?: string;
+    wa?: string;
+    callNote?: string;
+    waCall?: string;
+  }>();
   const access = useAlumniAccess();
+  const { profile } = useAuth();
   const version = useAlumniVersion();
   const [a, setA] = useState<Alumnus | null | undefined>(undefined);
   const [fields, setFields] = useState<AlumniField[]>([]);
@@ -87,7 +157,21 @@ export default function AlumnusScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [referring, setReferring] = useState(false);
-
+  const [show, setShow] = useState<Show>('all');
+  // 📞 the popup after a call / WhatsApp
+  const [contact, setContact] = useState<null | {
+    channel: 'phone' | 'whatsapp' | 'sms';
+    estimatedSec?: number | null;
+    deviceCallId?: string | null;
+    waEvent?: WhatsAppDeviceEvent | null;
+    manual?: boolean;
+  }>(null);
+  const [nextOpen, setNextOpen] = useState(false);
+  const [menuFor, setMenuFor] = useState<AlumniEvent | null>(null);
+  const [undo, setUndo] = useState<{ id: string; at: number } | null>(null);
+  const startedAt = useRef<number | null>(null);
+  const leftApp = useRef(false);
+  const pending = useRef<'phone' | 'whatsapp'>('phone');
   const load = useCallback(async () => {
     if (!id) return;
     try {
@@ -118,6 +202,116 @@ export default function AlumnusScreen() {
       .then(setRewards)
       .catch(() => undefined);
   }, [id, access.manage, version]);
+
+  // --- after a call / WhatsApp: the popup when the user comes back ------
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (startedAt.current == null) return;
+      if (state === 'background' || state === 'inactive') {
+        leftApp.current = true;
+        return;
+      }
+      if (state === 'active' && leftApp.current) {
+        const seconds = Math.round((Date.now() - startedAt.current) / 1000);
+        startedAt.current = null;
+        leftApp.current = false;
+        setContact({ channel: pending.current, estimatedSec: seconds });
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  const call = async () => {
+    if (!a?.phone) return;
+    startedAt.current = Date.now();
+    leftApp.current = false;
+    pending.current = 'phone';
+    // the app shows its own popup for this call: no "add a note" alert
+    markCallFromApp(a.phone);
+    try {
+      await Linking.openURL(`tel:${a.phone}`);
+    } catch {
+      startedAt.current = null;
+      setError('Could not open the phone app.');
+    }
+  };
+  const whatsapp = async () => {
+    if (!a) return;
+    startedAt.current = Date.now();
+    leftApp.current = false;
+    pending.current = 'whatsapp';
+    const ok = await openWhatsApp({ phone: a.phone, whatsapp_number: a.whatsapp_number });
+    if (!ok) startedAt.current = null;
+  };
+
+  // opened from the list (📞 / 💬) or the phone's "add a note" alerts
+  const handled = useRef(false);
+  useEffect(() => {
+    if (!a || handled.current) return;
+    if (dial === '1' && a.phone && !a.do_not_contact) {
+      handled.current = true;
+      router.setParams({ dial: undefined });
+      call();
+    } else if (wa === '1' && !a.do_not_contact) {
+      handled.current = true;
+      router.setParams({ wa: undefined });
+      whatsapp();
+    } else if (callNote) {
+      handled.current = true;
+      router.setParams({ callNote: undefined });
+      setContact({ channel: 'phone', deviceCallId: String(callNote) });
+    } else if (waCall) {
+      handled.current = true;
+      router.setParams({ waCall: undefined });
+      findWhatsAppCall(String(waCall), getDeviceId())
+        .then((event) => {
+          if (event) setContact({ channel: 'whatsapp', waEvent: event });
+        })
+        .catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [a, dial, wa, callNote, waCall]);
+
+  const contactSaved = () => {
+    setContact(null);
+    alumniChanged();
+  };
+
+  // --- notes: pin / delete / undo ----------------------------------------
+  const pin = async (e: AlumniEvent) => {
+    setMenuFor(null);
+    try {
+      await pinAlumniEvent(e.id, !e.pinned);
+      alumniChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not pin.');
+    }
+  };
+  const del = async (e: AlumniEvent) => {
+    setMenuFor(null);
+    try {
+      await deleteAlumniEvent(e.id);
+      setUndo({ id: e.id, at: Date.now() });
+      alumniChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete.');
+    }
+  };
+  const restore = async () => {
+    if (!undo) return;
+    try {
+      await restoreAlumniEvent(undo.id);
+      setUndo(null);
+      alumniChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not bring it back.');
+    }
+  };
+  useEffect(() => {
+    if (!undo) return;
+    const t = setTimeout(() => setUndo(null), 10_000);
+    return () => clearTimeout(t);
+  }, [undo]);
 
   const log = async (kind: 'call' | 'whatsapp' | 'note', body?: string) => {
     if (!a) return;
@@ -200,6 +394,11 @@ export default function AlumnusScreen() {
   const place = [a.upazila, a.district].filter(Boolean).join(', ');
   const due = rewards.filter((r) => r.status === 'due').reduce((t, r) => t + r.amount, 0);
   const shownFields = fields.filter((f) => customText(a.custom?.[f.key], f.type) !== '');
+  const live = events.filter((e) => !e.deleted_at);
+  const pinned = live.filter((e) => e.pinned);
+  const shownEvents = live.filter((e) => !e.pinned && shownIn(e, show));
+  const next = a.next_contact_at ? new Date(a.next_contact_at) : null;
+  const late = !!next && next.getTime() < Date.now();
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -234,30 +433,13 @@ export default function AlumnusScreen() {
             <Text style={styles.dnc}>Do not contact</Text>
           </View>
         )}
+        {!!a.birth_date && <InfoLine icon="cake" text={birthdayText(a.birth_date)} />}
         <Text style={ui.muted}>Last contacted {ago(a.last_contacted_at)}</Text>
         <View style={styles.contactRow}>
           {!!a.phone && !a.do_not_contact && (
             <>
-              <RoundAction
-                icon="call"
-                label="Call"
-                bg={md.okC}
-                fg={md.onOkC}
-                onPress={() => {
-                  Linking.openURL(`tel:${a.phone}`);
-                  log('call');
-                }}
-              />
-              <RoundAction
-                icon="chat"
-                label="WhatsApp"
-                bg={md.waC}
-                fg={md.onWaC}
-                onPress={() => {
-                  openWhatsApp({ phone: a.phone, whatsapp_number: a.whatsapp_number });
-                  log('whatsapp');
-                }}
-              />
+              <RoundAction icon="call" label="Call" bg={md.okC} fg={md.onOkC} onPress={call} />
+              <RoundAction icon="chat" label="WhatsApp" bg={md.waC} fg={md.onWaC} onPress={whatsapp} />
             </>
           )}
           <RoundAction
@@ -281,6 +463,40 @@ export default function AlumnusScreen() {
               onPress={() => router.push(`/alumni/edit?id=${a.id}` as Href)}
             />
           )}
+        </View>
+      </View>
+
+      {/* ⏰ Next contact */}
+      <View style={[ui.card, late && styles.lateCard]}>
+        <Text style={ui.label}>⏰ NEXT CONTACT</Text>
+        {next ? (
+          <>
+            <Text style={[styles.nextText, late && styles.lateText]}>
+              {late ? '⚠ ' : ''}
+              {whenText(next)}
+            </Text>
+            {!!a.next_contact_note && <Text style={ui.muted}>{a.next_contact_note}</Text>}
+          </>
+        ) : (
+          <Text style={ui.muted}>None set. Set one so you get a reminder.</Text>
+        )}
+        <View style={styles.referRow}>
+          <View style={styles.flex}>
+            <Button
+              title={next ? 'Change' : '⏰ Set next contact'}
+              variant="secondary"
+              onPress={() => setNextOpen(true)}
+              fullWidth
+            />
+          </View>
+          <View style={styles.flex}>
+            <Button
+              title="📝 Log a contact"
+              variant="ghost"
+              onPress={() => setContact({ channel: 'phone', manual: true })}
+              fullWidth
+            />
+          </View>
         </View>
       </View>
 
@@ -436,28 +652,137 @@ export default function AlumnusScreen() {
           />
           <Button title="Save" onPress={saveNote} loading={busy} disabled={!note.trim()} />
         </View>
-        {events.map((e) => (
-          <View key={e.id} style={styles.event}>
-            <Text style={styles.eventIcon}>{EVENT_TEXT[e.kind]?.icon ?? '•'}</Text>
-            <View style={styles.flex}>
-              <Text style={styles.eventText}>
-                {e.kind === 'note' ? e.body : (EVENT_TEXT[e.kind]?.text ?? e.kind)}
-                {e.kind !== 'note' && e.body ? `: ${e.body}` : ''}
-              </Text>
-              <Text style={ui.muted}>
-                {when(e.created_at)}
-                {e.by?.full_name ? ` · ${e.by.full_name}` : ''}
-              </Text>
-            </View>
+        {undo && (
+          <View style={styles.undo}>
+            <Text style={styles.undoText}>🗑 Deleted</Text>
+            <Pressable onPress={restore} hitSlop={8} accessibilityRole="button">
+              <Text style={styles.link}>↩ Undo</Text>
+            </Pressable>
           </View>
+        )}
+        {pinned.length > 0 && (
+          <View style={styles.pinned}>
+            {pinned.map((e) => (
+              <EventRow key={e.id} e={e} onLongPress={() => setMenuFor(e)} />
+            ))}
+          </View>
+        )}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shows}>
+          {SHOWS.map((o) => (
+            <Chip key={o.key} text={o.label} on={show === o.key} onPress={() => setShow(o.key)} />
+          ))}
+        </ScrollView>
+        {shownEvents.length === 0 && <Text style={ui.muted}>Nothing here yet.</Text>}
+        {shownEvents.map((e) => (
+          <EventRow key={e.id} e={e} onLongPress={() => setMenuFor(e)} />
         ))}
+        {live.length > 0 && <Text style={styles.hint}>Hold a note to pin or delete it.</Text>}
       </View>
 
       {error && <Text style={ui.error}>{error}</Text>}
       {access.manage && <Button title="Delete" variant="ghost" onPress={remove} fullWidth />}
 
       {referring && <AddReferralSheet alumniId={a.id} alumniName={a.name} onClose={() => setReferring(false)} />}
+      {contact && (
+        <AlumniContactSheet
+          alumnus={{ id: a.id, name: a.name, phone: a.phone }}
+          channel={contact.channel}
+          estimatedSec={contact.estimatedSec}
+          deviceCallId={contact.deviceCallId}
+          waEvent={contact.waEvent}
+          manual={contact.manual}
+          onClose={() => setContact(null)}
+          onSaved={contactSaved}
+        />
+      )}
+      {nextOpen && (
+        <NextContactSheet
+          title={`Next contact · ${a.name}`}
+          canClear={!!next}
+          onClose={() => setNextOpen(false)}
+          onSave={async (at, n) => {
+            await setAlumniNextContact([a.id], at, n);
+            setNextOpen(false);
+            alumniChanged();
+          }}
+        />
+      )}
+      {menuFor && (
+        <MenuSheet
+          title={EVENT_TEXT[menuFor.kind]?.text ?? 'Entry'}
+          onClose={() => setMenuFor(null)}
+          items={[
+            ...(menuFor.body && ['note', 'call', 'whatsapp', 'message'].includes(menuFor.kind)
+              ? [
+                  {
+                    label: menuFor.pinned ? 'Unpin' : '📌 Pin to the top',
+                    icon: 'push-pin' as MIconName,
+                    onPress: () => pin(menuFor),
+                  },
+                ]
+              : []),
+            ...(canDeleteAlumniEvent(menuFor, profile?.id ?? null, access.manage)
+              ? [{ label: 'Delete', icon: 'delete-outline' as MIconName, danger: true, onPress: () => del(menuFor) }]
+              : []),
+            ...(menuFor.body
+              ? [
+                  {
+                    label: 'Copy the text',
+                    icon: 'content-copy' as MIconName,
+                    onPress: () => (setMenuFor(null), copyLink(menuFor.body ?? '')),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      )}
     </ScrollView>
+  );
+}
+
+/** One line of the history (a call: its result, direction, length) */
+function EventRow({ e, onLongPress }: { e: AlumniEvent; onLongPress: () => void }) {
+  const isContact = CONTACT_KINDS.includes(e.kind) && !!e.outcome;
+  const out = isContact ? outcomeInfo(e.outcome as string) : null;
+  const dir = isContact && e.direction ? directionInfo(e.direction) : null;
+  const head = isContact
+    ? [
+        channelLabel(e.channel, e.media) || (e.kind === 'message' ? 'SMS' : 'Call'),
+        dir ? `${dir.arrow} ${dir.label}` : null,
+        out ? `${out.icon} ${out.label}` : null,
+        e.duration_sec ? formatDuration(e.duration_sec) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : null;
+  return (
+    <Pressable onLongPress={onLongPress} delayLongPress={350} style={styles.event} accessibilityHint="Hold for more">
+      <Text style={styles.eventIcon}>{e.pinned ? '📌' : (EVENT_TEXT[e.kind]?.icon ?? '•')}</Text>
+      <View style={styles.flex}>
+        {head ? (
+          <>
+            <Text style={styles.eventHead}>{head}</Text>
+            {!!e.body && <Text style={styles.eventText}>{e.body}</Text>}
+          </>
+        ) : (
+          <Text style={styles.eventText}>
+            {e.kind === 'note' ? e.body : (EVENT_TEXT[e.kind]?.text ?? e.kind)}
+            {e.kind === 'next_contact'
+              ? typeof e.data?.at === 'string'
+                ? `: ${whenText(e.data.at as string)}${e.body ? ` · ${e.body}` : ''}`
+                : ': removed'
+              : e.kind !== 'note' && e.body
+                ? `: ${e.body}`
+                : ''}
+          </Text>
+        )}
+        <Text style={ui.muted}>
+          {when(e.happened_at ?? e.created_at)}
+          {e.by?.full_name ? ` · ${e.by.full_name}` : ''}
+          {e.source === 'phone' ? ' · from the phone' : e.source === 'whatsapp' ? ' · from WhatsApp' : ''}
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -558,6 +883,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   event: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 4 },
+  eventHead: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
+  pinned: {
+    gap: 2,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: md.goldC,
+  },
+  shows: { gap: spacing.xs, paddingVertical: spacing.xs },
+  hint: { fontSize: fontSize.caption, color: colors.textMuted, marginTop: spacing.xs },
+  undo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: md.surface2,
+  },
+  undoText: { fontSize: fontSize.small, color: colors.text },
+  nextText: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  lateCard: { backgroundColor: md.warnC },
+  lateText: { color: md.onWarnC },
   eventIcon: { width: 22, fontSize: 15, textAlign: 'center' },
   eventText: { fontSize: fontSize.small, color: colors.text },
 });

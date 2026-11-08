@@ -87,6 +87,7 @@ import { onVoiceSaved } from '@/features/voice/useVoiceNotes';
 import { isWeb } from '@/features/web/api';
 import { WebStudentLayout } from '@/features/web/student/WebStudentLayout';
 import { ChanceCard } from '@/features/aiChance/ChanceCard';
+import { getAlumnus } from '@/features/alumni/api';
 import { AdmissionCreditCard } from '@/features/aiCredit/AdmissionCreditCard';
 import { ApprovalCard } from '@/features/approval/ApprovalCard';
 import { peekMemo, remember } from '@/shared/lib/memo';
@@ -351,6 +352,27 @@ export function LeadDetailView({
       })
       .catch(() => undefined);
   }, [waCall, lead, id]);
+
+  // 🎓 Not a lead but an alumnus (the phone's caller card / "add a note"
+  //   alerts open /leads/<id> for alumni too): go on to the alumnus
+  useEffect(() => {
+    if (loading || lead || !id || embedded) return;
+    let live = true;
+    getAlumnus(id)
+      .then((al) => {
+        if (!live || !al) return;
+        const q = callNote
+          ? `?callNote=${encodeURIComponent(String(callNote))}`
+          : waCall
+            ? `?waCall=${encodeURIComponent(String(waCall))}`
+            : '';
+        router.replace(`/alumni/${al.id}${q}` as Href);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [loading, lead, id, embedded, callNote, waCall]);
 
   const closeSheet = () => {
     setSheetVisible(false);

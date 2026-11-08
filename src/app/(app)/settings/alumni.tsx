@@ -25,6 +25,7 @@ import {
   type PublicForms,
   listAlumniFields,
   saveAlumniField,
+  ALUMNI_FILTER_LABEL,
   saveAlumniSettings,
   type AlumniField,
   type AlumniFieldType,
@@ -180,6 +181,60 @@ export default function AlumniSettingsScreen() {
             ))}
           </>
         )}
+      </View>
+
+      {/* ⏰ Reminders */}
+      <View style={ui.card}>
+        <Text style={styles.title}>⏰ Reminders</Text>
+        <View style={styles.switchRow}>
+          <View style={styles.flex}>
+            <Text style={ui.muted}>Next contact is due → a notification to the one who looks after them</Text>
+          </View>
+          <Switch
+            value={settings.reminders.next_contact}
+            onValueChange={(v) => set({ ...settings, reminders: { ...settings.reminders, next_contact: v } })}
+          />
+        </View>
+        <View style={styles.switchRow}>
+          <View style={styles.flex}>
+            <Text style={ui.muted}>🎂 Birthdays (9 am) → to the one who looks after them, else the managers</Text>
+          </View>
+          <Switch
+            value={settings.reminders.birthdays}
+            onValueChange={(v) => set({ ...settings, reminders: { ...settings.reminders, birthdays: v } })}
+          />
+        </View>
+      </View>
+
+      {/* 🔍 Filters on the list */}
+      <View style={ui.card}>
+        <Text style={styles.title}>🔍 Filters on the alumni list</Text>
+        <Text style={ui.muted}>Switch off the ones you don’t use; ↑ moves one up.</Text>
+        {settings.filters.map((f, i) => (
+          <View key={f.key} style={styles.switchRow}>
+            <Pressable
+              onPress={() => {
+                if (i === 0) return;
+                const list = [...settings.filters];
+                [list[i - 1], list[i]] = [list[i], list[i - 1]];
+                set({ ...settings, filters: list });
+              }}
+              disabled={i === 0}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`Move ${ALUMNI_FILTER_LABEL[f.key]} up`}
+            >
+              <Text style={[styles.up, i === 0 && styles.upOff]}>↑</Text>
+            </Pressable>
+            <Text style={[styles.flex, styles.filterName]}>{ALUMNI_FILTER_LABEL[f.key]}</Text>
+            <Switch
+              value={f.enabled}
+              onValueChange={(v) =>
+                set({ ...settings, filters: settings.filters.map((x) => (x.key === f.key ? { ...x, enabled: v } : x)) })
+              }
+            />
+          </View>
+        ))}
       </View>
 
       {error && <Text style={ui.error}>{error}</Text>}
@@ -389,6 +444,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   title: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  up: { width: 28, fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.primary, textAlign: 'center' },
+  upOff: { color: colors.border },
+  filterName: { fontSize: fontSize.body, color: colors.text },
   text: { fontSize: fontSize.small, color: colors.text },
   small: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.primary },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
@@ -444,7 +502,9 @@ function PublicLinksCard() {
       <View style={linkStyles.row}>
         <View style={linkStyles.flex}>
           <Text style={linkStyles.title}>Alumni referral links</Text>
-          <Text style={ui.muted}>Each alumnus shares their own link; friends who fill it come to the Referral inbox.</Text>
+          <Text style={ui.muted}>
+            Each alumnus shares their own link; friends who fill it come to the Referral inbox.
+          </Text>
         </View>
         <Switch value={v.refer} onValueChange={(x) => change({ ...v, refer: x })} />
       </View>
@@ -452,8 +512,8 @@ function PublicLinksCard() {
         <View style={linkStyles.flex}>
           <Text style={linkStyles.title}>Interested-person form</Text>
           <Text style={ui.muted}>
-            For the college page, posters and QR codes. Each form becomes a new lead (source “Website form”), given out by
-            the usual assignment rules. A known number adds a line to that lead instead.
+            For the college page, posters and QR codes. Each form becomes a new lead (source “Website form”), given out
+            by the usual assignment rules. A known number adds a line to that lead instead.
           </Text>
         </View>
         <Switch value={v.apply} onValueChange={(x) => change({ ...v, apply: x })} />

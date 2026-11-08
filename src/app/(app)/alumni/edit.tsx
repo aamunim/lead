@@ -43,7 +43,24 @@ type Form = {
   owner_id: string | null;
   do_not_contact: boolean;
   custom: Record<string, Json>;
+  /** 🎂 as typed: 25/5/1990 (or 1990-05-25) */
+  birth: string;
 };
+
+/** "25/5/1990" or "1990-05-25" → "1990-05-25"; "" → null; anything else → undefined (wrong) */
+function birthIso(text: string): string | null | undefined {
+  const t = text.trim();
+  if (!t) return null;
+  let y: number, m: number, d: number;
+  const dmy = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  const ymd = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (dmy) [d, m, y] = [Number(dmy[1]), Number(dmy[2]), Number(dmy[3])];
+  else if (ymd) [y, m, d] = [Number(ymd[1]), Number(ymd[2]), Number(ymd[3])];
+  else return undefined;
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d || y < 1930 || date > new Date()) return undefined;
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
 
 const EMPTY: Form = {
   name: '',
@@ -65,6 +82,7 @@ const EMPTY: Form = {
   owner_id: null,
   do_not_contact: false,
   custom: {},
+  birth: '',
 };
 
 export default function AlumnusEditScreen() {
@@ -111,6 +129,12 @@ export default function AlumnusEditScreen() {
             owner_id: a.owner_id,
             do_not_contact: a.do_not_contact,
             custom: a.custom ?? {},
+            birth: a.birth_date
+              ? (() => {
+                  const [y, m, d] = a.birth_date.split('-');
+                  return `${Number(d)}/${Number(m)}/${y}`;
+                })()
+              : '',
           });
         }
       })
@@ -126,6 +150,8 @@ export default function AlumnusEditScreen() {
     if (!form.name.trim()) return setError('Please type the name.');
     if (form.passing_year && !/^\d{4}$/.test(form.passing_year.trim()))
       return setError('Passing year: 4 digits, like 2024.');
+    const birth = birthIso(form.birth);
+    if (birth === undefined) return setError('Birthday: day/month/year, like 25/5/1990.');
     for (const f of fields) {
       const v = form.custom[f.key];
       if (f.required && (v === undefined || v === null || String(v).trim() === ''))
@@ -134,8 +160,10 @@ export default function AlumnusEditScreen() {
     setSaving(true);
     setError(null);
     setDupId(null);
+    const { birth: _typed, ...rest } = form;
     const row: AlumnusInput = {
-      ...form,
+      ...rest,
+      birth_date: birth,
       passing_year: form.passing_year.trim() || null,
       tags: form.tags
         .split(',')
@@ -242,6 +270,13 @@ export default function AlumnusEditScreen() {
           </View>
         </View>
         <TextField label="Roll / Student ID" value={form.student_ref} onChangeText={(v) => set('student_ref', v)} />
+        <TextField
+          label="🎂 Birthday (for a wish on the day)"
+          value={form.birth}
+          onChangeText={(v) => set('birth', v)}
+          placeholder="25/5/1990"
+          keyboardType="numbers-and-punctuation"
+        />
       </View>
 
       <View style={ui.card}>
