@@ -38,6 +38,9 @@ export type AiKeyStatus = {
   updated_at: string | null;
   last_ok_at: string | null;
   last_error: string | null;
+  /** the last time Claude could not answer (any reason), for Settings → AI */
+  last_problem?: string | null;
+  last_problem_at?: string | null;
   server_ready: boolean;
 };
 
@@ -84,6 +87,8 @@ export type LeadCredit = {
   model: string | null;
   /** which AI gave the shares above */
   provider: AiProvider | null;
+  /** admins: the other AI could not answer this time */
+  side_note: string | null;
   /** 🗂 every AI's latest answer (newest first) */
   answers: CreditAnswer[];
 };
@@ -236,6 +241,7 @@ export function getLeadCredit(leadId: string, force = false): Promise<LeadCredit
         done_at: d.done_at ?? null,
         model: d.model ?? null,
         provider: d.provider ?? null,
+        side_note: d.side_note ?? null,
         answers: (d.answers ?? []).map((a) => ({
           ...a,
           shares: (a.shares ?? []).map((x) => ({ ...x, share: Number(x.share) })),

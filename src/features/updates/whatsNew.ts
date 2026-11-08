@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-h',
+    date: '8 Nov 2026',
+    title: '🔧 Gemini answers more reliably',
+    items: [
+      '🔧 Gemini works with every Flash model (a smaller model no longer fails), and “Test” now puts the best model first (2.5 Flash)',
+      '⚡ “Both (compare)”: the two AIs look at the same time, so a lead is done in half the time',
+      '⚠️ Admins: when one AI could not answer, the lead card says why, and Settings → AI shows each AI’s last problem',
+    ],
+  },
+  {
     key: '2026-11-08-g',
     date: '8 Nov 2026',
     title: '🤖 Gemini (free) next to Claude',

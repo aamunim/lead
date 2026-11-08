@@ -45,7 +45,7 @@ import {
   type AiProvidersSetting,
   type GeminiKeyStatus,
 } from '@/features/aiProviders/api';
-import { GeminiCard, ModePicker, ProviderNumbers } from '@/features/aiProviders/AiProvidersSection';
+import { GeminiCard, LastProblem, ModePicker, ProviderNumbers } from '@/features/aiProviders/AiProvidersSection';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { listRoles, type RoleOption } from '@/features/users/api';
 import { supabase } from '@/shared/lib/supabase';
@@ -294,6 +294,7 @@ export default function AiSettingsScreen() {
             <Text style={styles.rowTitle}>{key?.set ? key.hint : 'Not set'}</Text>
             <Text style={[styles.rowText, key?.last_error ? styles.bad : null]}>{keyLine}</Text>
             {key?.set && key.updated_at && <Text style={styles.rowText}>Saved {when(key.updated_at)}</Text>}
+            {!key?.last_error && <LastProblem text={key?.last_problem} at={key?.last_problem_at} />}
           </View>
         </View>
         <TextInput

@@ -275,6 +275,12 @@ async function one(cfg: AiConfig, leadId: string, down: Set<Provider>): Promise<
       if (!lastError) break;
     }
     if (lastError) throw new Error(lastError);
+    // the other AI could not answer (compare / Gemini then Claude): a note on the lead for admins (cleared when all went well)
+    await admin.rpc('ai_side_note', {
+      p_feature: 'chance',
+      p_lead: leadId,
+      p_error: r.errors.length > 0 ? r.errors.map((e) => e.message).join(' · ') : null,
+    });
     return 'ok';
   } catch (e) {
     await admin.rpc('ai_chance_fail', {

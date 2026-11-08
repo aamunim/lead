@@ -327,6 +327,8 @@ export const ChanceCard = memo(function ChanceCard({
         </View>
       )}
       {!!error && <Text style={styles.bad}>{error}</Text>}
+      {/* admins: the other AI could not answer this time */}
+      {!waiting && !!c.side_note && <Text style={styles.sideNote}>⚠️ {c.side_note}</Text>}
 
       <View style={styles.foot}>
         <Text style={styles.when}>
@@ -424,6 +426,7 @@ const styles = StyleSheet.create({
   waitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   muted: { flexShrink: 1, fontSize: fontSize.small, lineHeight: 20, color: colors.textMuted },
   bad: { fontSize: fontSize.small, color: colors.danger },
+  sideNote: { fontSize: fontSize.caption, lineHeight: 17, color: colors.danger },
   foot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   when: { flex: 1, fontSize: fontSize.caption, color: colors.textMuted },
   checkBtn: { paddingVertical: 4, paddingHorizontal: spacing.xs },

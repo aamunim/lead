@@ -109,7 +109,8 @@ function geminiError(status: number, data: GeminiReply): AiError {
 }
 
 async function geminiJson<T>(key: string, model: string, r: JsonRequest): Promise<Answer<T>> {
-  const make = (withSchema: boolean) => ({
+  // a smaller model (e.g. 2.0 Flash) allows fewer output tokens; the 2.5 ones allow 64k
+  const make = (withSchema: boolean, maxOut: number) => ({
     systemInstruction: {
       parts: [
         {
@@ -122,18 +123,22 @@ async function geminiJson<T>(key: string, model: string, r: JsonRequest): Promis
     contents: [{ role: 'user', parts: [{ text: r.user }] }],
     generationConfig: {
       responseMimeType: 'application/json',
-      maxOutputTokens: Math.max(r.maxTokens, 16000),
+      maxOutputTokens: maxOut,
       ...(withSchema ? { responseJsonSchema: r.schema } : {}),
     },
   });
   const path = `${modelPath(model)}:generateContent`;
-  let { status, data } = await geminiFetch(key, path, make(true));
-  // an older model / API version that doesn't take a JSON schema: the schema goes into the instructions
+  let { status, data } = await geminiFetch(key, path, make(true, Math.max(r.maxTokens, 32000)));
+  // an older model / API version that doesn't take a JSON schema or so many output tokens:
+  // the schema goes into the instructions, and the answer is kept to 8k tokens
   if (
     status === 400 &&
-    /response_?json_?schema|responseJsonSchema|Unknown name|schema/i.test(data.error?.message ?? '')
+    /response_?json_?schema|responseJsonSchema|Unknown name|schema|max_?output_?tokens|maxOutputTokens|token/i.test(
+      data.error?.message ?? '',
+    )
   ) {
-    ({ status, data } = await geminiFetch(key, path, make(false)));
+    console.warn('gemini: asking again the simple way:', data.error?.message);
+    ({ status, data } = await geminiFetch(key, path, make(false, 8192)));
   }
   if (status < 200 || status >= 300) throw geminiError(status, data);
 
@@ -174,6 +179,12 @@ async function geminiJson<T>(key: string, model: string, r: JsonRequest): Promis
   };
 }
 
+const rank = (m: { name: string; outputTokenLimit?: number }) =>
+  ((m.outputTokenLimit ?? 0) >= 32000 ? 8 : 0) +
+  (/lite/i.test(m.name) ? 0 : 4) +
+  (/preview|latest/i.test(m.name) ? 0 : 2) +
+  (/^models\/gemini-[\d.]+-flash$/i.test(m.name) ? 1 : 0);
+
 /** Settings → AI "Test": is the key good, and which Flash models may it use (the free tier) */
 export async function testGemini(key: string) {
   const { status, data } = await geminiFetch(key, 'models?pageSize=200');
@@ -187,6 +198,7 @@ export async function testGemini(key: string) {
       name: string;
       displayName?: string;
       supportedGenerationMethods?: string[];
+      outputTokenLimit?: number;
     }[]
   )
     .filter(
@@ -195,6 +207,8 @@ export async function testGemini(key: string) {
         /flash/i.test(m.name) &&
         !/image|tts|audio|live|embedding|vision|exp-/i.test(m.name),
     )
+    // the best for this work first: big answers (2.5 and newer), not "lite", not a preview
+    .sort((a, b) => rank(b) - rank(a))
     .map((m) => ({ name: m.name, label: m.displayName ?? m.name.replace(/^models\//, '') }));
   await keyResult(true, null, 'gemini');
   return { ok: true, models };
@@ -239,6 +253,8 @@ export async function askJson<T>(cfg: AiConfig, provider: Provider, r: JsonReque
 // ---------------------------------------------------------------------
 /** A problem with one AI: note it (key refused / quota) and leave that AI out for the rest of this run */
 async function noteError(e: AiError, down: Set<Provider>) {
+  // 📝 every problem is remembered (Settings → AI shows the last one), so a quiet fall-back to the other AI can be seen
+  await admin.rpc('ai_provider_problem', { p_provider: e.provider, p_error: e.message });
   if (e.kind === 'key' || e.kind === 'credit') {
     await keyResult(false, e.message, e.provider);
     down.add(e.provider);
@@ -268,16 +284,31 @@ export async function answerByPlan<T>(
   const usable = (p: Provider) => !opts.down.has(p) && (p !== 'claude' || opts.allowClaude);
   const answers: Answer<T>[] = [];
   const errors: AiError[] = [];
+  const fail = async (p: Provider, e: unknown) => {
+    const err = e instanceof AiError ? e : new AiError(p, 'other', e instanceof Error ? e.message : String(e));
+    errors.push(err);
+    await noteError(err, opts.down);
+  };
+  // compare: both at once (one after the other could pass the server's time limit)
+  if (cfg.plan.mode === 'compare') {
+    const list = cfg.plan.providers.filter(usable);
+    const got = await Promise.allSettled(list.map((p) => askJson<T>(cfg, p, r)));
+    for (let i = 0; i < list.length; i++) {
+      const g = got[i];
+      if (g.status === 'fulfilled') answers.push(g.value);
+      else await fail(list[i], g.reason);
+    }
+    const shown = answers.find((a) => a.provider === 'claude') ?? answers[0] ?? null;
+    return { answers, shown, errors, exhausted: cfg.plan.providers.every((p) => !usable(p)) };
+  }
   for (const p of cfg.plan.providers) {
     if (!usable(p)) continue;
     try {
       answers.push(await askJson<T>(cfg, p, r));
-      if (cfg.plan.mode !== 'compare') break; // one answer is enough
+      break; // one answer is enough
     } catch (e) {
-      const err = e instanceof AiError ? e : new AiError(p, 'other', e instanceof Error ? e.message : String(e));
-      errors.push(err);
-      await noteError(err, opts.down);
-      // gemini_then_claude / compare: go on with the next AI
+      await fail(p, e);
+      // gemini_then_claude: go on with the next AI
     }
   }
   const shown = answers.find((a) => a.provider === 'claude') ?? answers[0] ?? null;
