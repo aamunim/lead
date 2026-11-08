@@ -71,8 +71,12 @@ export function aiClient(cfg: AiConfig): Anthropic {
   });
 }
 
+/** The Claude models Settings → AI offers (anything else: the default) */
+export const CLAUDE_MODELS = ['claude-sonnet-5-5', 'claude-haiku-5-5'];
+
 export function modelOf(cfg: AiConfig): string {
-  return cfg.settings.model || DEFAULT_MODEL;
+  const m = cfg.settings.model ?? '';
+  return CLAUDE_MODELS.includes(m) ? m : DEFAULT_MODEL;
 }
 
 export function effortOf(cfg: AiConfig): 'low' | 'medium' | 'high' {
@@ -261,6 +265,8 @@ export async function askClaude(
   ai: Anthropic,
   params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'betas' | 'fallbacks'>,
 ): Promise<Anthropic.Beta.BetaMessage> {
+  // Haiku has no server-side fallback: ask it plainly (no wasted refused request first)
+  if (/haiku/i.test(String(params.model))) return await ai.beta.messages.create(params);
   try {
     return await ai.beta.messages.create({
       ...params,

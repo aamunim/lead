@@ -46,6 +46,27 @@ export const MODES: { key: AiMode; label: string; text: string; needs: AiProvide
   },
 ];
 
+// ---------------------------------------------------------------------
+// 🧠 Which Claude model a feature uses (per feature, Settings → AI)
+// ---------------------------------------------------------------------
+export type ClaudeModel = 'claude-sonnet-5-5' | 'claude-haiku-5-5';
+
+export const CLAUDE_MODELS: { key: ClaudeModel; label: string; text: string }[] = [
+  {
+    key: 'claude-haiku-5-5',
+    label: 'Haiku 5.5 · cheap',
+    text: 'About a twentieth of Sonnet’s price ($0.10 / $0.50 per million tokens). Good for many leads every day; the advice can be a little simpler.',
+  },
+  {
+    key: 'claude-sonnet-5-5',
+    label: 'Sonnet 5.5 · best',
+    text: 'The most careful answers ($2 / $10 per million tokens). About 20 times Haiku’s price.',
+  },
+];
+
+export const claudeModelOf = (v: unknown): ClaudeModel =>
+  v === 'claude-haiku-5-5' ? 'claude-haiku-5-5' : 'claude-sonnet-5-5';
+
 export const modeOf = (v: unknown): AiMode =>
   v === 'gemini' || v === 'gemini_then_claude' || v === 'compare' ? v : 'claude';
 

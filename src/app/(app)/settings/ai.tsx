@@ -45,7 +45,13 @@ import {
   type AiProvidersSetting,
   type GeminiKeyStatus,
 } from '@/features/aiProviders/api';
-import { GeminiCard, LastProblem, ModePicker, ProviderNumbers } from '@/features/aiProviders/AiProvidersSection';
+import {
+  ClaudeModelPicker,
+  GeminiCard,
+  LastProblem,
+  ModePicker,
+  ProviderNumbers,
+} from '@/features/aiProviders/AiProvidersSection';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { listRoles, type RoleOption } from '@/features/users/api';
 import { supabase } from '@/shared/lib/supabase';
@@ -389,6 +395,7 @@ export default function AiSettingsScreen() {
           <Switch value={cs.enabled} onValueChange={(v) => patchC({ enabled: v })} />
         </View>
         {gkey && <ModePicker value={cs.provider} onChange={(m) => patchC({ provider: m })} prov={prov} />}
+        {cs.provider !== 'gemini' && <ClaudeModelPicker value={cs.model} onChange={(m) => patchC({ model: m })} />}
       </View>
 
       <ChanceControls cs={cs} patch={patchC} keySet={chanceReady} onNote={setNote} />
@@ -420,7 +427,7 @@ export default function AiSettingsScreen() {
           )}
           <Text style={styles.rowText}>
             Claude used so far: {cov.tokens_in.toLocaleString()} tokens in, {cov.tokens_out.toLocaleString()} out (about
-            ${((cov.tokens_in * 2 + cov.tokens_out * 10) / 1_000_000).toFixed(2)})
+            ${(cov.cost_usd ?? (cov.tokens_in * 2 + cov.tokens_out * 10) / 1_000_000).toFixed(2)})
           </Text>
         </View>
       )}
@@ -490,6 +497,7 @@ export default function AiSettingsScreen() {
           <Switch value={s.enabled} onValueChange={(v) => patch({ enabled: v })} />
         </View>
         {gkey && <ModePicker value={s.provider} onChange={(m) => patch({ provider: m })} prov={prov} />}
+        {s.provider !== 'gemini' && <ClaudeModelPicker value={s.model} onChange={(m) => patch({ model: m })} />}
       </View>
 
       {ov && (
@@ -506,7 +514,7 @@ export default function AiSettingsScreen() {
           )}
           <Text style={styles.rowText}>
             Claude used so far: {ov.tokens_in.toLocaleString()} tokens in, {ov.tokens_out.toLocaleString()} out (about $
-            {((ov.tokens_in * 2 + ov.tokens_out * 10) / 1_000_000).toFixed(2)})
+            {(ov.cost_usd ?? (ov.tokens_in * 2 + ov.tokens_out * 10) / 1_000_000).toFixed(2)})
           </Text>
           <Button
             title={
@@ -601,8 +609,8 @@ export default function AiSettingsScreen() {
       )}
       <Button title="Save" onPress={onSave} loading={busy === 'save'} disabled={!dirty || !!busy} fullWidth />
       <Text style={styles.hint}>
-        Claude: Sonnet 5.5 · about $0.02–0.05 for each admission (paid from your Claude API credit). Gemini: the free
-        tier, $0 (it has a daily limit; when it is used up Gemini rests a while and the work waits).
+        Claude (paid from your Claude API credit): Sonnet 5.5 about $0.02–0.05 a lead, Haiku 5.5 about $0.001–0.003.
+        Gemini: the free tier, $0 (it has a daily limit; when it is used up Gemini rests a while and the work waits).
       </Text>
     </ScrollView>
   );

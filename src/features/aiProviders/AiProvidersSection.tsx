@@ -3,11 +3,14 @@ import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-nati
 
 import { ask } from '@/features/aiChance/ask';
 import {
+  CLAUDE_MODELS,
+  claudeModelOf,
   MODES,
   removeGeminiKey,
   saveGeminiKey,
   testGeminiKey,
   type AiMode,
+  type ClaudeModel,
   type AiProviderStats,
   type AiProvidersSetting,
   type GeminiKeyStatus,
@@ -275,6 +278,22 @@ export function ModePicker({
 }
 
 const name = (p: 'claude' | 'gemini') => (p === 'claude' ? 'Claude' : 'Gemini');
+
+/** Which Claude model a feature uses (shown when the feature uses Claude) */
+export function ClaudeModelPicker({ value, onChange }: { value: string; onChange: (m: ClaudeModel) => void }) {
+  const current = CLAUDE_MODELS.find((m) => m.key === claudeModelOf(value)) ?? CLAUDE_MODELS[1];
+  return (
+    <View style={styles.modeBox}>
+      <Text style={styles.small}>CLAUDE MODEL</Text>
+      <View style={styles.chips}>
+        {CLAUDE_MODELS.map((m) => (
+          <Chip key={m.key} label={m.label} on={current.key === m.key} onPress={() => onChange(m.key)} />
+        ))}
+      </View>
+      <Text style={styles.rowText}>{current.text}</Text>
+    </View>
+  );
+}
 
 /** Each AI's numbers */
 export function ProviderNumbers({ stats }: { stats: AiProviderStats }) {

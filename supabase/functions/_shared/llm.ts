@@ -368,7 +368,8 @@ export const onlyPauses = (errors: AiError[]) =>
 /** The usage ledger: Claude counts toward the budget, Gemini's free use is kept apart */
 export async function recordUsage(feature: string, a: Answer<unknown>) {
   await admin.rpc('ai_usage_add', {
-    p_feature: a.provider === 'gemini' ? `gemini:${feature}` : feature,
+    // Gemini free and Claude Haiku (a twentieth of Sonnet's price) are kept apart, so each is costed at its own price
+    p_feature: a.provider === 'gemini' ? `gemini:${feature}` : /haiku/i.test(a.model) ? `haiku:${feature}` : feature,
     p_in: a.usage.input_tokens,
     p_out: a.usage.output_tokens,
   });
