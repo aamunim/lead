@@ -237,6 +237,8 @@ export function AdmissionCreditCard({
       )}
 
       {!!error && <Text style={styles.bad}>{error}</Text>}
+      {/* admins: the other AI could not answer this time */}
+      {!!c.side_note && <Text style={styles.sideNote}>⚠️ {c.side_note}</Text>}
 
       {isAdmin && !editing && (
         <View style={styles.actions}>
@@ -424,6 +426,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   link: { paddingVertical: spacing.xs, paddingHorizontal: spacing.xs },
+  sideNote: { fontSize: fontSize.caption, lineHeight: 17, color: colors.danger },
   other: { gap: 4, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.background },
   otherTitle: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text },
   otherLine: { fontSize: fontSize.small, lineHeight: 20, color: colors.text },

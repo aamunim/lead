@@ -57,6 +57,9 @@ export type GeminiKeyStatus = {
   last_error: string | null;
   /** its free limit was used up: resting until then */
   paused_until: string | null;
+  /** the last time Gemini could not answer (any reason) */
+  last_problem?: string | null;
+  last_problem_at?: string | null;
 };
 
 export type FeaturePlan = { mode: AiMode; providers: AiProvider[]; budget_ok: boolean };

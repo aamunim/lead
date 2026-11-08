@@ -68,6 +68,8 @@ export type LeadChance = {
   fresh_today: boolean;
   /** which AI gave the answer above */
   provider: AiProvider | null;
+  /** admins: the other AI could not answer this time */
+  side_note: string | null;
   /** 🗂 every AI's latest answer (newest first): one AI's answer stays when the other answers */
   answers: ChanceAnswer[];
 };
@@ -276,6 +278,7 @@ export function getLeadChance(leadId: string, force = false): Promise<LeadChance
         error: d.error ?? null,
         fresh_today: !!d.fresh_today,
         provider: d.provider ?? null,
+        side_note: d.side_note ?? null,
         answers: (d.answers ?? []).map((a) => ({
           ...a,
           good: a.good ?? [],

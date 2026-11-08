@@ -28,6 +28,16 @@ const when = (iso: string | null) =>
     ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
     : '';
 
+/** The last time an AI could not answer (shown even when the other AI answered in its place) */
+export function LastProblem({ text, at }: { text?: string | null; at?: string | null }) {
+  if (!text) return null;
+  return (
+    <Text style={[styles.rowText, styles.bad]} selectable>
+      Last problem{at ? ` (${when(at)})` : ''}: {text}
+    </Text>
+  );
+}
+
 const GEMINI_DATA_NOTE =
   'Gemini’s free tier: Google may use what is sent to improve its products, and people at Google may read it. ' +
   'Names and phone numbers are never sent, but call notes, course, area and fee talks are. ' +
@@ -157,6 +167,7 @@ export function GeminiCard({
       <View style={styles.divider} />
       <Text style={styles.rowTitle}>{status?.set ? status.hint : 'Gemini API key: not set'}</Text>
       <Text style={[styles.rowText, (status?.last_error || status?.paused_until) && styles.bad]}>{keyLine}</Text>
+      {!status?.last_error && <LastProblem text={status?.last_problem} at={status?.last_problem_at} />}
       <TextInput
         value={newKey}
         onChangeText={setNewKey}
