@@ -65,6 +65,24 @@ export function PublicForm({ mode, code }: { mode: 'refer' | 'apply'; code?: str
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
+  // 🔗 An alumnus's link was opened: counted once per visit (the funnel: opened → referred → admitted)
+  useEffect(() => {
+    if (!code) return;
+    const key = `refer-open:${code.toUpperCase()}`;
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        if (sessionStorage.getItem(key)) return;
+        sessionStorage.setItem(key, '1');
+      }
+    } catch {
+      // no storage (private window): still counted
+    }
+    supabase.rpc('public_refer_open' as never, { p_code: code } as never).then(
+      () => undefined,
+      () => undefined,
+    );
+  }, [code]);
+
   useEffect(() => {
     supabase.rpc('public_form_info' as never, { p_code: code ?? null } as never).then(({ data, error: e }) => {
       if (e || !data) setLoadError(true);
@@ -201,6 +219,164 @@ export function PublicForm({ mode, code }: { mode: 'refer' | 'apply'; code?: str
   );
 }
 
+// =====================================================================
+// ✍️ /update/<token>: an alumnus updates their own details (the office approves)
+// =====================================================================
+type UpdateInfo = {
+  first_name: string;
+  phone_hint: string | null;
+  whatsapp_hint: string | null;
+  email: string | null;
+  workplace: string | null;
+  designation: string | null;
+  district: string | null;
+  upazila: string | null;
+  address: string | null;
+  institute: string | null;
+  pending: boolean;
+};
+
+const UPDATE_FIELDS: { key: keyof UpdateInfo; label: string; placeholder: string; kind?: 'phone' | 'email' }[] = [
+  { key: 'workplace', label: 'কর্মস্থল (স্কুল / প্রতিষ্ঠান)', placeholder: 'যেমন: মিরপুর আইডিয়াল স্কুল' },
+  { key: 'designation', label: 'পদবি', placeholder: 'যেমন: সহকারী শিক্ষক' },
+  { key: 'district', label: 'জেলা', placeholder: 'যেমন: ঢাকা' },
+  { key: 'upazila', label: 'উপজেলা / থানা', placeholder: '' },
+  { key: 'address', label: 'ঠিকানা', placeholder: '' },
+  { key: 'email', label: 'ইমেইল', placeholder: 'you@example.com', kind: 'email' },
+];
+
+export function PublicUpdateForm({ token }: { token: string | null }) {
+  const [info, setInfo] = useState<UpdateInfo | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [phone, setPhone] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (!token) {
+      setLoadError(true);
+      return;
+    }
+    supabase.rpc('public_alumni_update_info' as never, { p_token: token } as never).then(({ data, error: e }) => {
+      if (e) return setLoadError(true);
+      const d = data as unknown as UpdateInfo | null;
+      if (!d) return setLoadError(true);
+      setInfo(d);
+      const v: Record<string, string> = {};
+      for (const f of UPDATE_FIELDS) v[f.key] = (d[f.key] as string | null) ?? '';
+      setValues(v);
+    });
+  }, [token]);
+
+  const send = async () => {
+    if (!info) return;
+    setError(null);
+    if (phone.trim() && !phoneOk(phone)) return setError('সঠিক মোবাইল নম্বর লিখুন (যেমন 017XXXXXXXX)।');
+    if (whatsapp.trim() && !phoneOk(whatsapp)) return setError('সঠিক হোয়াটসঅ্যাপ নম্বর লিখুন।');
+    const data: Record<string, string> = {};
+    for (const f of UPDATE_FIELDS) {
+      const now = (values[f.key] ?? '').trim();
+      if (now && now !== ((info[f.key] as string | null) ?? '')) data[f.key] = now;
+    }
+    if (phone.trim()) data.phone = phone.trim();
+    if (whatsapp.trim()) data.whatsapp_number = whatsapp.trim();
+    if (Object.keys(data).length === 0) return setError('কোনো পরিবর্তন করা হয়নি।');
+    setSending(true);
+    const { error: e } = await supabase.rpc(
+      'public_alumni_update_submit' as never,
+      { p_token: token, p_data: data } as never,
+    );
+    setSending(false);
+    if (e) {
+      if (e.hint === 'again') return setError('কিছুক্ষণ আগেই পাঠানো হয়েছে। এক ঘণ্টা পরে আবার চেষ্টা করুন।');
+      return setError(friendly(e));
+    }
+    setDone(true);
+  };
+
+  return (
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Stack.Screen options={{ title: COLLEGE, headerShown: false }} />
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.brand}>
+          <Image source={LOGO} style={styles.logo} accessibilityIgnoresInvertColors />
+          <Text style={styles.college}>{COLLEGE}</Text>
+        </View>
+        <View style={styles.card}>
+          {!info && !loadError ? (
+            <ActivityIndicator color={colors.primary} style={styles.loader} />
+          ) : loadError || !info ? (
+            <>
+              <Text style={styles.title}>এই লিংকটি এখন চালু নেই</Text>
+              <Text style={styles.muted}>নতুন লিংকের জন্য কলেজে যোগাযোগ করুন।</Text>
+            </>
+          ) : done ? (
+            <View style={styles.done}>
+              <Text style={styles.doneIcon}>✅</Text>
+              <Text style={styles.title}>ধন্যবাদ!</Text>
+              <Text style={styles.text}>আপনার তথ্য আমরা পেয়েছি। যাচাই করে আপডেট করা হবে।</Text>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.title}>আসসালামু আলাইকুম, {info.first_name}!</Text>
+              <Text style={styles.muted}>আপনার তথ্য হালনাগাদ করুন। যা বদলেছে শুধু সেটাই লিখুন।</Text>
+              {info.pending && (
+                <View style={styles.refBadge}>
+                  <Text style={styles.refText}>আগের পাঠানো তথ্য যাচাইয়ের অপেক্ষায় আছে</Text>
+                </View>
+              )}
+              <Field
+                label={`নতুন মোবাইল নম্বর${info.phone_hint ? ` (এখন ${info.phone_hint})` : ''}`}
+                value={phone}
+                onChange={setPhone}
+                placeholder="বদলে থাকলে লিখুন"
+                keyboardType="phone-pad"
+                autoComplete="tel"
+              />
+              <Field
+                label={`হোয়াটসঅ্যাপ নম্বর${info.whatsapp_hint ? ` (এখন ${info.whatsapp_hint})` : ''}`}
+                value={whatsapp}
+                onChange={setWhatsapp}
+                placeholder="বদলে থাকলে লিখুন"
+                keyboardType="phone-pad"
+              />
+              {UPDATE_FIELDS.map((f) => (
+                <Field
+                  key={f.key}
+                  label={f.label}
+                  value={values[f.key] ?? ''}
+                  onChange={(v) => setValues((o) => ({ ...o, [f.key]: v }))}
+                  placeholder={f.placeholder}
+                  keyboardType={f.kind === 'email' ? 'email-address' : undefined}
+                  autoComplete={f.kind === 'email' ? 'email' : undefined}
+                  multiline={f.key === 'address'}
+                />
+              ))}
+              {error && <Text style={styles.error}>{error}</Text>}
+              <Pressable
+                onPress={send}
+                disabled={sending}
+                style={({ pressed }) => [styles.submit, (pressed || sending) && styles.submitPressed]}
+                accessibilityRole="button"
+              >
+                {sending ? (
+                  <ActivityIndicator color={colors.textOnPrimary} />
+                ) : (
+                  <Text style={styles.submitText}>পাঠান</Text>
+                )}
+              </Pressable>
+              <Text style={styles.small}>এই লিংকটি শুধু আপনার জন্য। অন্য কাউকে দেবেন না।</Text>
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
 function Field({
   label,
   value,
@@ -215,8 +391,8 @@ function Field({
   onChange: (v: string) => void;
   placeholder?: string;
   multiline?: boolean;
-  keyboardType?: 'phone-pad';
-  autoComplete?: 'name' | 'tel';
+  keyboardType?: 'phone-pad' | 'email-address';
+  autoComplete?: 'name' | 'tel' | 'email';
 }) {
   return (
     <View style={styles.field}>

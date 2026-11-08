@@ -165,7 +165,28 @@ export async function uploadLeadFile(input: {
   if (input.context) parameters.context = input.context;
 
   if (input.originalSize) parameters.original_size = String(input.originalSize);
+  return sendUpload<LeadFile & { compressed?: { from: number; to: number; account: string } | null }>(
+    parameters,
+    input,
+  );
+}
 
+/** 🎓 An alumnus's voice note → their Drive folder (Alumni / Name – Phone / Voice notes) + a note on their history */
+export async function uploadAlumniVoice(alumniId: string, uri: string, seconds: number): Promise<{ id: string }> {
+  const now = new Date();
+  const name = `Voice ${now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} ${now
+    .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    .replace(':', '-')}.m4a`;
+  return sendUpload<{ id: string }>(
+    { alumni_id: alumniId, kind: 'voice', name, duration_sec: String(Math.max(1, Math.round(seconds))) },
+    { uri, name, mimeType: 'audio/mp4' },
+  );
+}
+
+async function sendUpload<T>(
+  parameters: Record<string, string>,
+  input: { uri: string; name: string; mimeType: string; file?: Blob | null },
+): Promise<T> {
   let res: { status: number; body: string };
   try {
     if (Platform.OS === 'web') {
@@ -193,7 +214,7 @@ export async function uploadLeadFile(input: {
         : m || 'Could not upload.',
     );
   }
-  let body: { error?: string } & Partial<LeadFile> = {};
+  let body: { error?: string } = {};
   try {
     body = JSON.parse(res.body);
   } catch {
@@ -206,7 +227,7 @@ export async function uploadLeadFile(input: {
         : (body.error ?? `Could not upload (${res.status}).`),
     );
   }
-  return body as LeadFile & { compressed?: { from: number; to: number; account: string } | null };
+  return body as T;
 }
 
 /**
@@ -265,10 +286,10 @@ export async function listLeadVoiceNotes(leadId: string, limit = 20): Promise<Le
 // ---------------------------------------------------------------------
 // 🌐 Website: no phone file system; the browser downloads / shows it
 // ---------------------------------------------------------------------
-async function fetchFileBlob(id: string): Promise<Blob> {
+async function fetchFileBlob(id: string, param: 'id' | 'alumni_file' = 'id'): Promise<Blob> {
   let res: Response;
   try {
-    res = await fetch(`${FUNCTIONS}/drive-file?id=${encodeURIComponent(id)}`, { headers: await authHeaders() });
+    res = await fetch(`${FUNCTIONS}/drive-file?${param}=${encodeURIComponent(id)}`, { headers: await authHeaders() });
   } catch {
     throw new Error('No internet connection. Please try again.');
   }
@@ -344,17 +365,21 @@ export async function saveZip(zip: LeadZip, how: 'save' | 'share'): Promise<bool
 }
 
 /** Download through the server into the phone's cache (kept for next time) */
-export async function downloadLeadFile(f: Pick<LeadFile, 'id' | 'name'>): Promise<File> {
+export async function downloadLeadFile(
+  f: Pick<LeadFile, 'id' | 'name'>,
+  /** 🎓 'alumni_file': an alumnus's voice note */
+  param: 'id' | 'alumni_file' = 'id',
+): Promise<File> {
   // 🌐 Website: a link to the file in the browser's memory (only .uri is used)
   if (Platform.OS === 'web') {
-    const blob = await fetchFileBlob(f.id);
+    const blob = await fetchFileBlob(f.id, param);
     return { uri: URL.createObjectURL(blob), exists: true } as unknown as File;
   }
   const safeName = `${f.id.slice(0, 8)}-${f.name.replace(/[^\w.\- ]+/g, '_')}`;
   const target = new File(Paths.cache, safeName);
   if (!target.exists) {
     try {
-      await File.downloadFileAsync(`${FUNCTIONS}/drive-file?id=${encodeURIComponent(f.id)}`, target, {
+      await File.downloadFileAsync(`${FUNCTIONS}/drive-file?${param}=${encodeURIComponent(f.id)}`, target, {
         headers: await authHeaders(),
       });
     } catch (e) {

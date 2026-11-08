@@ -71,7 +71,9 @@ export async function callScript<T>(script: Script, action: string, payload: Rec
     );
   }
   if (body.error) {
-    throw new Error(body.error === 'Not allowed' ? 'The secret key does not match the script.' : `Google Drive: ${body.error}`);
+    throw new Error(
+      body.error === 'Not allowed' ? 'The secret key does not match the script.' : `Google Drive: ${body.error}`,
+    );
   }
   return body as T;
 }
@@ -102,7 +104,12 @@ export async function rootFolder(): Promise<string> {
   return id;
 }
 
-const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+const safe = (s: string) =>
+  s
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
 
 /** Folder name: "ADM-2026-0012 Rahim Uddin" for a student, else "Rahim Uddin – 01711…" */
 export function leadFolderName(lead: { name: string; phone: string | null; student_ref: string | null }): string {
@@ -132,6 +139,34 @@ export async function leadFolder(
     await admin.from('lead_drive_folders').upsert({ lead_id: lead.id, kind, folder_id: sub });
   }
   return sub;
+}
+
+// 🎓 Alumni: Lead Management / Alumni / <Name – Phone> / Voice notes (alumni_drive_folders remembers them)
+const ALUMNI_ROOT = '00000000-0000-0000-0000-000000000000';
+
+export async function alumniFolder(a: { id: string; name: string; phone: string | null }): Promise<string> {
+  const get = async (id: string, k: string) =>
+    (await admin.from('alumni_drive_folders').select('folder_id').eq('alumni_id', id).eq('kind', k).maybeSingle()).data
+      ?.folder_id as string | undefined;
+  const put = (id: string, k: string, folder: string) =>
+    admin.from('alumni_drive_folders').upsert({ alumni_id: id, kind: k, folder_id: folder });
+
+  let root = await get(ALUMNI_ROOT, 'root');
+  if (!root) {
+    root = await makeFolder('Alumni', await rootFolder());
+    await put(ALUMNI_ROOT, 'root', root);
+  }
+  let main = await get(a.id, 'alumni');
+  if (!main) {
+    main = await makeFolder(safe(`${a.name}${a.phone ? ` – ${a.phone}` : ''}`), root);
+    await put(a.id, 'alumni', main);
+  }
+  let voice = await get(a.id, 'voice');
+  if (!voice) {
+    voice = await makeFolder('Voice notes', main);
+    await put(a.id, 'voice', voice);
+  }
+  return voice;
 }
 
 export async function uploadFile(name: string, mime: string, bytes: Uint8Array, parent: string): Promise<string> {

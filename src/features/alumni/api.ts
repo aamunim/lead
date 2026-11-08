@@ -42,7 +42,17 @@ export type AlumniRule = { all: boolean; roles: string[]; user_ids: string[] };
 export type AlumniSettings = {
   view: AlumniRule;
   manage: AlumniRule;
-  rewards: { enabled: boolean; default_amount: number; by_course: Record<string, number> };
+  rewards: {
+    enabled: boolean;
+    default_amount: number;
+    by_course: Record<string, number>;
+    /** 🏅 a bonus at N admitted (once each) */
+    tiers?: { count: number; amount: number }[];
+  };
+  /** 🙏 the thanks message (WhatsApp) when a referral is admitted */
+  thanks_text?: string;
+  /** 🎓 a batch closed → its admitted students become alumni */
+  auto_from_batch?: boolean;
   /** ⏰ reminders: a next contact that is due, birthdays (to the one who looks after them) */
   reminders: { next_contact: boolean; birthdays: boolean };
   /** 🔍 which filters the list shows, in this order */
@@ -88,10 +98,15 @@ export const ALUMNI_FILTER_LABEL: Record<AlumniFilterKey, string> = {
 
 export const ALL_ALUMNI_FILTERS = Object.keys(ALUMNI_FILTER_LABEL) as AlumniFilterKey[];
 
+export const DEFAULT_THANKS =
+  'আসসালামু আলাইকুম {first_name}, আপনার পরামর্শে {student} আমাদের {course} কোর্সে ভর্তি হয়েছেন। আন্তরিক ধন্যবাদ! 🙏';
+
 export const DEFAULT_ALUMNI_SETTINGS: AlumniSettings = {
   view: { all: false, roles: ['admin', 'team_lead'], user_ids: [] },
   manage: { all: false, roles: ['admin'], user_ids: [] },
-  rewards: { enabled: false, default_amount: 0, by_course: {} },
+  rewards: { enabled: false, default_amount: 0, by_course: {}, tiers: [] },
+  thanks_text: DEFAULT_THANKS,
+  auto_from_batch: false,
   reminders: { next_contact: true, birthdays: true },
   filters: ALL_ALUMNI_FILTERS.map((key) => ({ key, enabled: true })),
 };
@@ -115,7 +130,14 @@ export async function getAlumniSettings(): Promise<AlumniSettings> {
   return {
     view: { ...d.view, ...(saved?.view ?? {}) },
     manage: { ...d.manage, ...(saved?.manage ?? {}) },
-    rewards: { ...d.rewards, ...(saved?.rewards ?? {}), by_course: { ...(saved?.rewards?.by_course ?? {}) } },
+    rewards: {
+      ...d.rewards,
+      ...(saved?.rewards ?? {}),
+      by_course: { ...(saved?.rewards?.by_course ?? {}) },
+      tiers: Array.isArray(saved?.rewards?.tiers) ? saved.rewards.tiers : [],
+    },
+    thanks_text: saved?.thanks_text?.trim() ? saved.thanks_text : DEFAULT_THANKS,
+    auto_from_batch: saved?.auto_from_batch === true,
     reminders: { ...d.reminders, ...(saved?.reminders ?? {}) },
     filters: mergeFilters(saved?.filters),
   };
@@ -268,6 +290,11 @@ export type Alumnus = {
   last_note?: string | null;
   last_note_at?: string | null;
   last_referral_at?: string | null;
+  // 🔗 link opens, 🎯 refer score (0–100), ✍️ their own update link
+  cnt_opens?: number;
+  refer_score?: number | null;
+  update_token?: string | null;
+  workplace_key?: string | null;
   // from alumni_overview
   course_name: string | null;
   batch_name: string | null;
@@ -294,11 +321,13 @@ export type AlumniSort =
   | 'batch'
   | 'reward_due'
   | 'district'
-  | 'workplace';
+  | 'workplace'
+  | 'score';
 
 export const ALUMNI_SORTS: { key: AlumniSort; label: string; manage?: boolean }[] = [
   { key: 'name', label: 'A–Z' },
   { key: 'next_contact', label: 'Next contact' },
+  { key: 'score', label: 'Most likely to refer' },
   { key: 'referrals', label: 'Most referrals' },
   { key: 'admitted', label: 'Most admitted' },
   { key: 'recent_referral', label: 'Latest referral' },
@@ -326,6 +355,8 @@ export type AlumniFilters = {
   designation?: string | null;
   /** has a workplace / has none */
   hasWorkplace?: boolean | null;
+  /** 🏫 one school (from Schools): the same school written a little differently */
+  workplaceKey?: string | null;
   tags?: string[];
   /** a person's id, or 'none' (nobody) */
   ownerId?: string | null;
@@ -349,7 +380,7 @@ export type AlumniQuery = {
   courseId?: string | null;
   batchId?: string | null;
   district?: string | null;
-  only?: 'referred' | 'never_contacted' | 'do_not_contact' | 'no_course' | 'due' | 'birthday' | null;
+  only?: 'referred' | 'never_contacted' | 'do_not_contact' | 'no_course' | 'due' | 'birthday' | 'call_week' | null;
   sort?: AlumniSort;
   page?: number;
   filters?: AlumniFilters;
@@ -378,6 +409,7 @@ export function countAlumniFilters(f: AlumniFilters | undefined): number {
   ] as const)
     if (f[k]) n++;
   if (f.hasWorkplace != null) n++;
+  if (f.workplaceKey) n++;
   if (f.rewardDue) n++;
   if (f.tags?.length) n++;
   n += Object.values(f.custom ?? {}).filter(Boolean).length;
@@ -433,6 +465,7 @@ function alumniFilters<
   if (f.workplace) query = query.ilike('workplace' as never, `%${f.workplace.replace(/[%,()*]/g, ' ')}%` as never);
   if (f.designation)
     query = query.ilike('designation' as never, `%${f.designation.replace(/[%,()*]/g, ' ')}%` as never);
+  if (f.workplaceKey) query = query.eq('workplace_key' as never, f.workplaceKey as never);
   if (f.hasWorkplace === true) query = query.not('workplace' as never, 'is', null);
   if (f.hasWorkplace === false) query = query.is('workplace' as never, null as never);
   if (f.yearFrom) query = query.gte('passing_year' as never, f.yearFrom as never);
@@ -509,6 +542,11 @@ function alumniFilters<
   if (q.only === 'do_not_contact') query = query.eq('do_not_contact' as never, true as never);
   if (q.only === 'no_course') query = query.is('course_id' as never, null as never);
   if (q.only === 'due') query = query.lt('next_contact_at' as never, iso(endOfToday()) as never);
+  if (q.only === 'call_week') {
+    // 🎯 likely to refer, not talked to in a month, may be contacted
+    query = query.gte('refer_score' as never, 50 as never).eq('do_not_contact' as never, false as never);
+    orGroups.push(`last_contacted_at.is.null,last_contacted_at.lt.${iso(Date.now() - 30 * day)}`);
+  }
   if (orGroups.length === 1) query = query.or(orGroups[0]);
   else if (orGroups.length > 1) query = query.or(`and(${orGroups.map((g) => `or(${g})`).join(',')})`);
   return query;
@@ -566,6 +604,10 @@ export async function listAlumni(q: AlumniQuery = {}): Promise<{ rows: Alumnus[]
       break;
     case 'reward_due':
       desc('reward_due');
+      asc('name');
+      break;
+    case 'score':
+      desc('refer_score');
       asc('name');
       break;
     default:
@@ -1202,4 +1244,419 @@ export async function getPublicForms(): Promise<PublicForms> {
 
 export async function savePublicForms(v: PublicForms): Promise<void> {
   await updateSetting('public_forms', v as unknown as Json);
+}
+
+/** ✍️ An alumnus's own link to update their details (the office approves) */
+export const updateLink = (token: string) => `${PUBLIC_SITE}/update/${token}`;
+
+// ---------------------------------------------------------------------
+// ✉️ A message with the alumnus's details filled in
+//   {name} {first_name} {batch} {course} {refer_link} {ref_code} {update_link}
+//   (+ for thanks: {student})
+// ---------------------------------------------------------------------
+export const MESSAGE_VARS = [
+  '{first_name}',
+  '{name}',
+  '{batch}',
+  '{course}',
+  '{refer_link}',
+  '{ref_code}',
+  '{update_link}',
+];
+
+export function fillAlumniMessage(
+  text: string,
+  a: Pick<Alumnus, 'name' | 'ref_code' | 'batch_name' | 'course_name'> & { update_token?: string | null },
+  extra: Record<string, string> = {},
+): string {
+  const vars: Record<string, string> = {
+    name: a.name,
+    first_name: a.name.trim().split(/\s+/)[0] ?? a.name,
+    batch: a.batch_name ?? '',
+    course: a.course_name ?? '',
+    refer_link: a.ref_code ? referLink(a.ref_code) : '',
+    ref_code: a.ref_code ?? '',
+    update_link: a.update_token ? updateLink(a.update_token) : '',
+    ...extra,
+  };
+  return text.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? vars[k] : m));
+}
+
+// ---------------------------------------------------------------------
+// 🏆 Top referrers
+// ---------------------------------------------------------------------
+export type TopPeriod = 'month' | 'year' | 'all';
+export type TopReferrer = {
+  id: string;
+  name: string;
+  batch_name: string | null;
+  workplace: string | null;
+  referrals: number;
+  leads: number;
+  admitted: number;
+  opens: number;
+};
+
+export async function alumniTop(period: TopPeriod, limit = 30): Promise<TopReferrer[]> {
+  const { data, error } = await rpc<TopReferrer[]>('alumni_top', { p_period: period, p_limit: limit });
+  if (error) throw toError(error);
+  return data ?? [];
+}
+
+// ---------------------------------------------------------------------
+// 📣 Campaigns: one message to many, sent one by one on WhatsApp
+// ---------------------------------------------------------------------
+export type AlumniCampaign = {
+  id: string;
+  name: string;
+  message: string;
+  created_at: string;
+  closed_at: string | null;
+  by_name: string | null;
+  total: number;
+  sent: number;
+  skipped: number;
+  referrals: number;
+  admitted: number;
+};
+
+export type CampaignItem = {
+  alumni_id: string;
+  sent_at: string | null;
+  skipped: boolean;
+  alumni: Pick<Alumnus, 'id' | 'name' | 'phone' | 'whatsapp_number' | 'ref_code' | 'update_token'> & {
+    course: { name: string } | null;
+    batch: { name: string } | null;
+  };
+};
+
+export async function createAlumniCampaign(name: string, message: string, ids: string[]): Promise<string> {
+  const { data, error } = await rpc<string>('create_alumni_campaign', { p_name: name, p_message: message, p_ids: ids });
+  if (error) throw toError(error);
+  return data as string;
+}
+
+export async function markAlumniCampaign(campaignId: string, alumniId: string, sent: boolean): Promise<void> {
+  const { error } = await rpc('mark_alumni_campaign', { p_campaign: campaignId, p_alumni: alumniId, p_sent: sent });
+  if (error) throw toError(error);
+}
+
+export async function listAlumniCampaigns(): Promise<AlumniCampaign[]> {
+  const { data, error } = await rpc<AlumniCampaign[]>('alumni_campaign_list', {});
+  if (error) throw toError(error);
+  return data ?? [];
+}
+
+export async function getCampaignItems(campaignId: string): Promise<CampaignItem[]> {
+  const { data, error } = await supabase
+    .from('alumni_campaign_items' as never)
+    .select(
+      'alumni_id, sent_at, skipped, alumni:alumni!inner(id, name, phone, whatsapp_number, ref_code, update_token, ' +
+        'course:courses(name), batch:batches(name))',
+    )
+    .eq('campaign_id' as never, campaignId as never)
+    .order('alumni_id' as never)
+    .limit(2000);
+  if (error) throw toError(error);
+  const rows = (data ?? []) as unknown as CampaignItem[];
+  return rows.sort((x, y) => x.alumni.name.localeCompare(y.alumni.name));
+}
+
+// ---------------------------------------------------------------------
+// 🙏 Say thanks (a referral was admitted)
+// ---------------------------------------------------------------------
+export type ThanksDue = { lead_id: string; name: string; admitted_at: string; course: string | null };
+
+export async function alumniThanksDue(alumniId: string): Promise<ThanksDue[]> {
+  const { data, error } = await rpc<ThanksDue[]>('alumni_thanks_due', { p_alumni: alumniId });
+  if (error) throw toError(error);
+  return data ?? [];
+}
+
+export async function markAlumniThanked(alumniId: string, leadId: string): Promise<void> {
+  const { error } = await rpc('mark_alumni_thanked', { p_alumni: alumniId, p_lead: leadId });
+  if (error) throw toError(error);
+}
+
+// ---------------------------------------------------------------------
+// 🏫 Schools (workplaces)
+// ---------------------------------------------------------------------
+export type AlumniSchool = {
+  key: string;
+  name: string;
+  district: string | null;
+  alumni: number;
+  referrals: number;
+  leads: number;
+  admitted: number;
+};
+
+export async function alumniSchools(search?: string): Promise<AlumniSchool[]> {
+  const { data, error } = await rpc<AlumniSchool[]>('alumni_schools', { p_search: search?.trim() || null });
+  if (error) throw toError(error);
+  return data ?? [];
+}
+
+export type SchoolAlumni = {
+  count: number;
+  list: { id: string; name: string; designation: string | null; referrals: number }[];
+};
+
+/** The lead page: alumni who work at the lead's workplace (null: none, or no access) */
+export async function schoolAlumni(workplace: string): Promise<SchoolAlumni | null> {
+  const { data, error } = await rpc<SchoolAlumni>('school_alumni', { p_workplace: workplace });
+  if (error) return null;
+  return data && data.count > 0 ? data : null;
+}
+
+// ---------------------------------------------------------------------
+// 📊 Dashboard
+// ---------------------------------------------------------------------
+export type AlumniDashboard = {
+  alumni: number;
+  with_workplace: number;
+  contacted_90: number;
+  never_contacted: number;
+  referrers: number;
+  funnel: { opens: number; referrals: number; leads: number; admitted: number };
+  months: { month: string; opens: number; referrals: number; admitted: number }[];
+  districts: { name: string; alumni: number; referrals: number; admitted: number }[];
+  rewards_due: number | null;
+  rewards_paid: number | null;
+  campaigns: number;
+  updates_waiting: number | null;
+};
+
+export async function alumniDashboard(): Promise<AlumniDashboard | null> {
+  const { data, error } = await rpc<AlumniDashboard>('alumni_dashboard', {});
+  if (error) throw toError(error);
+  return data;
+}
+
+// ---------------------------------------------------------------------
+// ✍️ Their own updates (the office approves)
+// ---------------------------------------------------------------------
+export type AlumniUpdateRequest = {
+  id: string;
+  alumni_id: string;
+  data: Record<string, string>;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  alumni: Pick<
+    Alumnus,
+    | 'id'
+    | 'name'
+    | 'phone'
+    | 'whatsapp_number'
+    | 'email'
+    | 'workplace'
+    | 'designation'
+    | 'district'
+    | 'upazila'
+    | 'address'
+  > | null;
+};
+
+export const UPDATE_FIELD_LABEL: Record<string, string> = {
+  phone: 'Phone',
+  whatsapp_number: 'WhatsApp',
+  email: 'Email',
+  workplace: 'Workplace',
+  designation: 'Designation',
+  district: 'District',
+  upazila: 'Upazila',
+  address: 'Address',
+};
+
+export async function listAlumniUpdates(): Promise<AlumniUpdateRequest[]> {
+  const { data, error } = await supabase
+    .from('alumni_update_requests' as never)
+    .select(
+      'id, alumni_id, data, status, created_at, ' +
+        'alumni:alumni(id, name, phone, whatsapp_number, email, workplace, designation, district, upazila, address)',
+    )
+    .eq('status' as never, 'pending' as never)
+    .order('created_at' as never, { ascending: false })
+    .limit(200);
+  if (error) throw toError(error);
+  return (data ?? []) as unknown as AlumniUpdateRequest[];
+}
+
+export async function handleAlumniUpdate(id: string, approve: boolean, note?: string): Promise<void> {
+  const { error } = await rpc('handle_alumni_update', { p_request: id, p_approve: approve, p_note: note ?? null });
+  if (error) throw toError(error);
+}
+
+/** A new link (the old one stops working) */
+export async function newAlumniUpdateLink(alumniId: string): Promise<string> {
+  const { data, error } = await rpc<string>('new_alumni_update_link', { p_alumni: alumniId });
+  if (error) throw toError(error);
+  return data as string;
+}
+
+// ---------------------------------------------------------------------
+// 👥 Duplicates, merge
+// ---------------------------------------------------------------------
+export type DuplicateAlumnus = {
+  id: string;
+  name: string;
+  phone: string | null;
+  whatsapp: string | null;
+  batch: string | null;
+  passing_year: number | null;
+  workplace: string | null;
+  referrals: number;
+  created_at: string;
+};
+
+export async function alumniDuplicates(): Promise<DuplicateAlumnus[][]> {
+  const { data, error } = await rpc<DuplicateAlumnus[][]>('alumni_duplicates', {});
+  if (error) throw toError(error);
+  return data ?? [];
+}
+
+export async function mergeAlumni(keepId: string, otherIds: string[]): Promise<void> {
+  const { error } = await rpc('alumni_merge', { p_keep: keepId, p_others: otherIds });
+  if (error) throw toError(error);
+}
+
+// ---------------------------------------------------------------------
+// 🎙 Voice notes (the file behind a "🎙 Voice note" history line)
+// ---------------------------------------------------------------------
+export type AlumniFile = { id: string; name: string; duration_sec: number | null; mime_type: string | null };
+
+export async function getAlumniFile(id: string): Promise<AlumniFile | null> {
+  const { data, error } = await supabase
+    .from('alumni_files' as never)
+    .select('id, name, duration_sec, mime_type')
+    .eq('id' as never, id as never)
+    .maybeSingle();
+  if (error) throw toError(error);
+  return (data as unknown as AlumniFile) ?? null;
+}
+
+// ---------------------------------------------------------------------
+// ✨ AI: a WhatsApp message for one alumnus (Edge Function ai-alumni)
+// ---------------------------------------------------------------------
+export type AiPurpose = 'refer' | 'birthday' | 'thanks' | 'reconnect' | 'campaign';
+
+export const AI_PURPOSE_LABEL: Record<AiPurpose, string> = {
+  refer: 'Ask for referrals',
+  reconnect: 'Catch up',
+  birthday: 'Birthday wish',
+  thanks: 'Say thanks',
+  campaign: 'Campaign (for everyone)',
+};
+
+/** The message in Bangla; for a campaign (no alumnus) it keeps {first_name}, {refer_link} … */
+export async function aiAlumniMessage(input: {
+  alumniId?: string | null;
+  purpose: AiPurpose;
+  hint?: string;
+}): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('ai-alumni', {
+    body: { alumni_id: input.alumniId ?? null, purpose: input.purpose, hint: input.hint ?? '' },
+  });
+  if (error) {
+    let msg = error.message;
+    try {
+      const body = await (error as { context?: Response }).context?.json();
+      if (body?.error) msg = body.error;
+    } catch {
+      // keep the first message
+    }
+    throw new Error(/not found|404/i.test(msg) ? 'AI for alumni is not set up on the server yet.' : msg);
+  }
+  const text = (data as { message?: string } | null)?.message?.trim();
+  if (!text) throw new Error('The AI gave no message. Try again.');
+  return text;
+}
+
+// ---------------------------------------------------------------------
+// 📤 Excel: the list as it is filtered (or the marked ones), your own fields too
+// ---------------------------------------------------------------------
+export async function exportAlumni(q: AlumniQuery, ids?: string[] | null): Promise<number> {
+  const rows: Alumnus[] = [];
+  const PAGE = 1000;
+  for (let from = 0; from < 5000; from += PAGE) {
+    let query = alumniFilters(supabase.from('alumni_overview' as never).select('*'), ids?.length ? {} : q);
+    if (ids?.length) query = query.in('id' as never, ids.slice(0, 5000) as never);
+    const { data, error } = await query.order('name' as never).range(from, from + PAGE - 1);
+    if (error) throw toError(error);
+    const got = (data ?? []) as unknown as Alumnus[];
+    rows.push(...got);
+    if (got.length < PAGE) break;
+  }
+  if (rows.length === 0) throw new Error('Nobody to export.');
+  const fields = await listAlumniFields().catch(() => [] as AlumniField[]);
+  const headers = [
+    'Name',
+    'Phone',
+    'WhatsApp',
+    'Email',
+    'Course',
+    'Batch',
+    'Session',
+    'Passing year',
+    'Student ID',
+    'Workplace',
+    'Designation',
+    'District',
+    'Upazila',
+    'Address',
+    'Birthday',
+    'Tags',
+    'Looked after by',
+    'Referrals',
+    'Referred leads',
+    'Admitted',
+    'Link opens',
+    'Refer score',
+    'Last contact',
+    'Next contact',
+    'Last note',
+    'Do not contact',
+    'Referral code',
+    'Notes',
+    ...fields.map((f) => f.label),
+  ];
+  const d = (v: string | null | undefined) => (v ? new Date(v).toLocaleDateString('en-GB') : '');
+  const body = rows.map((a) => [
+    a.name,
+    a.phone,
+    a.whatsapp_number,
+    a.email,
+    a.course_name,
+    a.batch_name,
+    a.session,
+    a.passing_year,
+    a.student_ref,
+    a.workplace,
+    a.designation,
+    a.district,
+    a.upazila,
+    a.address,
+    d(a.birth_date),
+    (a.tags ?? []).join(', '),
+    a.owner_name,
+    a.referrals,
+    a.referred_leads,
+    a.referred_admitted,
+    a.cnt_opens ?? 0,
+    a.refer_score ?? null,
+    d(a.last_contacted_at),
+    d(a.next_contact_at),
+    a.last_note ?? '',
+    a.do_not_contact ? 'Yes' : '',
+    a.ref_code,
+    a.notes,
+    ...fields.map((f) => customText(a.custom?.[f.key], f.type)),
+  ]);
+  // the spreadsheet code is loaded only when exporting
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { writeAndShareSpreadsheet } =
+    require('@/features/import-export/excel') as typeof import('@/features/import-export/excel');
+  const day = new Date().toISOString().slice(0, 10);
+  await writeAndShareSpreadsheet(`Alumni ${day}.xlsx`, headers, body, 'Alumni');
+  return rows.length;
 }

@@ -7,13 +7,68 @@
 //   to Lead Management / <Student ID Name, or Name – Phone> / Papers |
 //   Voice notes. A paper's file also ticks that paper in the checklist
 //   (as a photocopy) if it isn't ticked yet.
+//   🎓 alumni_id (instead of lead_id), kind 'voice': an alumnus's voice note
+//   → Lead Management / Alumni / <Name – Phone> / Voice notes, and a note on
+//   their history ("🎙 Voice note 1:05").
 // =====================================================================
-import { admin, asUser, cors, currentUser, json, leadFolder, uploadFile } from '../_shared/drive.ts';
+import { admin, alumniFolder, asUser, cors, currentUser, json, leadFolder, uploadFile } from '../_shared/drive.ts';
 import { compressPdf } from '../_shared/ilovepdf.ts';
 
 const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
 
 const MAX_BYTES = 35 * 1024 * 1024; // the script takes ~50 MB of base64
+
+const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+
+/** 🎓 An alumnus's voice note (the caller must see alumni: row security on their own client) */
+async function alumniVoice(req: Request, userId: string, form: FormData, file: File): Promise<Response> {
+  const alumniId = String(form.get('alumni_id') ?? '');
+  const { data: a } = await asUser(req)
+    .from('alumni')
+    .select('id, name, phone')
+    .eq('id', alumniId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (!a) return json({ error: 'Alumnus not found.' }, 404);
+  const duration = Number(form.get('duration_sec') ?? '') || null;
+  const name = String(form.get('name') || file.name || 'Voice.m4a').slice(0, 120);
+  const mime = file.type || 'audio/mp4';
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  const folder = await alumniFolder(a);
+  const driveId = await uploadFile(name, mime, bytes, folder);
+  const { data: row, error } = await admin
+    .from('alumni_files')
+    .insert({
+      alumni_id: a.id,
+      kind: 'voice',
+      name,
+      mime_type: mime,
+      size_bytes: bytes.length,
+      duration_sec: duration,
+      drive_file_id: driveId,
+      uploaded_by: userId,
+    })
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+
+  // On their history: a note that plays the file
+  const { data: ev } = await admin
+    .from('alumni_events')
+    .insert({
+      alumni_id: a.id,
+      kind: 'note',
+      body: `🎙 Voice note${duration ? ` ${clock(duration)}` : ''}`,
+      data: { file_id: row.id, duration_sec: duration },
+      by_user: userId,
+      source: 'app',
+    })
+    .select('id')
+    .single();
+  if (ev) await admin.from('alumni_files').update({ event_id: ev.id }).eq('id', row.id);
+  return json({ ...row, event_id: ev?.id ?? null });
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -33,8 +88,17 @@ Deno.serve(async (req) => {
     if (!['paper', 'voice', 'other'].includes(kind)) return json({ error: 'Unknown kind.' }, 400);
     if (file.size > MAX_BYTES) return json({ error: 'The file is bigger than 35 MB.' }, 400);
 
+    if (form.get('alumni_id')) {
+      if (kind !== 'voice') return json({ error: 'Only voice notes for alumni.' }, 400);
+      return await alumniVoice(req, user.id, form, file);
+    }
+
     // Can this person see the lead? (their own client: row security)
-    const { data: lead } = await asUser(req).from('leads').select('id, name, phone, student_ref').eq('id', leadId).maybeSingle();
+    const { data: lead } = await asUser(req)
+      .from('leads')
+      .select('id, name, phone, student_ref')
+      .eq('id', leadId)
+      .maybeSingle();
     if (!lead) return json({ error: 'Lead not found.' }, 404);
 
     const paperId = (form.get('paper_id') as string | null) || null;
@@ -58,7 +122,8 @@ Deno.serve(async (req) => {
         .select('name, accept, pdf_max_kb')
         .eq('id', paperId)
         .maybeSingle();
-      if (rule?.accept === 'image' && !isImage) return json({ error: `${rule.name}: only a picture can be uploaded.` }, 400);
+      if (rule?.accept === 'image' && !isImage)
+        return json({ error: `${rule.name}: only a picture can be uploaded.` }, 400);
       if (rule?.accept === 'pdf' && !isPdf) return json({ error: `${rule.name}: only a PDF can be uploaded.` }, 400);
       if (rule?.pdf_max_kb) pdfMaxKb = rule.pdf_max_kb;
     }
