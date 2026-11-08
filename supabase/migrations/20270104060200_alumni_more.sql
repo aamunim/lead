@@ -16,12 +16,14 @@
 -- 0. Small helpers
 -- ---------------------------------------------------------------------
 -- "Mirpur Ideal School (Main)" → "mirpuridealschoolmain": the same school written a little differently
+-- (spaces and punctuation out; Bangla letters stay whatever the server's locale)
 create or replace function public.school_key(p_name text)
 returns text
 language sql
 immutable
+parallel safe
 as $$
-  select nullif(regexp_replace(lower(coalesce(p_name, '')), '[^[:alnum:]]+', '', 'g'), '');
+  select nullif(lower(regexp_replace(coalesce(p_name, ''), '[[:space:][:punct:]]+', '', 'g')), '');
 $$;
 
 -- ---------------------------------------------------------------------
@@ -455,6 +457,7 @@ declare
 begin
   if v_key is null or not public.alumni_can('view') then return null; end if;
   return jsonb_build_object(
+    'key', v_key,
     'count', (select count(*) from public.alumni where workplace_key = v_key and deleted_at is null),
     'list', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'name', a.name, 'designation', a.designation,
                                                           'referrals', a.cnt_referrals) order by a.cnt_admitted desc,

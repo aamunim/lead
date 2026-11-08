@@ -16,12 +16,21 @@ import {
 
 import { AddReferralSheet } from '@/features/alumni/AddReferralSheet';
 import { AlumniContactSheet } from '@/features/alumni/AlumniContactSheet';
+import { AlumniMessageSheet } from '@/features/alumni/AlumniMessageSheet';
+import { AlumniVoiceButton, AlumniVoicePlay } from '@/features/alumni/AlumniVoice';
 import {
   addAlumniEvent,
+  alumniThanksDue,
   canDeleteAlumniEvent,
   CONTACT_KINDS,
   customText,
+  DEFAULT_THANKS,
   deleteAlumniEvent,
+  fillAlumniMessage,
+  getAlumniSettings,
+  markAlumniThanked,
+  newAlumniUpdateLink,
+  updateLink,
   deleteAlumnus,
   EVENT_TEXT,
   pinAlumniEvent,
@@ -39,6 +48,7 @@ import {
   type Alumnus,
   type Referral,
   type Reward,
+  type ThanksDue,
 } from '@/features/alumni/api';
 import {
   ago,
@@ -138,12 +148,14 @@ function ask(title: string, text: string, ok: string, run: () => void) {
 }
 
 export default function AlumnusScreen() {
-  const { id, dial, wa, callNote, waCall } = useLocalSearchParams<{
+  const { id, dial, wa, callNote, waCall, thank } = useLocalSearchParams<{
     id: string;
     dial?: string;
     wa?: string;
     callNote?: string;
     waCall?: string;
+    /** 🙏 the "admitted by referral" alert: say thanks for this student */
+    thank?: string;
   }>();
   const access = useAlumniAccess();
   const { profile } = useAuth();
@@ -168,6 +180,10 @@ export default function AlumnusScreen() {
   }>(null);
   const [nextOpen, setNextOpen] = useState(false);
   const [menuFor, setMenuFor] = useState<AlumniEvent | null>(null);
+  // 🙏 admitted referrals not thanked yet; 💬 a message (✨ AI)
+  const [thanks, setThanks] = useState<ThanksDue[]>([]);
+  const [thanking, setThanking] = useState<{ lead: ThanksDue; text: string } | null>(null);
+  const [messaging, setMessaging] = useState(false);
   const [undo, setUndo] = useState<{ id: string; at: number } | null>(null);
   const startedAt = useRef<number | null>(null);
   const leftApp = useRef(false);
@@ -195,6 +211,52 @@ export default function AlumnusScreen() {
   useEffect(() => {
     load();
   }, [load, version]);
+
+  // only when someone they referred was admitted (most pages ask nothing more)
+  const admitted = a?.referred_admitted ?? 0;
+  useEffect(() => {
+    if (!id || admitted === 0) return setThanks([]);
+    alumniThanksDue(id)
+      .then(setThanks)
+      .catch(() => undefined);
+  }, [id, admitted, version]);
+
+  const openThanks = async (lead: ThanksDue) => {
+    if (!a) return;
+    const st = await getAlumniSettings().catch(() => null);
+    setThanking({
+      lead,
+      text: fillAlumniMessage(st?.thanks_text || DEFAULT_THANKS, a, { student: lead.name, course: lead.course ?? '' }),
+    });
+  };
+
+  // a message (typed or ✨ AI): WhatsApp opens with it; back here → the popup logs it
+  const sendMessage = async (text: string) => {
+    if (!a) return;
+    startedAt.current = Date.now();
+    leftApp.current = false;
+    pending.current = 'whatsapp';
+    const ok = await openWhatsApp({ phone: a.phone, whatsapp_number: a.whatsapp_number }, text);
+    if (!ok) {
+      startedAt.current = null;
+      throw new Error('Could not open WhatsApp.');
+    }
+    setMessaging(false);
+  };
+
+  const shareUpdateLink = async (fresh = false) => {
+    if (!a) return;
+    try {
+      const token = fresh || !a.update_token ? await newAlumniUpdateLink(a.id) : a.update_token;
+      if (fresh) alumniChanged();
+      await shareLink(
+        `${a.name}, আপনার তথ্য (কর্মস্থল, নম্বর…) হালনাগাদ করতে এই লিংকটি খুলুন — ${COLLEGE}`,
+        updateLink(token),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not make the link.');
+    }
+  };
 
   useEffect(() => {
     if (!id || !access.manage) return;
@@ -260,6 +322,15 @@ export default function AlumnusScreen() {
       handled.current = true;
       router.setParams({ callNote: undefined });
       setContact({ channel: 'phone', deviceCallId: String(callNote) });
+    } else if (thank) {
+      handled.current = true;
+      router.setParams({ thank: undefined });
+      alumniThanksDue(a.id)
+        .then((list) => {
+          const lead = list.find((x) => x.lead_id === String(thank));
+          if (lead) openThanks(lead);
+        })
+        .catch(() => undefined);
     } else if (waCall) {
       handled.current = true;
       router.setParams({ waCall: undefined });
@@ -270,7 +341,7 @@ export default function AlumnusScreen() {
         .catch(() => undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [a, dial, wa, callNote, waCall]);
+  }, [a, dial, wa, callNote, waCall, thank]);
 
   const contactSaved = () => {
     setContact(null);
@@ -440,6 +511,13 @@ export default function AlumnusScreen() {
             <>
               <RoundAction icon="call" label="Call" bg={md.okC} fg={md.onOkC} onPress={call} />
               <RoundAction icon="chat" label="WhatsApp" bg={md.waC} fg={md.onWaC} onPress={whatsapp} />
+              <RoundAction
+                icon="auto-awesome"
+                label="Message"
+                bg={md.purpleC}
+                fg={md.onPurpleC}
+                onPress={() => setMessaging(true)}
+              />
             </>
           )}
           <RoundAction
@@ -500,6 +578,29 @@ export default function AlumnusScreen() {
         </View>
       </View>
 
+      {/* 🙏 Say thanks: their referrals that were admitted */}
+      {thanks.length > 0 && (
+        <View style={[ui.card, styles.thanksCard]}>
+          <Text style={ui.label}>🙏 SAY THANKS</Text>
+          {thanks.map((t) => (
+            <View key={t.lead_id} style={styles.refRow}>
+              <View style={styles.flex}>
+                <Text style={styles.refName}>{t.name}</Text>
+                <Text style={ui.muted}>
+                  Admitted {when(t.admitted_at)}
+                  {t.course ? ` · ${t.course}` : ''}
+                </Text>
+              </View>
+              {!a.do_not_contact && (
+                <Pressable onPress={() => openThanks(t)} style={styles.pay} accessibilityRole="button">
+                  <Text style={styles.payText}>💬 Thank</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Numbers + refer */}
       <View style={ui.card}>
         <View style={styles.stats}>
@@ -529,7 +630,25 @@ export default function AlumnusScreen() {
         <Text style={ui.muted} onPress={() => copyLink(referLink(a.ref_code))}>
           Referral code: <Text style={styles.code}>{a.ref_code}</Text> · tap to copy the link. Friends who fill it come
           to the Referral inbox with {a.name.split(' ')[0]}’s name.
+          {a.cnt_opens ? ` Link opened ${a.cnt_opens} times.` : ''}
         </Text>
+        {access.manage && (
+          <View style={styles.referRow}>
+            <View style={styles.flex}>
+              <Button title="✍️ Update link" variant="ghost" onPress={() => shareUpdateLink(false)} fullWidth />
+            </View>
+            <Pressable
+              onPress={() =>
+                ask('A new update link?', 'The old link stops working.', 'New link', () => shareUpdateLink(true))
+              }
+              hitSlop={8}
+              accessibilityRole="button"
+              style={styles.newLink}
+            >
+              <Text style={styles.link}>New link</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       {/* Details */}
@@ -652,6 +771,7 @@ export default function AlumnusScreen() {
           />
           <Button title="Save" onPress={saveNote} loading={busy} disabled={!note.trim()} />
         </View>
+        <AlumniVoiceButton alumniId={a.id} onSaved={alumniChanged} />
         {undo && (
           <View style={styles.undo}>
             <Text style={styles.undoText}>🗑 Deleted</Text>
@@ -683,6 +803,32 @@ export default function AlumnusScreen() {
       {access.manage && <Button title="Delete" variant="ghost" onPress={remove} fullWidth />}
 
       {referring && <AddReferralSheet alumniId={a.id} alumniName={a.name} onClose={() => setReferring(false)} />}
+      {messaging && (
+        <AlumniMessageSheet
+          title={`💬 Message · ${a.name}`}
+          alumniId={a.id}
+          defaultPurpose={a.birth_date && birthdayText(a.birth_date).startsWith('🎉') ? 'birthday' : 'refer'}
+          onClose={() => setMessaging(false)}
+          onSend={sendMessage}
+        />
+      )}
+      {thanking && (
+        <AlumniMessageSheet
+          title={`🙏 Thanks for ${thanking.lead.name}`}
+          alumniId={a.id}
+          initial={thanking.text}
+          purposes={['thanks']}
+          defaultPurpose="thanks"
+          onClose={() => setThanking(null)}
+          onSend={async (text) => {
+            const ok = await openWhatsApp({ phone: a.phone, whatsapp_number: a.whatsapp_number }, text);
+            if (!ok) throw new Error('Could not open WhatsApp.');
+            await markAlumniThanked(a.id, thanking.lead.lead_id);
+            setThanking(null);
+            alumniChanged();
+          }}
+        />
+      )}
       {contact && (
         <AlumniContactSheet
           alumnus={{ id: a.id, name: a.name, phone: a.phone }}
@@ -776,6 +922,12 @@ function EventRow({ e, onLongPress }: { e: AlumniEvent; onLongPress: () => void 
                 : ''}
           </Text>
         )}
+        {typeof e.data?.file_id === 'string' && (
+          <AlumniVoicePlay
+            fileId={e.data.file_id}
+            seconds={typeof e.data.duration_sec === 'number' ? e.data.duration_sec : null}
+          />
+        )}
         <Text style={ui.muted}>
           {when(e.happened_at ?? e.created_at)}
           {e.by?.full_name ? ` · ${e.by.full_name}` : ''}
@@ -857,6 +1009,8 @@ const styles = StyleSheet.create({
   notes: { fontSize: fontSize.small, color: colors.text, fontStyle: 'italic' },
   link: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
   referRow: { flexDirection: 'row', gap: spacing.sm },
+  thanksCard: { backgroundColor: md.okC },
+  newLink: { justifyContent: 'center', paddingHorizontal: spacing.sm },
   refRow: {
     flexDirection: 'row',
     alignItems: 'center',

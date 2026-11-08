@@ -1,4 +1,4 @@
-import { router, Stack, type Href } from 'expo-router';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -24,6 +25,7 @@ import {
   alumniSummary,
   countAlumniFilters,
   deleteAlumniFilter,
+  exportAlumni,
   getAlumniSettings,
   listAlumni,
   listAlumniFields,
@@ -41,6 +43,7 @@ import {
   type Alumnus,
 } from '@/features/alumni/api';
 import { AlumniFilterSheet } from '@/features/alumni/AlumniFilterSheet';
+import { campaignDraft } from '@/features/alumni/draft';
 import { MenuSheet, NextContactSheet, OwnerSheet, TextSheet, whenText } from '@/features/alumni/sheets';
 import { alumniChanged, Avatar, Chip, s as ui, useAlumniAccess, useAlumniVersion } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -68,6 +71,7 @@ import { Modal } from '@/shared/ui/Modal';
 const SHOW: { key: NonNullable<AlumniQuery['only']> | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'due', label: '⏰ Due today' },
+  { key: 'call_week', label: '🎯 Call this week' },
   { key: 'referred', label: 'Referred' },
   { key: 'never_contacted', label: 'Never contacted' },
   { key: 'no_course', label: 'No course' },
@@ -108,10 +112,17 @@ export default function AlumniScreen() {
   const { profile } = useAuth();
   const [search, setSearch] = useState('');
   const [only, setOnly] = useState<(typeof SHOW)[number]['key']>('all');
+  // 🏫 opened from Schools: the alumni of that school
+  const { school, schoolName } = useLocalSearchParams<{ school?: string; schoolName?: string }>();
   // the sort and the filters stay as they were left (per phone)
   const [sort, setSort] = useSavedState<AlumniSort>('alumni:sort', 'name');
   const [filters, setFilters] = useSavedState<AlumniFilters>('alumni:filters', {});
   const [filterOpen, setFilterOpen] = useState(false);
+  const [schoolLabel, setSchoolLabel] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  // 🌐 a wide browser window: a table (one line per alumnus)
+  const { width } = useWindowDimensions();
+  const table = isWeb && width >= 1000;
   const [saved, setSaved] = useState<AlumniSavedFilter[]>([]);
   const [order, setOrder] = useState<AlumniFilterKey[]>(ALL_ALUMNI_FILTERS);
   const [fields, setFields] = useState<AlumniField[]>([]);
@@ -196,6 +207,37 @@ export default function AlumniScreen() {
       .then(setSum)
       .catch(() => undefined);
   }, [access.view, version]);
+
+  useEffect(() => {
+    if (typeof school !== 'string' || !school) return;
+    setFilters({ workplaceKey: school });
+    setSchoolLabel(typeof schoolName === 'string' && schoolName ? schoolName : 'School');
+    setOnly('all');
+    router.setParams({ school: undefined, schoolName: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [school]);
+  useEffect(() => {
+    if (!filters.workplaceKey) setSchoolLabel(null);
+  }, [filters.workplaceKey]);
+
+  // 📤 Excel: the marked ones, or everyone the list shows now
+  const exportExcel = async (ids?: string[]) => {
+    setExporting(true);
+    try {
+      const n = await exportAlumni(query, ids);
+      if (Platform.OS === 'web') say('Done', `${n} alumni exported.`);
+    } catch (e) {
+      say('Could not export', e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+  const startCampaign = () => {
+    campaignDraft.set([...selected]);
+    setSheet(null);
+    stopSelect();
+    router.push('/alumni/campaigns?new=1' as Href);
+  };
 
   // A different filter: the marks stay only on what can still be seen
   useEffect(() => {
@@ -292,6 +334,24 @@ export default function AlumniScreen() {
     run({ action: 'delete' }, (n) => `${n} alumni deleted.`);
   };
 
+  const manageItems: { label: string; icon: MIconName; danger?: boolean; onPress: () => void }[] = [
+    { label: 'Remove a tag', icon: 'label-off', onPress: () => openTagSheet('tag_remove') },
+    { label: 'Looked after by…', icon: 'person', onPress: () => setSheet('owner') },
+    { label: 'Course & batch', icon: 'school', onPress: () => (setSheet(null), setCoursePicker(true)) },
+    { label: 'No course', icon: 'layers-clear', onPress: () => (setSheet(null), unassign()) },
+    {
+      label: 'Do not contact: on',
+      icon: 'do-not-disturb-on',
+      onPress: () => (setSheet(null), run({ action: 'dnc_on' }, (n) => `${n} alumni: do not contact.`)),
+    },
+    {
+      label: 'Do not contact: off',
+      icon: 'do-not-disturb-off',
+      onPress: () => (setSheet(null), run({ action: 'dnc_off' }, (n) => `${n} alumni can be contacted.`)),
+    },
+    { label: 'Delete', icon: 'delete-outline', danger: true, onPress: () => (setSheet(null), remove()) },
+  ];
+
   if (!access.view) {
     return (
       <View style={styles.center}>
@@ -367,6 +427,29 @@ export default function AlumniScreen() {
         <MIcon name="chevron-right" size={22} color={waiting > 0 ? md.onPrimaryC : colors.textMuted} />
       </Tap>
 
+      {/* More alumni screens */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.row}
+        contentContainerStyle={styles.rowIn}
+      >
+        <Shortcut icon="insights" label="Dashboard" to="/alumni/dashboard" />
+        <Shortcut icon="emoji-events" label="Top referrers" to="/alumni/top" />
+        <Shortcut icon="campaign" label="Campaigns" to="/alumni/campaigns" />
+        <Shortcut icon="apartment" label="Schools" to="/alumni/schools" />
+        {access.manage && <Shortcut icon="how-to-reg" label="Updates" to="/alumni/updates" />}
+        {access.manage && <Shortcut icon="people-alt" label="Duplicates" to="/alumni/duplicates" />}
+        <Tap onPress={() => !exporting && exportExcel()} style={styles.shortcut} label="Export to Excel">
+          {exporting ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <MIcon name="table-view" size={18} color={colors.text} />
+          )}
+          <Text style={styles.shortcutText}>Excel</Text>
+        </Tap>
+      </ScrollView>
+
       {/* Website: the actions here (the phone has them in the top bar / ＋ button) */}
       {isWeb && (
         <View style={styles.webActions}>
@@ -411,6 +494,9 @@ export default function AlumniScreen() {
             Filter{nFilters > 0 ? ` · ${nFilters}` : ''}
           </Text>
         </Tap>
+        {!!schoolLabel && !!filters.workplaceKey && (
+          <Chip text={`🏫 ${schoolLabel} ✕`} on onPress={() => setFilters({ ...filters, workplaceKey: null })} />
+        )}
         {nFilters > 0 && <Chip text="✕ Clear" on={false} onPress={() => setFilters({})} />}
         {saved.map((sf) => (
           <Pressable
@@ -458,6 +544,7 @@ export default function AlumniScreen() {
         )}
       </View>
       {error && <Text style={ui.error}>{error}</Text>}
+      {table && (rows?.length ?? 0) > 0 && <TableHead />}
     </View>
   );
 
@@ -545,14 +632,23 @@ export default function AlumniScreen() {
             return (
               <>
                 {group && group !== prev && <Text style={styles.group}>{group}</Text>}
-                <AlumnusRow
-                  a={item}
-                  search={search}
-                  selecting={selecting}
-                  marked={selecting && selected.has(item.id)}
-                  onToggle={toggle}
-                  onLongPress={startSelect}
-                />
+                {table ? (
+                  <AlumnusTableRow
+                    a={item}
+                    selecting={selecting}
+                    marked={selecting && selected.has(item.id)}
+                    onToggle={toggle}
+                  />
+                ) : (
+                  <AlumnusRow
+                    a={item}
+                    search={search}
+                    selecting={selecting}
+                    marked={selecting && selected.has(item.id)}
+                    onToggle={toggle}
+                    onLongPress={startSelect}
+                  />
+                )}
               </>
             );
           }}
@@ -600,14 +696,12 @@ export default function AlumniScreen() {
                   onPress={() => openTagSheet('tag_add')}
                 />
               )}
-              {access.manage && (
-                <BarAction
-                  icon="more-horiz"
-                  label="More"
-                  disabled={selected.size === 0}
-                  onPress={() => setSheet('more')}
-                />
-              )}
+              <BarAction
+                icon="more-horiz"
+                label="More"
+                disabled={selected.size === 0}
+                onPress={() => setSheet('more')}
+              />
             </>
           )}
         </View>
@@ -664,21 +758,13 @@ export default function AlumniScreen() {
           title={`${selected.size} marked`}
           onClose={() => setSheet(null)}
           items={[
-            { label: 'Remove a tag', icon: 'label-off', onPress: () => openTagSheet('tag_remove') },
-            { label: 'Looked after by…', icon: 'person', onPress: () => setSheet('owner') },
-            { label: 'Course & batch', icon: 'school', onPress: () => (setSheet(null), setCoursePicker(true)) },
-            { label: 'No course', icon: 'layers-clear', onPress: () => (setSheet(null), unassign()) },
+            { label: '📣 Campaign (WhatsApp)', icon: 'campaign', onPress: startCampaign },
             {
-              label: 'Do not contact: on',
-              icon: 'do-not-disturb-on',
-              onPress: () => (setSheet(null), run({ action: 'dnc_on' }, (n) => `${n} alumni: do not contact.`)),
+              label: 'Export to Excel',
+              icon: 'table-view',
+              onPress: () => (setSheet(null), exportExcel([...selected])),
             },
-            {
-              label: 'Do not contact: off',
-              icon: 'do-not-disturb-off',
-              onPress: () => (setSheet(null), run({ action: 'dnc_off' }, (n) => `${n} alumni can be contacted.`)),
-            },
-            { label: 'Delete', icon: 'delete-outline', danger: true, onPress: () => (setSheet(null), remove()) },
+            ...(access.manage ? manageItems : []),
           ]}
         />
       )}
@@ -737,6 +823,110 @@ function Tile({
         {label}
       </Text>
     </View>
+  );
+}
+
+// 🌐 The table (website, wide window)
+const COLS: { label: string; flex: number }[] = [
+  { label: 'Name', flex: 2.2 },
+  { label: 'Phone', flex: 1.3 },
+  { label: 'Course · batch', flex: 1.6 },
+  { label: 'Workplace', flex: 2 },
+  { label: 'District', flex: 1 },
+  { label: 'Referred', flex: 0.8 },
+  { label: 'Admitted', flex: 0.8 },
+  { label: 'Last contact', flex: 1.1 },
+  { label: 'Next contact', flex: 1.3 },
+];
+
+function TableHead() {
+  return (
+    <View style={[styles.tRow, styles.tHead]}>
+      <View style={styles.tCheck} />
+      {COLS.map((c) => (
+        <Text key={c.label} style={[styles.tHeadText, { flex: c.flex }]} numberOfLines={1}>
+          {c.label}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+const AlumnusTableRow = memo(function AlumnusTableRow({
+  a,
+  selecting,
+  marked,
+  onToggle,
+}: {
+  a: Alumnus;
+  selecting: boolean;
+  marked: boolean;
+  onToggle: (id: string) => void;
+}) {
+  const next = a.next_contact_at ? new Date(a.next_contact_at) : null;
+  const late = !!next && next.getTime() < Date.now();
+  const cells: (string | number | null)[] = [
+    a.name,
+    a.phone,
+    [a.course_name, a.batch_name].filter(Boolean).join(' · ') || null,
+    [a.workplace, a.designation].filter(Boolean).join(' · ') || null,
+    a.district,
+    a.referrals || null,
+    a.referred_admitted || null,
+    a.last_contacted_at
+      ? new Date(a.last_contacted_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
+      : 'never',
+    next ? whenText(next) : null,
+  ];
+  return (
+    <Pressable
+      onPress={() => (selecting ? onToggle(a.id) : router.push(`/alumni/${a.id}` as Href))}
+      style={(state) => [
+        styles.tRow,
+        (state.pressed || (state as { hovered?: boolean }).hovered) && styles.tHover,
+        marked && styles.itemOn,
+      ]}
+      accessibilityRole={selecting ? 'checkbox' : 'button'}
+      accessibilityState={selecting ? { checked: marked } : undefined}
+      accessibilityLabel={selecting ? a.name : `Open ${a.name}`}
+    >
+      <Pressable
+        onPress={() => onToggle(a.id)}
+        style={styles.tCheck}
+        accessibilityRole="checkbox"
+        accessibilityLabel={`Mark ${a.name}`}
+      >
+        <MIcon
+          name={marked ? 'check-box' : 'check-box-outline-blank'}
+          size={20}
+          color={marked ? colors.primary : colors.textMuted}
+        />
+      </Pressable>
+      {cells.map((v, i) => (
+        <Text
+          key={COLS[i].label}
+          style={[
+            styles.tCell,
+            { flex: COLS[i].flex },
+            i === 0 && styles.tName,
+            i === 8 && late && styles.tLate,
+            a.do_not_contact && i === 0 && styles.tDnc,
+          ]}
+          numberOfLines={1}
+        >
+          {v ?? '—'}
+        </Text>
+      ))}
+    </Pressable>
+  );
+});
+
+function Shortcut({ icon, label, to }: { icon: MIconName; label: string; to: string }) {
+  return (
+    <Tap onPress={() => router.push(to as Href)} style={styles.shortcut} label={label}>
+      <MIcon name={icon} size={18} color={colors.text} />
+      <Text style={styles.shortcutText}>{label}</Text>
+    </Tap>
   );
 }
 
@@ -850,8 +1040,11 @@ const AlumnusRow = memo(function AlumnusRow({
             )}
           </View>
         )}
-        {(a.referrals > 0 || a.referred_admitted > 0) && (
+        {(a.referrals > 0 || a.referred_admitted > 0 || (a.refer_score ?? 0) >= 70) && (
           <View style={styles.badges}>
+            {(a.refer_score ?? 0) >= 70 && !a.do_not_contact && (
+              <Pill text={`🎯 ${a.refer_score}`} bg={md.goldC} fg={md.onGoldC} />
+            )}
             {a.referrals > 0 && <Pill text={`${a.referrals} referred`} bg={md.skyC} fg={md.onSkyC} />}
             {a.referred_leads > 0 && <Pill text={`${a.referred_leads} leads`} bg={md.surface2} fg={colors.text} />}
             {a.referred_admitted > 0 && <Pill text={`${a.referred_admitted} admitted`} bg={md.okC} fg={md.onOkC} />}
@@ -1066,6 +1259,39 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   filterBtnOn: { backgroundColor: md.primaryC, borderColor: md.primaryC },
+  tRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 40,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  tHead: {
+    minHeight: 34,
+    backgroundColor: md.surface2,
+    borderTopLeftRadius: radius.sm,
+    borderTopRightRadius: radius.sm,
+  },
+  tHover: { backgroundColor: md.surface1 },
+  tCheck: { width: 24, alignItems: 'center' },
+  tHeadText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.textMuted },
+  tCell: { fontSize: fontSize.small, color: colors.text },
+  tName: { fontWeight: fontWeight.semibold },
+  tLate: { color: colors.danger, fontWeight: fontWeight.semibold },
+  tDnc: { textDecorationLine: 'line-through', color: colors.textMuted },
+  shortcut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 36,
+    paddingHorizontal: spacing.md,
+    borderRadius: 18,
+    backgroundColor: md.surface2,
+    overflow: 'hidden',
+  },
+  shortcutText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
   filterText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
   filterTextOn: { color: md.onPrimaryC },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },

@@ -1398,6 +1398,8 @@ export async function alumniSchools(search?: string): Promise<AlumniSchool[]> {
 }
 
 export type SchoolAlumni = {
+  /** the school's key (the alumni list filter) */
+  key: string;
   count: number;
   list: { id: string; name: string; designation: string | null; referrals: number }[];
 };

@@ -395,13 +395,13 @@ export async function downloadLeadFile(
 }
 
 /** Download through the server and open it in the phone's viewer */
-export async function openLeadFile(f: LeadFile): Promise<void> {
+export async function openLeadFile(f: LeadFile, param: 'id' | 'alumni_file' = 'id'): Promise<void> {
   // 🌐 Website: the browser downloads it (to Downloads; it opens from there)
   if (Platform.OS === 'web') {
-    browserDownload(await fetchFileBlob(f.id), f.name);
+    browserDownload(await fetchFileBlob(f.id, param), f.name);
     return;
   }
-  const target = await downloadLeadFile(f);
+  const target = await downloadLeadFile(f, param);
 
   if (Platform.OS === 'android') {
     try {

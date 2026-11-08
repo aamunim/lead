@@ -1,4 +1,5 @@
 import { LeadReferrer } from '@/features/alumni/LeadReferrer';
+import { LeadSchoolAlumni } from '@/features/alumni/LeadSchoolAlumni';
 import { LeadScoreRow, showScore, useScoreOn, type ScoreReason } from '@/features/leads/score';
 import { router, Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
 import { myStars, toggleStar } from '@/features/leads/find';
@@ -1435,6 +1436,8 @@ export function LeadDetailView({
         <InfoRow label="Source" value={lead.source?.name ?? null} />
         {/* 🎓 The alumnus who referred this lead (Alumni) */}
         <LeadReferrer leadId={lead.id} />
+        {/* 🏫 Our alumni at the lead's workplace */}
+        <LeadSchoolAlumni workplace={(lead as { workplace?: string | null }).workplace} />
         {detailsOpen && (
           <>
             {lead.alt_phone && <PhoneRow label="Alternative" phone={lead.alt_phone} onCall={call} />}

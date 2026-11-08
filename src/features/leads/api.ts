@@ -131,6 +131,8 @@ export type LeadInput = {
   alt_phone?: string | null;
   email?: string | null;
   area?: string | null;
+  /** 🏫 school / office */
+  workplace?: string | null;
   guardian_name?: string | null;
   guardian_phone?: string | null;
   guardian_relation?: string | null;
