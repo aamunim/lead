@@ -1,25 +1,15 @@
-# Admission Management App: full feature brief for the multi-institution rebuild
+# Admission Management App: full feature brief for a new multi-institution app
 
 > **What this is.** A brief for an AI agent or developer who will build a **new, multi-institution
-> (multi-tenant)** version of an existing app. The existing app runs one college:
-> Ideal Teachers' Training College ("ITTC", Bangladesh).
+> (multi-tenant)** admission management app **from scratch**. No existing data is moved into it.
 >
-> It lists **everything the current app does**, how it works, the business rules that matter, what is
-> hard-coded for ITTC or Bangladesh, and the lessons learned while building it.
+> It lists **every feature the app must have**, how each works, the business rules that matter, what
+> must be configurable per institution, and lessons learned from an earlier single-institution version.
 > Read it fully before planning.
 >
-> **বাংলা সারাংশ:** এই ফাইলে বর্তমান ITTC Admission অ্যাপের সব ফিচার, নিয়ম, সেটিং, পারমিশন আর অভিজ্ঞতা লেখা আছে।
-> নতুন অ্যাপে একাধিক কলেজ/স্কুল/ইনস্টিটিউট থাকবে। প্রতিটি প্রতিষ্ঠান সেটআপ স্ক্রিন থেকে খোলা হবে, লগইনের সময় প্রতিষ্ঠান বাছাই করতে হবে, আর সব প্রতিষ্ঠান দেখাশোনা করবেন "Master Admin"।
-> বর্তমান সব ডাটা যাবে "Ideal Teachers' Training College"-এর নামে।
-
-Source of truth for the old app: repository `aamunim/lead`.
-- Routes: `src/app`
-- Features: `src/features`
-- Database: `supabase/migrations`
-- Server functions: `supabase/functions`
-- Android native code: `modules/call-log`
-
----
+> **বাংলা সারাংশ:** এই ফাইলে অ্যাপের সব ফিচার, নিয়ম, সেটিং, পারমিশন আর আগের অভিজ্ঞতা লেখা আছে।
+> নতুন অ্যাপটা শূন্য থেকে বানানো হবে, কোনো পুরোনো ডাটা থাকবে না।
+> এতে একাধিক কলেজ/স্কুল/ইনস্টিটিউট থাকবে। প্রতিটি প্রতিষ্ঠান সেটআপ স্ক্রিন থেকে খোলা হবে, লগইনের সময় প্রতিষ্ঠান বাছাই করতে হবে, আর সব প্রতিষ্ঠান দেখাশোনা করবেন "Master Admin"।
 
 ## Contents
 1. [Product in one page](#1-product-in-one-page)
@@ -43,7 +33,7 @@ Source of truth for the old app: repository `aamunim/lead`.
 19. [Student IDs](#19-student-ids)
 20. [Fee negotiation, discounts, final fee](#20-fee-negotiation-discounts-final-fee)
 21. [Payments, installments, receipts, refunds, reminders](#21-payments-installments-receipts-refunds-reminders)
-22. [Students tab, placement, ITTC flow](#22-students-tab-placement-ittc-flow)
+22. [Students tab, placement, external board flow](#22-students-tab-placement-external-board-flow)
 23. [AI features (Claude / Gemini)](#23-ai-features-claude--gemini)
 24. [Admission Contribution](#24-admission-contribution)
 25. [Notifications and push](#25-notifications-and-push)
@@ -57,10 +47,9 @@ Source of truth for the old app: repository `aamunim/lead`.
 33. [Background jobs (pg_cron)](#33-background-jobs-pg_cron)
 34. [Theming, offline, caching, speed](#34-theming-offline-caching-speed)
 35. [Build, release, deploy](#35-build-release-deploy)
-36. [Everything that is ITTC / Bangladesh specific](#36-everything-that-is-ittc--bangladesh-specific)
+36. [Everything that must be configurable per institution](#36-everything-that-must-be-configurable-per-institution)
 37. [Lessons learned (do not repeat these mistakes)](#37-lessons-learned-do-not-repeat-these-mistakes)
-38. [Data migration from the old app](#38-data-migration-from-the-old-app)
-39. [Open decisions for the owner](#39-open-decisions-for-the-owner)
+38. [Open decisions for the owner](#38-open-decisions-for-the-owner)
 
 ---
 
@@ -75,35 +64,34 @@ chance of admission, coaches the caller, and splits credit for each admission am
 
 - **Platforms:**
   - Android app: Expo / React Native, with a native module for call-log and WhatsApp sync.
-  - Website: the same codebase exported for the web, at `lead.ittc.edu.bd`.
+  - Website: the same codebase exported for the web.
   - iOS is not targeted.
 - **Language of the UI:** English labels. Bangla is used in AI output, message templates and public forms. Users are Bangladeshi.
-- **Scale today:** 1 institution, tens of staff, thousands of leads.
+- **Expected scale:** many institutions, each with tens of staff and thousands of leads.
 - **Tabs (phone):** Home · Leads · Students · More.
 
 ## 2. Goals of the new app (multi-institution)
 
-The owner's requirements for the rebuild:
+The owner's requirements:
 
 1. **First screen: "Set up your institution".**
    - Institution name, address, **College Code** and **EIIN** (both optional, "if exist").
    - Then create the institution's **Super Admin** (name, email, phone, password).
 2. **Login: pick the institution first** (college / institute / school), then email + password.
 3. **New top role: "Master Admin".** Above every institution's Super Admin. Manages all institutions: list, approve, suspend, view usage, enter one to help (audited).
-4. **Existing data:** all current data belongs to **"Ideal Teachers' Training College"**. It must be migrated as the first institution with nothing lost.
-5. **Every feature in this file is per institution.** Settings, roles, courses, pipeline stages, templates, AI keys, Drive, receipts, ID series, reports and leaderboards.
+4. **Every feature in this file is per institution.** Settings, roles, courses, pipeline stages, templates, AI keys, Drive, receipts, ID series, reports and leaderboards.
 
-### Must-haves for tenancy (from experience with the old code)
+### Must-haves for tenancy
 - Put `institution_id` on **every** tenant table from day one, with an index that starts with it.
 - **Row Level Security** must use the institution taken from the **JWT custom claim**. Do not look it up per row; that is fast and avoids extra queries.
-- **Every server function must filter by institution.** The old app had 418 `SECURITY DEFINER` functions, which bypass RLS. In a multi-tenant app each one is a potential data leak.
+- **Every server function must filter by institution.** The single-institution version had about 418 `SECURITY DEFINER` functions, which bypass RLS. In a multi-tenant app each one is a potential data leak.
   - Prefer `SECURITY INVOKER` plus RLS where possible.
   - Where DEFINER is needed, check the institution explicitly.
 - Build an **automatic cross-tenant leak test** early. Create two institutions, call every RPC and select every table as a user of B, and assert nothing of A is visible.
 - **Per-tenant uniqueness and counters:**
   - stage keys, receipt numbers, refund numbers, alumni ref codes, alumni field keys
   - student ID series, phone-duplicate checks, tag names, course names
-- Settings are currently a global key/value table (`app_settings`), and each tenant needs its own copy. Keep `app_settings(institution_id, key)` or typed settings tables.
+- Settings must be per tenant, e.g. `app_settings(institution_id, key)` or typed settings tables.
 - **Per-tenant integrations:** Claude/Gemini keys, Google Drive Apps Script URL and secret, iLovePDF and remove.bg accounts, receipt prefix, logo, institute details used in receipts and templates.
 - **Per-tenant locale:** time zone (default `Asia/Dhaka`), currency (default ৳), phone country rules (default Bangladesh), week start (default Saturday), working days and holidays.
 - **Public pages need the institution in the URL:** `/apply/<slug>`, `/refer/<code>`. Referral codes can stay globally unique.
@@ -111,7 +99,7 @@ The owner's requirements for the rebuild:
 - Background jobs (pg_cron) must loop per institution and respect each one's time zone and settings.
 - **Branding per institution:** name and logo on login, web shell, receipts and the Home top bar. The product needs a neutral app name.
 
-## 3. Current tech stack and architecture
+## 3. Recommended tech stack and architecture
 
 | Layer | Current choice |
 |---|---|
@@ -175,7 +163,7 @@ The owner's requirements for the rebuild:
 
 ## 5. Auth and account lifecycle
 
-- **First-run setup** (`setup.tsx`):
+- **First-run setup:**
   - Runs when no Super Admin exists.
   - Asks for name, email, phone, password and institution name.
   - Creates the account and makes it an active Super Admin.
@@ -263,7 +251,7 @@ The owner's requirements for the rebuild:
 ## 7. Leads list, board, search, filters
 
 - **Search:**
-  - Matches name, student ID, guardian, email, area, NU ID and WhatsApp username.
+  - Matches name, student ID, guardian, email, area, board ID and WhatsApp username.
   - 3 or more digits also match all phone numbers.
   - Closed leads are always included when searching.
   - A hint shows matches hidden by the current chip or filter, plus an "also matched in …" line.
@@ -645,7 +633,7 @@ The owner's requirements for the rebuild:
 - Due and late now, discounts given, recent voids.
 - Visible according to report scope.
 
-## 22. Students tab, placement, ITTC flow
+## 22. Students tab, placement, external board flow
 
 **Students tab**
 - Admitted students; on/off and "who" by setting.
@@ -653,7 +641,7 @@ The owner's requirements for the rebuild:
 - **Chips:** All, Mine, Due, Overdue, Paid, Papers missing, New this month, plus the board-flow chips.
 - **Paid ranges:** ৳0, 1–999, 1,000+, 5,000+, 10,000+, custom, paid this week / month.
 - **Sorts:** admitted newest / oldest, name, student ID, paid most / least, last paid, most due, next installment, papers missing, next call.
-- **Search** also by student ID and NU ID.
+- **Search** also by student ID and board ID.
 - The list total shows what the listed students paid.
 
 **Placement**
@@ -661,17 +649,23 @@ The owner's requirements for the rebuild:
 - Side effects: fee re-lock, new student ID, logged.
 - **Bulk placement:** preview first (who moves, seats, new IDs, fee changes), then all-or-nothing.
 
-**ITTC flow (external university submission; ITTC / National University specific)**
-1. **📤 Submitted Online:** the student was submitted on the National University (NU) portal. The **NU Admission ID** is required (unique).
-2. **🏛 Received by ITTC:** needs Submitted first, and **net paid ≥ the course's admission fee** (default ৳1,000).
+**External board flow** (post-admission steps; configurable per institution)
+
+Many colleges must register each admitted student with an affiliating university or board (for example,
+National University in Bangladesh) and then record that the institution received the student. Default steps:
+
+1. **📤 Submitted Online:** the student was submitted on the board's portal. The **board ID** (label set per
+   institution, e.g. "NU Admission ID") is required and unique.
+2. **🏛 Received by institution:** needs Submitted first, and **net paid ≥ the course's admission fee**
+   (a default amount per institution, overridable per course).
    - The error says how much more is needed.
    - Officers are notified when a submitted student becomes "ready" (fee paid).
    - **Bulk received:** only ready students are marked; others are reported with the reason.
-3. **Undo:** a reason is required; Received must be undone before Submitted.
+3. **Undo:** a reason is required; the later step must be undone before the earlier one.
 
 - Officer Home card: not submitted / ready counts.
-- **History:** older versions had a two-stage approval (approval → registration with ৳1,000 / ৳6,000 thresholds) and a "Listed" state. All were **retired**; only the columns remain.
-- **In the new app:** make this a **configurable post-admission workflow** per institution, with its own step names, the external board ID label, and money and paper conditions. Don't hard-code NU / ITTC.
+- Make the steps, their names, the board ID label and the money and paper conditions **configurable per
+  institution**, and allow switching the whole flow off.
 
 ## 23. AI features (Claude / Gemini)
 
@@ -774,7 +768,7 @@ All AI runs **on the server**, in Edge Functions `ai-lead-chance` and `ai-admiss
 **Kinds** (each can be switched off by the admin; people can mute some)
 - assigned, auto_assigned, follow_up, visit, speed_to_lead, outcome, signup, sync_nudge, missed_call, discount, payment
 - leaderboard, scorecard, alumni, feedback, admission-flow steps, app_update
-- AI and ITTC "ready"
+- AI, and the external board flow's "ready"
 
 **Sending**
 - `notify(user, kind, title, body, data, dedupe, urgent)`: dedupe per user, quiet hours, pushed via pg_net to the Expo push API.
@@ -826,7 +820,7 @@ All AI runs **on the server**, in Edge Functions `ai-lead-chance` and `ai-admiss
   - leads: lead added, imported, stage forward
   - visits and admission: visit planned / done, paper, admitted (AI share), payment (per ৳1,000)
   - app time, overdue penalty
-- **Calculation:** from existing data (no event table).
+- **Calculation:** worked out from the activity data already stored (no separate event table).
 - **"retro" setting:** re-apply new rules to past days, or keep old days on the old rules.
 - **Super Admin:** manual adjustments (logged); hide a person from the leaderboard.
 
@@ -970,7 +964,7 @@ All AI runs **on the server**, in Edge Functions `ai-lead-chance` and `ai-admiss
 - **Leads / Students table:**
   - sortable columns, column chooser, density (comfortable / compact), board view, tick-many with bulk actions, Excel export
   - detail in a right-hand panel, name hover card, copy buttons
-  - row ⋯ menu: payment, note, upload paper, flow steps, section, NU ID, student ID, fee change, papers popup, all notes
+  - row ⋯ menu: payment, note, upload paper, flow steps, section, board ID, student ID, fee change, papers popup, all notes
   - KPI cards
 - **Live approval toast:** officers see a badge and a note when students become ready.
 - **Other web screens:** Team activity, Change log (restore, Excel), wide reports and scorecard, Photo Studio.
@@ -996,7 +990,7 @@ All AI runs **on the server**, in Edge Functions `ai-lead-chance` and `ai-admiss
   - WhatsApp: getWhatsAppStatus, setWhatsAppEnabled, openNotificationAccess, getWhatsAppPending
   - contacts: getContactGroups
   - crashes: takeNativeCrashes
-- **Google Play:** needs the call-log permission declaration (see `docs/GOOGLE-PLAY.md` in the old repo).
+- **Google Play:** needs the call-log permission declaration and a Data Safety form.
 
 ## 33. Background jobs (pg_cron)
 
@@ -1028,7 +1022,7 @@ All AI runs **on the server**, in Edge Functions `ai-lead-chance` and `ai-admiss
   - In-memory request memo with TTL.
   - Per-user AsyncStorage cache for **instant open** of Home, Leads and Students (stale-while-revalidate).
   - Cleared on sign-out or user switch.
-- **Speed work already done:**
+- **Speed techniques that worked:**
   - RLS init-plans and child-policy fixes, indexes
   - one RPC for all Home numbers, a counts RPC for chips
   - page size 30, lazy board columns
@@ -1039,7 +1033,7 @@ All AI runs **on the server**, in Edge Functions `ai-lead-chance` and `ai-admiss
 ## 35. Build, release, deploy
 
 - **App identity:**
-  - `app.json` name "ITTC Admission", Android package `com.abamunim.leads`, scheme `leadmanagement`.
+  - A neutral product name, its own Android package and deep-link scheme.
   - `runtimeVersion` is pinned; changing it needs a new store build.
 - **EAS profiles:**
   - development: dev client APK
@@ -1056,26 +1050,25 @@ All AI runs **on the server**, in Edge Functions `ai-lead-chance` and `ai-admiss
   - AI keys (only in the app's Settings, stored server-side)
 - **Release flow:** each change is one PR with a "What's new" entry. The deploy type is stated: database / Edge Functions / app update / new store build.
 
-## 36. Everything that is ITTC / Bangladesh specific
+## 36. Everything that must be configurable per institution
 
-Make every item below **per-institution configuration** in the new app.
+Never hard-code any of these. The earlier version hard-coded them for one college, and each one had to be found later.
 
-- **Branding:**
-  - app name "ITTC Admission"; web "ITTC Admission Management System"
-  - logos `assets/web/ittc-logo-*`
-  - permission texts, setup / login text, tab titles
-  - native WhatsApp listener label, receipt logo and sample name
-- **Domain:** `lead.ittc.edu.bd` in the web deploy, the website setting, public links and the privacy page.
-- **Developer email** (feedback inbox and privacy contact) is a single global value.
-- **Admission flow:** "Submitted Online → Received by ITTC", "NU Admission ID" (National University), the ৳1,000 default admission fee, and labels in timeline actions (`received_by_ittc`, `ittc_undone`).
-- **Reset password format:** `ittc-NNNN-xx`.
-- **Locale:**
-  - `Asia/Dhaka` (in 43 migrations), ৳ currency, BD phone rules (`880`, 01XXXXXXXXX; the native module keeps only BD mobiles)
-  - Saturday–Friday week, Friday off, scorecard on Sunday
-  - Bangla templates and public forms, payment methods bKash / Nagad / Rocket
-  - area placeholder "মিরপুর, ঢাকা"
-- **Lead score** uses hard-coded stage keys.
-- **Single tenant everywhere:** global settings, roles, first-run setup, counters (receipts, refunds, student IDs), the Drive connection, iLovePDF / remove.bg accounts, AI keys.
+- **Branding:** institution name, short name, logo, colours. Used on login, web shell, Home top bar, receipts,
+  tab titles, permission texts, public forms and the native WhatsApp listener label.
+- **Product-level (not per institution):** app name, domain, privacy page contact, and the developer / feedback
+  inbox owner (the Master Admin side).
+- **External board flow:** step names, board ID label, admission-fee default, on/off.
+- **Reset password format:** generic (no institution prefix), or based on the short name.
+- **Locale:** defaults are for Bangladesh, but each must be a setting.
+  - time zone `Asia/Dhaka`
+  - currency ৳
+  - phone rules (`880`, 01XXXXXXXXX)
+  - week Saturday–Friday, Friday off, scorecard day Sunday
+  - Bangla templates and public forms, payment methods bKash / Nagad / Rocket, address placeholders
+- **Lead score:** rules must reference stage kinds or ids, not hard-coded stage keys.
+- **Everything else per tenant:** settings, roles, setup, counters (receipts, refunds, student IDs), Drive
+  connection, iLovePDF / remove.bg accounts, AI keys.
 
 ## 37. Lessons learned (do not repeat these mistakes)
 
@@ -1102,7 +1095,7 @@ Make every item below **per-institution configuration** in the new app.
    - Record every provider problem where an admin can see it.
    - Never fall back silently without a note.
 6. **Cost display:** estimates must use the **model actually chosen** (and $0 for free providers). Otherwise budgets stop work wrongly and admins are misled.
-7. **Old app versions stay in the field:**
+7. **Old app versions stay in the field after each update:**
    - Derive server decisions (e.g. institution, permissions) from the user's profile, not from what the client sends.
    - Keep RPC signatures backward compatible, or add new ones.
 8. **Speed:**
@@ -1119,24 +1112,7 @@ Make every item below **per-institution configuration** in the new app.
     - Firebase JSON, google-services.json, .env, keystore, Apps Script secret, tokens.
     - API keys are entered by admins in the app and stored server-side; the app only sees a hint.
 
-## 38. Data migration from the old app
-
-- Create institution #1 **"Ideal Teachers' Training College"**: name, address, College Code, EIIN, logo, domain.
-- **Copy every table** with `institution_id = ITTC`:
-  - `leads` and children: courses, tags, calls, follow-ups, visits, notes, files, papers, negotiations, discounts, payments, installments, stage history, activity
-  - profiles and roles (per institution), settings (per institution)
-  - counters, alumni and referrals, credits, feedback, AI tables and answers, devices, notifications
-- **Keep:**
-  - UUIDs, so links and timelines stay valid
-  - `auth.users` (same logins)
-  - receipt, refund and student-ID series
-  - Google Drive file ids (the Drive stays ITTC's)
-- **Roles:** the current Super Admin stays ITTC's Super Admin. The product owner becomes **Master Admin**.
-- **Old phones:** they keep working until updated (server-derived institution), or a forced store update is planned.
-  - Same Android package and signing key, so the update installs over the old app.
-- **Verify:** row counts per table, money totals, ID series, and a cross-tenant leak test with a second dummy institution.
-
-## 39. Open decisions for the owner
+## 38. Open decisions for the owner
 
 1. Can one person belong to **more than one institution**? Simplest: one email = one institution.
 2. **Who may create an institution?** Self sign-up with Master Admin approval, or the Master Admin only?
@@ -1144,6 +1120,5 @@ Make every item below **per-institution configuration** in the new app.
 4. **AI keys and Google Drive:** each institution brings its own, or the platform's shared ones (who pays)?
 5. **Product name, app name, domain:** e.g. one domain with `/<slug>`, or per-institution subdomains?
 6. **Billing / subscription plans** for institutions, now or later? Keep a plan/expiry field from day one.
-7. **Same Supabase project and Play Store app as now** (updating the existing install), or a fresh app?
-8. Which ITTC-only features become **generic configurable workflows** vs. removed: the external board flow, NU ID, Bangla-only texts?
-9. **Lead merge** (merging duplicate leads) was planned on a side branch but never shipped. Include it in the new app?
+7. Should the **external board flow** be included from the start, and which languages should the UI support besides English and Bangla?
+8. **Lead merge** (merging duplicate leads) was planned in the earlier version but never shipped. Include it?
