@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-k',
+    date: '8 Nov 2026',
+    title: '🧠 Claude Haiku 5.5: the cheap Claude',
+    items: [
+      '🧠 Settings → AI → “Claude model”: Haiku 5.5 (about a twentieth of the price) or Sonnet 5.5 (the most careful), chosen separately for the chance of admission and for admission credit',
+      '💵 The monthly budget, “Run a group” and “Claude used so far” count each model at its own price',
+      '🔄 Change it any time; answers already given stay',
+    ],
+  },
+  {
     key: '2026-11-08-j',
     date: '8 Nov 2026',
     title: '💵 Gemini shows as free',

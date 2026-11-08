@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { modeOf, type AiMode, type AiProvider } from '@/features/aiProviders/api';
+import { claudeModelOf, modeOf, type AiMode, type AiProvider } from '@/features/aiProviders/api';
 import { getSetting, updateSetting } from '@/features/settings/api';
 import { forget, memo } from '@/shared/lib/memo';
 import { supabase } from '@/shared/lib/supabase';
@@ -103,6 +103,8 @@ export type ChanceToday = {
 };
 
 export type AiChanceOverview = {
+  /** what Claude's answers cost, each at its own model's price (an older database: not sent) */
+  cost_usd?: number;
   pending: number;
   done: number;
   failed: number;
@@ -160,6 +162,7 @@ export async function getAiChanceSettings(): Promise<AiChanceSettings> {
     ...DEFAULT_AI_CHANCE,
     ...(saved ?? {}),
     provider: modeOf(saved?.provider),
+    model: claudeModelOf(saved?.model),
     view: { ...DEFAULT_AI_CHANCE.view, ...(saved?.view ?? {}) },
     daily_run: { ...DEFAULT_AI_CHANCE.daily_run, ...(saved?.daily_run ?? {}) },
   };

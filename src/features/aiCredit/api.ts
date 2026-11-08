@@ -1,4 +1,4 @@
-import { modeOf, type AiMode, type AiProvider } from '@/features/aiProviders/api';
+import { claudeModelOf, modeOf, type AiMode, type AiProvider } from '@/features/aiProviders/api';
 import { getSetting, updateSetting } from '@/features/settings/api';
 import { memo, forget } from '@/shared/lib/memo';
 import { supabase } from '@/shared/lib/supabase';
@@ -45,6 +45,8 @@ export type AiKeyStatus = {
 };
 
 export type AiCreditOverview = {
+  /** what Claude's answers cost, each at its own model's price (an older database: not sent) */
+  cost_usd?: number;
   pending: number;
   done: number;
   failed: number;
@@ -128,6 +130,7 @@ export async function getAiCreditSettings(): Promise<AiCreditSettings> {
     ...DEFAULT_AI_CREDIT,
     ...(saved ?? {}),
     provider: modeOf(saved?.provider),
+    model: claudeModelOf(saved?.model),
     view: { ...DEFAULT_AI_CREDIT.view, ...(saved?.view ?? {}) },
   };
 }
