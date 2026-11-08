@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { AddReferralSheet } from '@/features/alumni/AddReferralSheet';
 import { AlumniContactSheet } from '@/features/alumni/AlumniContactSheet';
@@ -472,7 +473,12 @@ export default function AlumnusScreen() {
   const late = !!next && next.getTime() < Date.now();
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen
         options={{
           title: a.name,
@@ -505,6 +511,12 @@ export default function AlumnusScreen() {
           </View>
         )}
         {!!a.birth_date && <InfoLine icon="cake" text={birthdayText(a.birth_date)} />}
+        {!!a.phone && (
+          <InfoLine
+            icon="phone"
+            text={a.whatsapp_number && a.whatsapp_number !== a.phone ? `${a.phone} · WA ${a.whatsapp_number}` : a.phone}
+          />
+        )}
         <Text style={ui.muted}>Last contacted {ago(a.last_contacted_at)}</Text>
         <View style={styles.contactRow}>
           {!!a.phone && !a.do_not_contact && (
@@ -522,7 +534,7 @@ export default function AlumnusScreen() {
           )}
           <RoundAction
             icon="share"
-            label="Referral link"
+            label="Share link"
             bg={md.primaryC}
             fg={md.onPrimaryC}
             onPress={() =>
@@ -532,15 +544,6 @@ export default function AlumnusScreen() {
               )
             }
           />
-          {access.manage && (
-            <RoundAction
-              icon="edit"
-              label="Edit"
-              bg={md.surface2}
-              fg={colors.text}
-              onPress={() => router.push(`/alumni/edit?id=${a.id}` as Href)}
-            />
-          )}
         </View>
       </View>
 
@@ -576,6 +579,24 @@ export default function AlumnusScreen() {
             />
           </View>
         </View>
+      </View>
+
+      {/* 📝 A note (near the top: the most used) */}
+      <View style={ui.card}>
+        <Text style={ui.label}>📝 ADD A NOTE</Text>
+        <View style={styles.noteRow}>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            placeholder="Add a note…"
+            placeholderTextColor={colors.textMuted}
+            style={styles.noteInput}
+            multiline
+            accessibilityLabel="Note"
+          />
+          <Button title="Save" onPress={saveNote} loading={busy} disabled={!note.trim()} />
+        </View>
+        <AlumniVoiceButton alumniId={a.id} onSaved={alumniChanged} />
       </View>
 
       {/* 🙏 Say thanks: their referrals that were admitted */}
@@ -758,20 +779,7 @@ export default function AlumnusScreen() {
 
       {/* History */}
       <View style={ui.card}>
-        <Text style={ui.label}>NOTES & HISTORY</Text>
-        <View style={styles.noteRow}>
-          <TextInput
-            value={note}
-            onChangeText={setNote}
-            placeholder="Add a note…"
-            placeholderTextColor={colors.textMuted}
-            style={styles.noteInput}
-            multiline
-            accessibilityLabel="Note"
-          />
-          <Button title="Save" onPress={saveNote} loading={busy} disabled={!note.trim()} />
-        </View>
-        <AlumniVoiceButton alumniId={a.id} onSaved={alumniChanged} />
+        <Text style={ui.label}>HISTORY</Text>
         {undo && (
           <View style={styles.undo}>
             <Text style={styles.undoText}>🗑 Deleted</Text>
@@ -882,7 +890,7 @@ export default function AlumnusScreen() {
           ]}
         />
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -981,8 +989,14 @@ const styles = StyleSheet.create({
     backgroundColor: md.errorC,
   },
   dnc: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: md.onErrorC },
-  contactRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xl, marginTop: spacing.md },
-  round: { alignItems: 'center', gap: 6, width: 72 },
+  contactRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  round: { flex: 1, maxWidth: 88, alignItems: 'center', gap: 6 },
   roundBtn: {
     width: 56,
     height: 56,
@@ -1091,7 +1105,7 @@ function RoundAction({
       <Tap onPress={onPress} style={[styles.roundBtn, { backgroundColor: bg }]} label={label}>
         <MIcon name={icon} color={fg} />
       </Tap>
-      <Text style={styles.roundLabel} numberOfLines={1}>
+      <Text style={styles.roundLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
         {label}
       </Text>
     </View>

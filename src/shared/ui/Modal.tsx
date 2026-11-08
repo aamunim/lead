@@ -1,4 +1,5 @@
 import { Modal as RNModal, Platform, StyleSheet, View, type ModalProps } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '@/shared/theme';
@@ -18,10 +19,13 @@ import { colors } from '@/shared/theme';
 export function Modal({
   children,
   bottomFill,
+  keyboard,
   ...props
 }: ModalProps & {
   /** Colour behind the phone's buttons (when the default doesn't match) */
   bottomFill?: string;
+  /** ⌨️ A sheet with text fields: it moves up above the keyboard */
+  keyboard?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const bottom = Platform.OS === 'web' ? 0 : insets.bottom;
@@ -31,7 +35,13 @@ export function Modal({
   return (
     <RNModal {...props}>
       <View style={styles.flex}>
-        <View style={styles.flex}>{children}</View>
+        {keyboard ? (
+          <KeyboardAvoidingView style={styles.flex} behavior="padding">
+            {children}
+          </KeyboardAvoidingView>
+        ) : (
+          <View style={styles.flex}>{children}</View>
+        )}
         {bottom > 0 && <View style={{ height: bottom, backgroundColor: fill }} />}
       </View>
     </RNModal>

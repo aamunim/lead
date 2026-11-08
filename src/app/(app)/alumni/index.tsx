@@ -43,6 +43,7 @@ import {
   type Alumnus,
 } from '@/features/alumni/api';
 import { AlumniFilterSheet } from '@/features/alumni/AlumniFilterSheet';
+import { AlumniPeekSheet } from '@/features/alumni/AlumniPeekSheet';
 import { campaignDraft } from '@/features/alumni/draft';
 import { MenuSheet, NextContactSheet, OwnerSheet, TextSheet, whenText } from '@/features/alumni/sheets';
 import { alumniChanged, Avatar, Chip, s as ui, useAlumniAccess, useAlumniVersion } from '@/features/alumni/ui';
@@ -120,6 +121,9 @@ export default function AlumniScreen() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [schoolLabel, setSchoolLabel] = useSavedState<string | null>('alumni:school', null);
   const [exporting, setExporting] = useState(false);
+  // 👁 peek, and "next contact" for one alumnus from the peek
+  const [peek, setPeek] = useState<Alumnus | null>(null);
+  const [nextFor, setNextFor] = useState<Alumnus | null>(null);
   // 🌐 a wide browser window: a table (one line per alumnus)
   const { width } = useWindowDimensions();
   const table = isWeb && width >= 1000;
@@ -651,6 +655,7 @@ export default function AlumniScreen() {
                     marked={selecting && selected.has(item.id)}
                     onToggle={toggle}
                     onLongPress={startSelect}
+                    onPeek={setPeek}
                   />
                 )}
               </>
@@ -770,6 +775,28 @@ export default function AlumniScreen() {
             },
             ...(access.manage ? manageItems : []),
           ]}
+        />
+      )}
+      {peek && (
+        <AlumniPeekSheet
+          a={peek}
+          onClose={() => setPeek(null)}
+          onNextContact={() => {
+            setNextFor(peek);
+            setPeek(null);
+          }}
+        />
+      )}
+      {nextFor && (
+        <NextContactSheet
+          title={`Next contact · ${nextFor.name}`}
+          canClear={!!nextFor.next_contact_at}
+          onClose={() => setNextFor(null)}
+          onSave={async (at, n) => {
+            await setAlumniNextContact([nextFor.id], at, n);
+            setNextFor(null);
+            alumniChanged();
+          }}
         />
       )}
       {filterOpen && (
@@ -964,6 +991,7 @@ const AlumnusRow = memo(function AlumnusRow({
   marked,
   onToggle,
   onLongPress,
+  onPeek,
 }: {
   a: Alumnus;
   search: string;
@@ -971,10 +999,11 @@ const AlumnusRow = memo(function AlumnusRow({
   marked: boolean;
   onToggle: (id: string) => void;
   onLongPress: (id: string) => void;
+  /** 👁 the peek sheet (tap the picture or the last note) */
+  onPeek: (a: Alumnus) => void;
 }) {
-  const line = [a.batch_name ?? a.course_name, a.session, a.passing_year ? `Passed ${a.passing_year}` : null]
-    .filter(Boolean)
-    .join(' · ');
+  const course = [a.course_name, a.batch_name].filter(Boolean).join(' · ');
+  const line = [course, a.passing_year ? `Passed ${a.passing_year}` : null].filter(Boolean).join(' · ');
   const work = [a.designation, a.workplace, a.district].filter(Boolean).join(' · ');
   const match = search ? alumniMatchLine(a, search) : null;
   const next = a.next_contact_at ? new Date(a.next_contact_at) : null;
@@ -1000,8 +1029,20 @@ const AlumnusRow = memo(function AlumnusRow({
         <View style={styles.check}>
           <MIcon name="check" color={colors.textOnPrimary} />
         </View>
-      ) : (
+      ) : selecting ? (
         <Avatar name={a.name} />
+      ) : (
+        <Pressable
+          onPress={() => onPeek(a)}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={`Peek ${a.name}`}
+        >
+          <Avatar name={a.name} />
+          <View style={styles.peekDot}>
+            <MIcon name="visibility" size={12} color={md.onPrimaryC} />
+          </View>
+        </Pressable>
       )}
       <View style={styles.flex}>
         <View style={styles.nameRow}>
@@ -1010,10 +1051,18 @@ const AlumnusRow = memo(function AlumnusRow({
           </Text>
           {a.do_not_contact && <MIcon name="do-not-disturb-on" size={16} color={colors.danger} />}
         </View>
-        {!!line && (
+        <Text style={styles.phone} numberOfLines={1}>
+          {a.phone ? `📞 ${a.phone}` : '📵 No number'}
+        </Text>
+        {course ? (
           <Text style={styles.line} numberOfLines={1}>
-            {line}
+            🎓 {line}
           </Text>
+        ) : (
+          <View style={styles.badges}>
+            <Pill text="⚠ No course" bg={md.errorC} fg={md.onErrorC} />
+            {!!a.passing_year && <Pill text={`Passed ${a.passing_year}`} bg={md.surface2} fg={colors.textMuted} />}
+          </View>
         )}
         {!!work && (
           <Text style={styles.line} numberOfLines={1}>
@@ -1026,12 +1075,16 @@ const AlumnusRow = memo(function AlumnusRow({
           </Text>
         )}
         {!!a.last_note && (
-          <Text style={styles.note} numberOfLines={1}>
+          <Text style={styles.note} numberOfLines={2} onPress={selecting ? undefined : () => onPeek(a)}>
             📝 {a.last_note}
           </Text>
         )}
-        {(!!next || (quietDays !== null && quietDays > 180)) && (
+        {(!!next || quietDays === null || quietDays > 180 || a.tags.length > 0) && (
           <View style={styles.badges}>
+            {quietDays === null && <Pill text="Never contacted" bg={md.warnC} fg={md.onWarnC} />}
+            {a.tags.slice(0, 2).map((t) => (
+              <Pill key={t} text={`#${t}`} bg={md.surface2} fg={colors.text} />
+            ))}
             {!!next && (
               <Pill
                 text={`⏰ ${whenText(next)}${a.next_contact_note ? ` · ${a.next_contact_note}` : ''}`}
@@ -1105,7 +1158,7 @@ function CoursePicker({
   const [batch, setBatch] = useState<string | null>(null);
   const batches = courses.find((c) => c.id === course)?.batches ?? [];
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
       <View style={styles.sheet}>
         <View style={styles.handle} />
@@ -1300,6 +1353,20 @@ const styles = StyleSheet.create({
   filterTextOn: { color: md.onPrimaryC },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
   pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.sm },
+  phone: { fontSize: fontSize.small, color: colors.text, marginTop: 1 },
+  peekDot: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: md.primaryC,
+    borderWidth: 1.5,
+    borderColor: colors.surface,
+  },
   pillText: { fontSize: 11, fontWeight: fontWeight.semibold },
   quick: { flexDirection: 'row', gap: spacing.sm },
   quickBtn: {

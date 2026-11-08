@@ -102,7 +102,7 @@ function PickAlumnus({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
       <View style={styles.sheet}>
         <Text style={styles.title}>🎓 Who referred this lead?</Text>
