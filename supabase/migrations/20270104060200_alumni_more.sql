@@ -67,6 +67,39 @@ $$;
 revoke all on function public.public_refer_open(text) from public;
 grant execute on function public.public_refer_open(text) to anon, authenticated;
 
+-- A change of only the link-open counter or the refer score is not an edit:
+-- updated_at stays, nothing else is worked out again
+create or replace function public.alumni_before_write()
+returns trigger
+language plpgsql
+set search_path = public, extensions
+as $$
+begin
+  if tg_op = 'UPDATE'
+     and (to_jsonb(new) - 'cnt_opens' - 'refer_score') = (to_jsonb(old) - 'cnt_opens' - 'refer_score') then
+    return new;
+  end if;
+  new.name := trim(new.name);
+  new.phone := nullif(public.normalize_bd_phone(nullif(trim(coalesce(new.phone, '')), '')), '');
+  new.whatsapp_number := nullif(public.normalize_bd_phone(nullif(trim(coalesce(new.whatsapp_number, '')), '')), '');
+  new.email := nullif(lower(trim(coalesce(new.email, ''))), '');
+  new.custom := coalesce(new.custom, '{}'::jsonb);
+  new.tags := coalesce(new.tags, '{}');
+  new.phone_hash := case when new.phone is null then null else encode(digest(new.phone, 'sha256'), 'hex') end;
+  new.wa_hash := case when new.whatsapp_number is null or new.whatsapp_number = new.phone then null
+                      else encode(digest(new.whatsapp_number, 'sha256'), 'hex') end;
+  new.search_text := lower(concat_ws(' ', new.name, new.phone, new.whatsapp_number, new.email, new.student_ref,
+                                     new.ref_code, new.workplace, new.designation, new.district, new.upazila,
+                                     new.address, new.session, new.passing_year::text,
+                                     array_to_string(new.tags, ' '),
+                                     (select string_agg(v, ' ') from jsonb_each_text(new.custom) as c(k, v))));
+  new.birth_md := case when new.birth_date is null then null
+                       else (extract(month from new.birth_date) * 100 + extract(day from new.birth_date))::smallint end;
+  if tg_op = 'UPDATE' then new.updated_at := now(); end if;
+  return new;
+end;
+$$;
+
 -- ---------------------------------------------------------------------
 -- 2b. 🏆 Top referrers (a period: month / year / all)
 -- ---------------------------------------------------------------------
@@ -86,6 +119,7 @@ declare
 begin
   if not public.alumni_can('view') then return null; end if;
   return coalesce((select jsonb_agg(x order by x.admitted desc, x.referrals desc, x.leads desc, x.name) from (
+   select * from (
     select a.id, a.name, b.name as batch_name, a.workplace,
            (select count(*) from public.alumni_referrals r where r.alumni_id = a.id and r.created_at >= v_from) as referrals,
            (select count(*) from public.leads l where l.referred_by_alumni_id = a.id and l.deleted_at is null
@@ -98,7 +132,8 @@ begin
     left join public.batches b on b.id = a.batch_id
     where a.deleted_at is null and (a.cnt_referrals > 0 or a.cnt_leads > 0 or a.cnt_opens > 0)
   ) x where x.referrals + x.leads + x.admitted + x.opens > 0
-  limit greatest(1, least(coalesce(p_limit, 30), 100))), '[]'::jsonb);
+  order by x.admitted desc, x.referrals desc, x.leads desc, x.name
+  limit greatest(1, least(coalesce(p_limit, 30), 100))) x), '[]'::jsonb);
 end;
 $$;
 revoke all on function public.alumni_top(text, integer) from public, anon;
@@ -149,7 +184,9 @@ begin
       continue;
     end if;
     insert into public.alumni_rewards (alumni_id, amount, tier, note)
-    values (p_alumni, v_amt, v_n, 'Bonus: ' || v_n || ' admitted');
+    values (p_alumni, v_amt, v_n, 'Bonus: ' || v_n || ' admitted')
+    on conflict do nothing;   -- two admissions at the same moment: one bonus
+    if not found then continue; end if;
     perform public.alumni_log(p_alumni, 'reward', '🏅 Bonus for ' || v_n || ' admitted: ৳' || v_amt,
                               jsonb_build_object('tier', v_n, 'amount', v_amt));
   end loop;
@@ -296,7 +333,7 @@ revoke all on function public.mark_alumni_campaign(uuid, uuid, boolean) from pub
 grant execute on function public.mark_alumni_campaign(uuid, uuid, boolean) to authenticated;
 
 -- The campaigns with their numbers (referrals / admitted from those alumni since it began)
-create or replace function public.alumni_campaign_list()
+create or replace function public.alumni_campaign_list(p_id uuid default null)
 returns jsonb
 language plpgsql
 stable
@@ -318,12 +355,14 @@ begin
             where l.deleted_at is null and l.admitted_at >= c.created_at and l.cancelled_at is null) as admitted
     from public.alumni_campaigns c
     left join public.alumni_campaign_items i on i.campaign_id = c.id
+    where p_id is null or c.id = p_id
     group by c.id
+    order by c.created_at desc
     limit 100) x), '[]'::jsonb);
 end;
 $$;
-revoke all on function public.alumni_campaign_list() from public, anon;
-grant execute on function public.alumni_campaign_list() to authenticated;
+revoke all on function public.alumni_campaign_list(uuid) from public, anon;
+grant execute on function public.alumni_campaign_list(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 2e. 🙏 Say thanks: admitted referrals not thanked yet
@@ -435,10 +474,12 @@ begin
            (select count(*) from public.leads l where l.workplace_key = k.key and l.deleted_at is null) as leads,
            (select count(*) from public.leads l where l.workplace_key = k.key and l.deleted_at is null
               and l.admitted_at is not null and l.cancelled_at is null) as admitted
-    from (select distinct workplace_key as key from public.alumni
+    from (select workplace_key as key from public.alumni
           where workplace_key is not null and deleted_at is null
-            and (v_q is null or workplace_key like '%' || v_q || '%')) k
-    limit 300) x), '[]'::jsonb);
+            and (v_q is null or workplace_key like '%' || v_q || '%')
+          group by workplace_key
+          order by count(*) desc
+          limit 300) k) x), '[]'::jsonb);
 end;
 $$;
 revoke all on function public.alumni_schools(text) from public, anon;
@@ -696,9 +737,12 @@ begin
   if v_data ? 'phone' and length(regexp_replace(v_data ->> 'phone', '\D', '', 'g')) < 10 then
     raise exception 'Please type a correct mobile number.';
   end if;
-  -- one waiting request per alumnus: the newest replaces it
-  delete from public.alumni_update_requests where alumni_id = a.id and status = 'pending';
-  insert into public.alumni_update_requests (alumni_id, data) values (a.id, v_data);
+  -- one waiting request per alumnus: a second one adds to it (the newest value wins per field)
+  update public.alumni_update_requests set data = data || v_data, created_at = now()
+   where alumni_id = a.id and status = 'pending';
+  if not found then
+    insert into public.alumni_update_requests (alumni_id, data) values (a.id, v_data);
+  end if;
   for m in select unnest(case when a.owner_id is not null then array[a.owner_id]
                               else array(select public.alumni_managers()) end)
   loop
@@ -841,16 +885,18 @@ begin
     from public.alumni a
     left join public.batches b on b.id = a.batch_id
     join (
-      -- the same name in the same batch / passing year
-      select array_agg(x.id) as ids from public.alumni x
-      where x.deleted_at is null
-      group by lower(regexp_replace(trim(x.name), '\s+', ' ', 'g')), coalesce(x.batch_id::text, x.passing_year::text, '')
-      having count(*) > 1
-      union all
-      -- one's phone is another's WhatsApp
-      select array[x.id, y.id] from public.alumni x join public.alumni y
-        on y.whatsapp_number = x.phone and y.id <> x.id
-      where x.deleted_at is null and y.deleted_at is null and x.phone is not null and x.id < y.id
+      select distinct ids from (
+        -- the same name in the same batch / passing year
+        select array_agg(x.id order by x.id) as ids from public.alumni x
+        where x.deleted_at is null
+        group by lower(regexp_replace(trim(x.name), '\s+', ' ', 'g')), coalesce(x.batch_id::text, x.passing_year::text, '')
+        having count(*) > 1
+        union all
+        -- one's phone is another's WhatsApp
+        select array[least(x.id, y.id), greatest(x.id, y.id)] from public.alumni x join public.alumni y
+          on y.whatsapp_number = x.phone and y.id <> x.id
+        where x.deleted_at is null and y.deleted_at is null and x.phone is not null
+      ) u
     ) d on a.id = any (d.ids)
     group by d.ids
     limit 200) z), '[]'::jsonb);

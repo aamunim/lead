@@ -33,7 +33,7 @@ export default function CampaignRunScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [all, its] = await Promise.all([listAlumniCampaigns(), getCampaignItems(id)]);
+      const [all, its] = await Promise.all([listAlumniCampaigns(id), getCampaignItems(id)]);
       setC(all.find((x) => x.id === id) ?? null);
       setItems(its);
     } catch (e) {

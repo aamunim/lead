@@ -1341,8 +1341,8 @@ export async function markAlumniCampaign(campaignId: string, alumniId: string, s
   if (error) throw toError(error);
 }
 
-export async function listAlumniCampaigns(): Promise<AlumniCampaign[]> {
-  const { data, error } = await rpc<AlumniCampaign[]>('alumni_campaign_list', {});
+export async function listAlumniCampaigns(id?: string): Promise<AlumniCampaign[]> {
+  const { data, error } = await rpc<AlumniCampaign[]>('alumni_campaign_list', { p_id: id ?? null });
   if (error) throw toError(error);
   return data ?? [];
 }
@@ -1579,15 +1579,30 @@ export async function aiAlumniMessage(input: {
 // ---------------------------------------------------------------------
 export async function exportAlumni(q: AlumniQuery, ids?: string[] | null): Promise<number> {
   const rows: Alumnus[] = [];
-  const PAGE = 1000;
-  for (let from = 0; from < 5000; from += PAGE) {
-    let query = alumniFilters(supabase.from('alumni_overview' as never).select('*'), ids?.length ? {} : q);
-    if (ids?.length) query = query.in('id' as never, ids.slice(0, 5000) as never);
-    const { data, error } = await query.order('name' as never).range(from, from + PAGE - 1);
-    if (error) throw toError(error);
-    const got = (data ?? []) as unknown as Alumnus[];
-    rows.push(...got);
-    if (got.length < PAGE) break;
+  if (ids?.length) {
+    // the marked ones, 200 at a time (a long list of ids would make the address too long)
+    const list = ids.slice(0, 5000);
+    for (let i = 0; i < list.length; i += 200) {
+      const { data, error } = await supabase
+        .from('alumni_overview' as never)
+        .select('*')
+        .in('id' as never, list.slice(i, i + 200) as never);
+      if (error) throw toError(error);
+      rows.push(...((data ?? []) as unknown as Alumnus[]));
+    }
+    rows.sort((x, y) => x.name.localeCompare(y.name));
+  } else {
+    const PAGE = 1000;
+    for (let from = 0; from < 5000; from += PAGE) {
+      const { data, error } = await alumniFilters(supabase.from('alumni_overview' as never).select('*'), q)
+        .order('name' as never)
+        .order('id' as never)
+        .range(from, from + PAGE - 1);
+      if (error) throw toError(error);
+      const got = (data ?? []) as unknown as Alumnus[];
+      rows.push(...got);
+      if (got.length < PAGE) break;
+    }
   }
   if (rows.length === 0) throw new Error('Nobody to export.');
   const fields = await listAlumniFields().catch(() => [] as AlumniField[]);

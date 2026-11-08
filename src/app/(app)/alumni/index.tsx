@@ -118,7 +118,7 @@ export default function AlumniScreen() {
   const [sort, setSort] = useSavedState<AlumniSort>('alumni:sort', 'name');
   const [filters, setFilters] = useSavedState<AlumniFilters>('alumni:filters', {});
   const [filterOpen, setFilterOpen] = useState(false);
-  const [schoolLabel, setSchoolLabel] = useState<string | null>(null);
+  const [schoolLabel, setSchoolLabel] = useSavedState<string | null>('alumni:school', null);
   const [exporting, setExporting] = useState(false);
   // 🌐 a wide browser window: a table (one line per alumnus)
   const { width } = useWindowDimensions();
@@ -494,8 +494,12 @@ export default function AlumniScreen() {
             Filter{nFilters > 0 ? ` · ${nFilters}` : ''}
           </Text>
         </Tap>
-        {!!schoolLabel && !!filters.workplaceKey && (
-          <Chip text={`🏫 ${schoolLabel} ✕`} on onPress={() => setFilters({ ...filters, workplaceKey: null })} />
+        {!!filters.workplaceKey && (
+          <Chip
+            text={`🏫 ${schoolLabel ?? 'One school'} ✕`}
+            on
+            onPress={() => setFilters({ ...filters, workplaceKey: null })}
+          />
         )}
         {nFilters > 0 && <Chip text="✕ Clear" on={false} onPress={() => setFilters({})} />}
         {saved.map((sf) => (
