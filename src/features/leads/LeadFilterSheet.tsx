@@ -71,9 +71,16 @@ const RATING_OPTIONS: Option[] = [
   { value: NONE, label: 'No rating', color: colors.textMuted },
 ];
 
+const AI_CHANCE_OPTIONS: Option[] = [
+  { value: 'hot', label: '🔥 Hot (60%+)', color: colors.success },
+  { value: 'warm', label: '🌤 Warm (30–59%)', color: colors.warning },
+  { value: 'cold', label: '❄️ Cold (below 30%)', color: colors.textMuted },
+];
+
 // Which part of LeadFilters each list field uses
 const LIST_KEYS: Partial<Record<FilterKey, keyof LeadFilters>> = {
   rating: 'ratings',
+  ai_chance: 'aiChance',
   stage: 'stageIds',
   tags: 'tagIds',
   assigned: 'assigned',
@@ -306,6 +313,9 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
         break;
       case 'rating':
         body = listChips(RATING_OPTIONS, 'ratings', '');
+        break;
+      case 'ai_chance':
+        body = listChips(AI_CHANCE_OPTIONS, 'aiChance', '');
         break;
       case 'stage':
         body = listChips(options.stages, 'stageIds', 'No stages.');

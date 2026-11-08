@@ -8,6 +8,28 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-d',
+    date: '8 Nov 2026',
+    title: '🔮 AI: chance of admission and what to say',
+    items: [
+      '🔮 On every open lead: the AI reads the calls, minutes, every note and everyone’s work, and shows the chance of admission (%)',
+      '👉 What to do next, the doubts it heard (fee, family, time…), the best time to call, and “💬 What to say” — short lines in Bangla (hold a line to copy it)',
+      '🔄 It looks again by itself after a new call or note; press “🔄 আবার দেখুন” any time',
+      '🏠 Home: “Call these first” — your leads with a good chance; Leads: 🔮 % on the cards, sort and filter by AI chance (website table too)',
+    ],
+  },
+  {
+    key: '2026-11-08-c',
+    date: '8 Nov 2026',
+    title: '🤖 AI shares each admission',
+    items: [
+      '🤝 When a lead is Admitted, AI reads its calls, minutes, notes, visits and fee talks and shares the credit among the people who worked on it, with a reason for each',
+      '🏆 Credits for “Admitted” now follow these shares (until the AI has worked a lead out, the one who pressed Admitted gets it)',
+      '🔑 Admins: Settings → AI — paste the Claude API key (change it any time), choose who sees the shares, work out past admissions',
+      '✍️ Admins can work a lead out again or change the shares by hand, with a reason',
+    ],
+  },
+  {
     key: '2026-11-08-b',
     date: '8 Nov 2026',
     title: '❌ Team activity: who marked leads Lost',

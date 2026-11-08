@@ -910,6 +910,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     addedFrom,
     addedTo,
     quick: quickParam,
+    sort: sortParam,
   } = useLocalSearchParams<{
     stage?: string;
     ids?: string;
@@ -918,7 +919,15 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     addedFrom?: string;
     addedTo?: string;
     quick?: string;
+    sort?: string;
   }>();
+  // Opened with a sort chosen (e.g. Home → 🔮 All by AI chance)
+  useEffect(() => {
+    if (!sortParam) return;
+    pickSort(String(sortParam) as LeadSort);
+    router.setParams({ sort: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortParam]);
   // Opened with a chip chosen (e.g. Home → 🎓 Approval waiting)
   useEffect(() => {
     if (!quickParam) return;

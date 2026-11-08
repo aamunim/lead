@@ -1,3 +1,4 @@
+import { wakeAiCredit } from '@/features/aiCredit/api';
 import { getSetting, updateSetting } from '@/features/settings/api';
 import { supabase } from '@/shared/lib/supabase';
 import { colors } from '@/shared/theme';
@@ -600,6 +601,8 @@ export async function markAdmitted(input: AdmitInput): Promise<AdmitResult> {
     ...(input.sectionId ? { p_section_id: input.sectionId } : {}),
   });
   if (error) throw toError(error);
+  // 🤖 the AI works out who did how much, in the background (never waits)
+  wakeAiCredit();
 
   const r = (data ?? {}) as { student_ref?: string | null; seats_left?: number | null };
   return { studentRef: r.student_ref ?? null, seatsLeft: r.seats_left ?? null };

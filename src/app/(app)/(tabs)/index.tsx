@@ -12,6 +12,7 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { canImportContacts } from '@/features/contacts/api';
 import { TodayList } from '@/features/follow-ups/TodayList';
 import { RecentHomeCard } from '@/features/leads/RecentHomeCard';
+import { ChanceHomeCard } from '@/features/aiChance/ChanceHomeCard';
 import { getMyOpenNudge, markNudgeSeen, nudgeTitle, type Nudge } from '@/features/nudges/api';
 import { SyncSetupSheet } from '@/features/nudges/SyncSetupSheet';
 import { countUnread } from '@/features/notifications/api';
@@ -284,6 +285,7 @@ function PhoneHome() {
         <View onLayout={(e) => (callsY.current = e.nativeEvent.layout.y - 8)}>
           <TodayVisits />
           <TodayList />
+          <ChanceHomeCard />
           <RecentHomeCard />
         </View>
 

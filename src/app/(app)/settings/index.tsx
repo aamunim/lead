@@ -102,6 +102,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/credits' as Href,
       },
       {
+        title: 'AI',
+        description: 'Claude API key, AI admission credit, who sees the shares',
+        icon: '🤖',
+        href: '/settings/ai' as Href,
+      },
+      {
         title: 'Reports',
         description: 'Who sees reports, the Home card, which parts are shown',
         icon: '📊',

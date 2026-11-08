@@ -64,6 +64,7 @@ import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { countActiveFilters, type LeadFilters } from '@/features/leads/filters';
 import { ago, callLineText } from '@/features/leads/lastActivity';
 import { dialogOpen, loadPref, onKey, savePref, typingInField } from '@/features/web/prefs';
+import { ChanceChip, aiChanceOf } from '@/features/aiChance/ChanceChip';
 import { colors, fontSize, fontWeight, isDark, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -91,6 +92,7 @@ type ColKey =
   // 📋 Leads
   | 'stage'
   | 'rating'
+  | 'ai'
   | 'interest'
   | 'source'
   | 'assignee'
@@ -150,6 +152,7 @@ const COLS: Col[] = [
   // 📋 Leads
   { key: 'stage', label: 'Stage', width: 150 },
   { key: 'rating', label: 'Rating', width: 86 },
+  { key: 'ai', label: '🔮 AI chance', width: 112, sorts: ['ai_chance'] },
   { key: 'interest', label: 'Interested in', flex: 1 },
   { key: 'source', label: 'Source', width: 130 },
   { key: 'assignee', label: 'With', width: 130 },
@@ -181,6 +184,7 @@ const MODE_COLS: Record<Mode, ColKey[]> = {
     'phone',
     'stage',
     'rating',
+    'ai',
     'interest',
     'source',
     'assignee',
@@ -193,7 +197,7 @@ const MODE_COLS: Record<Mode, ColKey[]> = {
 const MODE_DEFAULT: Record<Mode, ColKey[]> = {
   // (v5: NU ID after Section · the phone is on the name's card, its column hidden)
   students: ['ref', 'name', 'course', 'section', 'nu', 'fee', 'paid', 'papers', 'approval', 'last', 'admitted'],
-  leads: ['name', 'phone', 'stage', 'rating', 'interest', 'assignee', 'follow', 'last', 'created'],
+  leads: ['name', 'phone', 'stage', 'rating', 'ai', 'interest', 'assignee', 'follow', 'last', 'created'],
 };
 const MODE_PANEL: Record<Mode, ColKey[]> = {
   students: ['ref', 'name', 'fee', 'papers', 'approval'],
@@ -324,7 +328,15 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
         ? loadPref<ColKey[] | null>('web_students_cols_v4', null)
         : null;
     const start = old ? old.filter((k) => k !== 'phone').concat(old.includes('nu') ? [] : ['nu']) : null;
-    return loadPref<ColKey[]>(KEYS.cols, start ?? DEFAULT_COLS).filter((k) => MODE_COLSET.includes(k));
+    let chosen = loadPref<ColKey[]>(KEYS.cols, start ?? DEFAULT_COLS).filter((k) => MODE_COLSET.includes(k));
+    // 🔮 the new AI chance column: shown once to those who had chosen their columns before
+    if (leadsMode && !chosen.includes('ai') && !loadPref('web_leads_ai_col', false)) {
+      const at = chosen.indexOf('rating');
+      chosen = at >= 0 ? [...chosen.slice(0, at + 1), 'ai', ...chosen.slice(at + 1)] : [...chosen, 'ai'];
+      savePref(KEYS.cols, chosen);
+    }
+    if (leadsMode) savePref('web_leads_ai_col', true);
+    return chosen;
   });
   const [colsOpen, setColsOpen] = useState(false);
   // Row height: comfortable or compact (more students on one screen)
@@ -1848,6 +1860,16 @@ function Cell({
       ) : (
         <Text style={styles.dim}>—</Text>
       );
+    case 'ai': {
+      const a = aiChanceOf(r);
+      return a ? (
+        <View style={styles.chipCell}>
+          <ChanceChip {...a} />
+        </View>
+      ) : (
+        <Text style={styles.dim}>—</Text>
+      );
+    }
     case 'rating': {
       const c = r.rating ? RATING[r.rating] : null;
       return c ? (
@@ -1970,6 +1992,8 @@ function cellText(col: ColKey, r: LeadListItem, nameOf: (id: string | null) => s
       return r.stage?.name ?? null;
     case 'rating':
       return r.rating;
+    case 'ai':
+      return aiChanceOf(r) ? `${aiChanceOf(r)!.chance}%` : null;
     case 'interest':
       return r.lead_courses
         .map((c) => c.course?.name)
@@ -2094,6 +2118,7 @@ function ColumnsDialog({
 }
 
 const styles = StyleSheet.create({
+  chipCell: { flexDirection: 'row' },
   // ---- 🎓 Students: the new look --------------------------------------
   avatar: { borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontWeight: fontWeight.bold },
