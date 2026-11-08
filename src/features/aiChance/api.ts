@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { modeOf, type AiMode, type AiProvider } from '@/features/aiProviders/api';
 import { getSetting, updateSetting } from '@/features/settings/api';
 import { forget, memo } from '@/shared/lib/memo';
 import { supabase } from '@/shared/lib/supabase';
@@ -15,6 +16,8 @@ export type ChanceLevel = 'hot' | 'warm' | 'cold';
 
 export type AiChanceSettings = {
   enabled: boolean;
+  /** which AI: claude | gemini | gemini_then_claude | compare (Settings → AI) */
+  provider: AiMode;
   /** by itself after a new call / note (once a day per lead) */
   auto: boolean;
   model: string;
@@ -23,7 +26,7 @@ export type AiChanceSettings = {
   daily_auto_limit: number;
   /** ⏰ once a day at `hour` (Dhaka): which leads to look at again */
   daily_run: { on: boolean; hour: number; changed: boolean; never: boolean; older: boolean; older_days: number };
-  /** 💵 all AI stops by itself once this month's cost reaches it ($; 0 = no limit) */
+  /** 💵 Claude stops by itself once this month's cost reaches it ($; 0 = no limit) */
   monthly_budget: number;
   view: { all: boolean; roles: string[]; people: string[] };
   guidance: string;
@@ -31,6 +34,7 @@ export type AiChanceSettings = {
 
 export const DEFAULT_AI_CHANCE: AiChanceSettings = {
   enabled: true,
+  provider: 'claude',
   auto: true,
   model: 'claude-sonnet-5-5',
   effort: 'medium',
@@ -62,6 +66,27 @@ export type LeadChance = {
   error: string | null;
   /** looked at today and nothing new since (warn before asking again) */
   fresh_today: boolean;
+  /** which AI gave the answer above */
+  provider: AiProvider | null;
+  /** 🗂 every AI's latest answer (newest first): one AI's answer stays when the other answers */
+  answers: ChanceAnswer[];
+};
+
+/** One AI's latest answer for a lead */
+export type ChanceAnswer = {
+  provider: AiProvider;
+  chance: number | null;
+  level: ChanceLevel | null;
+  summary: string | null;
+  good: string[];
+  risks: string[];
+  objections: { kind: string; detail: string }[];
+  actions: { text: string; why: string }[];
+  script: { situation: string; lines: string[] }[];
+  best_time: string | null;
+  next_call_days: number | null;
+  next_call_why: string | null;
+  done_at: string | null;
 };
 
 export type ChanceToday = {
@@ -132,6 +157,7 @@ export async function getAiChanceSettings(): Promise<AiChanceSettings> {
   return {
     ...DEFAULT_AI_CHANCE,
     ...(saved ?? {}),
+    provider: modeOf(saved?.provider),
     view: { ...DEFAULT_AI_CHANCE.view, ...(saved?.view ?? {}) },
     daily_run: { ...DEFAULT_AI_CHANCE.daily_run, ...(saved?.daily_run ?? {}) },
   };
@@ -249,6 +275,15 @@ export function getLeadChance(leadId: string, force = false): Promise<LeadChance
         done_at: d.done_at ?? null,
         error: d.error ?? null,
         fresh_today: !!d.fresh_today,
+        provider: d.provider ?? null,
+        answers: (d.answers ?? []).map((a) => ({
+          ...a,
+          good: a.good ?? [],
+          risks: a.risks ?? [],
+          objections: a.objections ?? [],
+          actions: a.actions ?? [],
+          script: a.script ?? [],
+        })),
       } as LeadChance;
     } catch (e) {
       if (missing(e)) return null;

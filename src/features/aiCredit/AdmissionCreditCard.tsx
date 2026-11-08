@@ -8,6 +8,7 @@ import {
   type CreditStat,
   type LeadCredit,
 } from '@/features/aiCredit/api';
+import { PROVIDER_LABEL } from '@/features/aiProviders/api';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -18,6 +19,8 @@ import { Button } from '@/shared/ui/Button';
 //   Shown only to the people Settings → AI allows (the server decides;
 //   for others it shows nothing). One small request, kept for a minute.
 //   Admins: work it out again, or set the shares by hand (with a reason).
+//   Claude and Gemini: the badge says which AI's shares Credits use; the
+//   other AI's answer (if any) stays and can be opened below.
 // =====================================================================
 
 const CONF: Record<string, string> = {
@@ -59,6 +62,7 @@ export function AdmissionCreditCard({
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [othersOpen, setOthersOpen] = useState(false);
   const polls = useRef(0);
 
   useEffect(() => {
@@ -123,6 +127,8 @@ export function AdmissionCreditCard({
 
   const statOf = (userId: string) => c.stats.find((s) => s.user_id === userId);
   const name = (userId: string, fallback: string | null) => fallback ?? nameOf(userId) ?? 'Someone';
+  // a hand-set card: every AI's answer is "other"; else the AIs besides the one shown
+  const others = c.answers.filter((o) => c.manual || c.status !== 'done' || o.provider !== c.provider);
 
   return (
     <View style={styles.card}>
@@ -131,7 +137,9 @@ export function AdmissionCreditCard({
         {c.status === 'done' && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>
-              {c.manual ? '✍️ Set by hand' : `🤖 AI · ${CONF[c.confidence ?? ''] ?? ''}`}
+              {c.manual
+                ? '✍️ Set by hand'
+                : `🤖 ${c.provider ? PROVIDER_LABEL[c.provider] : 'AI'} · ${CONF[c.confidence ?? ''] ?? ''}`}
             </Text>
           </View>
         )}
@@ -180,6 +188,37 @@ export function AdmissionCreditCard({
               ✍️ {c.edited_by ?? 'An admin'}: “{c.edit_reason}”
             </Text>
           )}
+        </>
+      )}
+
+      {/* 🗂 the other AI's answer (kept; Credits use the one above) */}
+      {!editing && others.length > 0 && (
+        <>
+          <Pressable
+            onPress={() => setOthersOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: othersOpen }}
+            style={styles.link}
+          >
+            <Text style={styles.linkText}>
+              {othersOpen ? '▾' : '▸'} {others.map((o) => PROVIDER_LABEL[o.provider]).join(' · ')}’s answer
+            </Text>
+          </Pressable>
+          {othersOpen &&
+            others.map((o) => (
+              <View key={o.provider} style={styles.other}>
+                <Text style={styles.otherTitle}>
+                  🤖 {PROVIDER_LABEL[o.provider]}
+                  {o.confidence ? ` · ${CONF[o.confidence] ?? ''}` : ''}
+                </Text>
+                {o.shares.map((s) => (
+                  <Text key={s.user_id} style={styles.otherLine}>
+                    {name(s.user_id, s.name)}: {Math.round(s.share)}%{s.reason ? ` — ${s.reason}` : ''}
+                  </Text>
+                ))}
+                {!!o.decisive && <Text style={styles.muted}>⭐ {o.decisive}</Text>}
+              </View>
+            ))}
         </>
       )}
 
@@ -385,6 +424,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   link: { paddingVertical: spacing.xs, paddingHorizontal: spacing.xs },
+  other: { gap: 4, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.background },
+  otherTitle: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.text },
+  otherLine: { fontSize: fontSize.small, lineHeight: 20, color: colors.text },
   linkText: {
     fontSize: fontSize.small,
     fontWeight: fontWeight.semibold,

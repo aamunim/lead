@@ -1,31 +1,19 @@
 // =====================================================================
 // 🤖 Admission credit by AI: works through the queue (admission_credits)
-//   For each admitted lead it sends Claude the lead's story (people as
-//   codes P1, P2…; no names or phone numbers) and saves the shares.
+//   For each admitted lead it sends the AI (Claude and / or Gemini,
+//   Settings → AI) the lead's story (people as codes P1, P2…; no names or
+//   phone numbers) and saves the shares. Each AI's answer is kept; the
+//   card uses the latest.
 //   Who may wake it:
 //     · the 2-minute job in the database (header x-cron-secret)
 //     · any signed-in person (the app, right after "Admitted")
 //   It answers at once and does the work in the background.
-//   {"action":"test"} (admins): checks the saved Claude API key.
-//   The key is set in the app (Settings → AI); only the server reads it.
+//   {"action":"test","provider":"claude"|"gemini"} (admins): checks a
+//   saved key (Gemini: also lists the Flash models it may use).
+//   The keys are set in the app (Settings → AI); only the server reads them.
 // =====================================================================
-import {
-  admin,
-  aiClient,
-  askClaude,
-  billedUsage,
-  cachedSystem,
-  type AiConfig,
-  type Anthropic,
-  classify,
-  drainQueue,
-  effortOf,
-  idsOf,
-  keyResult,
-  modelOf,
-  readJson,
-  serveAiWorker,
-} from '../_shared/ai.ts';
+import { admin, type AiConfig, drainQueue, idsOf, serveAiWorker, testKey } from '../_shared/ai.ts';
+import { answerByPlan, onlyPauses, type Provider, recordUsage, testGemini } from '../_shared/llm.ts';
 
 type Person = { code: string; user_id: string };
 type Input = {
@@ -90,9 +78,10 @@ Answer:
 serveAiWorker({
   name: 'ai-admission-credit',
   setting: 'ai_credit',
-  allowTest: true,
+  test: (cfg, provider) => (provider === 'gemini' ? testGemini(cfg.gemini_key!) : testKey(cfg)),
   drain: (cfg) => {
-    const ai = aiClient(cfg);
+    // an AI that fails for its key / quota / busyness is left out for the rest of this run
+    const down = new Set<Provider>();
     return drainQueue(
       async (n) => {
         const { data, error } = await admin.rpc('ai_credit_claim', {
@@ -101,12 +90,12 @@ serveAiWorker({
         if (error) throw new Error(error.message);
         return idsOf(data, 'ai_credit_claim');
       },
-      (id) => one(ai, cfg, id),
+      (id) => one(cfg, id, down),
     );
   },
 });
 
-async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' | 'stop'> {
+async function one(cfg: AiConfig, leadId: string, down: Set<Provider>): Promise<'ok' | 'stop'> {
   try {
     const { data: input, error } = await admin.rpc('admission_credit_input', {
       p_lead: leadId,
@@ -131,78 +120,84 @@ async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' |
     }
 
     const extra = (cfg.settings.guidance ?? '').trim();
-    const res = await askClaude(ai, {
-      model: modelOf(cfg),
-      max_tokens: 8000,
-      output_config: {
-        effort: effortOf(cfg),
-        format: { type: 'json_schema', schema: SCHEMA },
+    const r = await answerByPlan<Answer>(
+      cfg,
+      {
+        system: extra ? `${SYSTEM}\n\nThe college's own rules (follow them):\n${extra}` : SYSTEM,
+        user: JSON.stringify(story),
+        schema: SCHEMA as unknown as Record<string, unknown>,
+        maxTokens: 8000,
       },
-      system: cachedSystem(extra ? `${SYSTEM}\n\nThe college's own rules (follow them):\n${extra}` : SYSTEM),
-      messages: [{ role: 'user', content: JSON.stringify(story) }],
-    });
+      // past the monthly budget the database only hands out work when a free AI (Gemini) is in the plan
+      { allowClaude: cfg.plan.budget_ok, down },
+    );
 
-    const { value: answer, why } = readJson<Answer>(res);
-    if (!answer) {
-      if (res.stop_reason === 'refusal') {
+    if (!r.shown) {
+      if (r.errors.length === 0 || onlyPauses(r.errors)) {
+        // no AI could take it right now (off, out, resting, busy): it waits, no try used up
+        await admin.rpc('ai_credit_release', { p_lead: leadId });
+      } else {
+        const refusedOnly = r.errors.every((e) => e.kind === 'refusal');
         await admin.rpc('ai_credit_fail', {
           p_lead: leadId,
-          p_error: why,
-          p_retry: false,
+          p_error: r.errors.map((e) => e.message).join(' · '),
+          p_retry: !refusedOnly,
         });
-        return 'ok';
       }
-      throw new Error(why);
+      return r.exhausted ? 'stop' : 'ok';
     }
 
     const byCode = new Map(story.people.map((p) => [p.code, p.user_id]));
-    const shares = answer.shares
-      .filter((s) => byCode.has(s.person) && s.percent > 0)
-      .map((s) => ({
-        user_id: byCode.get(s.person),
-        share: s.percent,
-        reason: s.reason,
-      }));
     // the numbers on the card: user ids in place of the codes
     const stats = (story.stats as Record<string, unknown>[]).map(({ person, ...rest }) => ({
       user_id: byCode.get(String(person)),
       ...rest,
     }));
 
-    const usage = billedUsage(res.usage);
-    const { error: saveError } = await admin.rpc('ai_credit_save', {
-      p_lead: leadId,
-      p_shares: shares,
-      p_decisive: answer.decisive_moment,
-      p_confidence: answer.confidence,
-      p_stats: stats,
-      p_model: res.model,
-      p_usage: usage,
-    });
-    if (saveError) throw new Error(saveError.message);
-    await keyResult(true);
-    // 💵 the monthly budget counts what was used
-    await admin.rpc('ai_usage_add', {
-      p_feature: 'credit',
-      p_in: usage.input_tokens,
-      p_out: usage.output_tokens,
-    });
+    const save = async (a: (typeof r.answers)[number], final: boolean) => {
+      const answer = a.value;
+      const shares = (Array.isArray(answer.shares) ? answer.shares : [])
+        .filter((s) => s && byCode.has(s.person) && Number(s.percent) > 0)
+        .map((s) => ({
+          user_id: byCode.get(s.person),
+          share: Number(s.percent),
+          reason: String(s.reason ?? ''),
+        }));
+      const { error: saveError } = await admin.rpc('ai_credit_save', {
+        p_lead: leadId,
+        p_shares: shares,
+        p_decisive: String(answer.decisive_moment ?? ''),
+        p_confidence: answer.confidence,
+        p_stats: stats,
+        p_model: a.model,
+        p_usage: a.usage,
+        p_provider: a.provider,
+        p_final: final,
+      });
+      return saveError?.message ?? null;
+    };
+
+    // the AI was used (and paid for) whether or not its answer can be kept
+    for (const a of r.answers) await recordUsage('credit', a);
+
+    // 🗂 every answer is kept per AI; the shown one (compare mode: Claude's) goes on the card.
+    // If the shown one can't be kept (e.g. no real shares), the other AI's answer takes its place.
+    const others = r.answers.filter((a) => a !== r.shown);
+    for (const a of others) {
+      const err = await save(a, false);
+      if (err) console.warn('ai-admission-credit', a.provider, err);
+    }
+    let lastError: string | null = null;
+    for (const a of [r.shown, ...others]) {
+      lastError = await save(a, true);
+      if (!lastError) break;
+    }
+    if (lastError) throw new Error(lastError);
     return 'ok';
   } catch (e) {
-    const { msg, kind } = classify(e);
-    if (kind === 'key' || kind === 'credit') {
-      // stop until an admin saves a new key / presses Test again
-      await keyResult(false, msg);
-      await admin.rpc('ai_credit_release', { p_lead: leadId });
-      return 'stop';
-    }
-    if (kind === 'busy') {
-      await admin.rpc('ai_credit_release', { p_lead: leadId });
-      return 'stop';
-    }
     await admin.rpc('ai_credit_fail', {
       p_lead: leadId,
-      p_error: msg,
+      p_error: e instanceof Error ? e.message : String(e),
       p_retry: true,
     });
     return 'ok';

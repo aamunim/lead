@@ -3,27 +3,13 @@
 //   For each open lead it sends Claude the lead's story (calls, minutes,
 //   the hours they answer, every note, visits, fee talks, next calls;
 //   people as codes, no names or phone numbers) and how often leads like
-//   it were admitted. Claude answers with the chance, why, the doubts,
-//   the next steps and lines to say — in Bangla.
+//   it were admitted. The AI (Claude and / or Gemini, Settings → AI)
+//   answers with the chance, why, the doubts, the next steps and lines to
+//   say — in Bangla. Each AI's answer is kept; the lists use the latest.
 //   Woken by the 2-minute job (x-cron-secret) or the app ("Check").
 // =====================================================================
-import {
-  admin,
-  aiClient,
-  askClaude,
-  billedUsage,
-  cachedSystem,
-  type AiConfig,
-  type Anthropic,
-  classify,
-  drainQueue,
-  effortOf,
-  idsOf,
-  keyResult,
-  modelOf,
-  readJson,
-  serveAiWorker,
-} from '../_shared/ai.ts';
+import { admin, type AiConfig, drainQueue, idsOf, serveAiWorker } from '../_shared/ai.ts';
+import { answerByPlan, onlyPauses, type Provider, recordUsage } from '../_shared/llm.ts';
 
 type Answer = {
   chance: number;
@@ -168,7 +154,8 @@ serveAiWorker({
   name: 'ai-lead-chance',
   setting: 'ai_chance',
   drain: (cfg) => {
-    const ai = aiClient(cfg);
+    // an AI that fails for its key / quota / busyness is left out for the rest of this run
+    const down = new Set<Provider>();
     return drainQueue(
       async (n) => {
         const { data, error } = await admin.rpc('ai_chance_claim', {
@@ -177,7 +164,7 @@ serveAiWorker({
         if (error) throw new Error(error.message);
         return idsOf(data, 'ai_chance_claim');
       },
-      (id) => one(ai, cfg, id),
+      (id) => one(cfg, id, down),
       5, // leads at a time (a group of hundreds finishes in an hour or two)
     );
   },
@@ -190,7 +177,32 @@ const clean = (list: unknown, max: number) =>
     .slice(0, max)
     .map((x) => x.slice(0, 300));
 
-async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' | 'stop'> {
+/** The AI's answer, cleaned up and kept within limits */
+function tidy(a: Answer) {
+  return {
+    chance: Math.max(0, Math.min(100, Math.round(Number(a.chance) || 0))),
+    summary: String(a.summary ?? '').slice(0, 600),
+    good: clean(a.good, 5),
+    risks: clean(a.risks, 5),
+    objections: (Array.isArray(a.objections) ? a.objections : [])
+      .filter((o) => o && OBJECTIONS.includes(o.kind as (typeof OBJECTIONS)[number]))
+      .slice(0, 5)
+      .map((o) => ({ kind: o.kind, detail: String(o.detail ?? '').slice(0, 300) })),
+    actions: (Array.isArray(a.actions) ? a.actions : [])
+      .slice(0, 5)
+      .map((x) => ({ text: String(x?.text ?? '').slice(0, 300), why: String(x?.why ?? '').slice(0, 300) }))
+      .filter((x) => x.text),
+    script: (Array.isArray(a.script) ? a.script : [])
+      .slice(0, 5)
+      .map((x) => ({ situation: String(x?.situation ?? '').slice(0, 200), lines: clean(x?.lines, 3) }))
+      .filter((x) => x.lines.length > 0),
+    best_time: String(a.best_time ?? '').slice(0, 200),
+    next_call_days: Math.max(0, Math.min(60, Math.round(Number(a.next_call_days) || 0))),
+    next_call_why: String(a.next_call_why ?? '').slice(0, 300),
+  };
+}
+
+async function one(cfg: AiConfig, leadId: string, down: Set<Provider>): Promise<'ok' | 'stop'> {
   try {
     const { data: input, error } = await admin.rpc('ai_chance_input', {
       p_lead: leadId,
@@ -206,92 +218,68 @@ async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' |
       return 'ok';
     }
 
-    const extra = (cfg.settings.guidance ?? '').trim();
-    const res = await askClaude(ai, {
-      model: modelOf(cfg),
-      max_tokens: 10000,
-      output_config: {
-        effort: effortOf(cfg),
-        format: { type: 'json_schema', schema: SCHEMA },
-      },
-      system: cachedSystem(extra ? `${SYSTEM}\n\nThe college's own notes (use them):\n${extra}` : SYSTEM),
-      messages: [{ role: 'user', content: JSON.stringify(input) }],
-    });
+    // Claude past its monthly budget only when someone pressed "Check"
+    const { data: kind } = await admin.rpc('ai_chance_kind', { p_lead: leadId });
+    const allowClaude = cfg.plan.budget_ok || kind === 'manual';
 
-    const { value: a, why } = readJson<Answer>(res);
-    if (!a) {
-      if (res.stop_reason === 'refusal') {
+    const extra = (cfg.settings.guidance ?? '').trim();
+    const r = await answerByPlan<Answer>(
+      cfg,
+      {
+        system: extra ? `${SYSTEM}\n\nThe college's own notes (use them):\n${extra}` : SYSTEM,
+        user: JSON.stringify(input),
+        schema: SCHEMA as unknown as Record<string, unknown>,
+        maxTokens: 10000,
+      },
+      { allowClaude, down },
+    );
+
+    if (!r.shown) {
+      if (r.errors.length === 0 || onlyPauses(r.errors)) {
+        // no AI could take it right now (off, out, resting, busy): it waits, no try used up
+        await admin.rpc('ai_chance_release', { p_lead: leadId });
+      } else {
+        const refusedOnly = r.errors.every((e) => e.kind === 'refusal');
         await admin.rpc('ai_chance_fail', {
           p_lead: leadId,
-          p_error: why,
-          p_retry: false,
+          p_error: r.errors.map((e) => e.message).join(' · '),
+          p_retry: !refusedOnly,
         });
-        return 'ok';
       }
-      throw new Error(why);
+      return r.exhausted ? 'stop' : 'ok';
     }
 
-    const result = {
-      chance: Math.max(0, Math.min(100, Math.round(Number(a.chance) || 0))),
-      summary: String(a.summary ?? '').slice(0, 600),
-      good: clean(a.good, 5),
-      risks: clean(a.risks, 5),
-      objections: (a.objections ?? [])
-        .filter((o) => o && OBJECTIONS.includes(o.kind as (typeof OBJECTIONS)[number]))
-        .slice(0, 5)
-        .map((o) => ({
-          kind: o.kind,
-          detail: String(o.detail ?? '').slice(0, 300),
-        })),
-      actions: (a.actions ?? [])
-        .slice(0, 5)
-        .map((x) => ({
-          text: String(x.text ?? '').slice(0, 300),
-          why: String(x.why ?? '').slice(0, 300),
-        }))
-        .filter((x) => x.text),
-      script: (a.script ?? [])
-        .slice(0, 5)
-        .map((x) => ({
-          situation: String(x.situation ?? '').slice(0, 200),
-          lines: clean(x.lines, 3),
-        }))
-        .filter((x) => x.lines.length > 0),
-      best_time: String(a.best_time ?? '').slice(0, 200),
-      next_call_days: Math.max(0, Math.min(60, Math.round(Number(a.next_call_days) || 0))),
-      next_call_why: String(a.next_call_why ?? '').slice(0, 300),
+    // 🗂 every answer is kept per AI; the shown one last (compare mode: Claude's)
+    // the AI was used (and paid for) whether or not its answer can be kept
+    for (const a of r.answers) await recordUsage('chance', a);
+    const save = async (a: (typeof r.answers)[number], final: boolean) => {
+      const { error: saveError } = await admin.rpc('ai_chance_save', {
+        p_lead: leadId,
+        p_r: tidy(a.value),
+        p_model: a.model,
+        p_usage: a.usage,
+        p_provider: a.provider,
+        p_final: final,
+      });
+      return saveError?.message ?? null;
     };
-
-    const usage = billedUsage(res.usage);
-    const { error: saveError } = await admin.rpc('ai_chance_save', {
-      p_lead: leadId,
-      p_r: result,
-      p_model: res.model,
-      p_usage: usage,
-    });
-    if (saveError) throw new Error(saveError.message);
-    await keyResult(true);
-    // 💵 the monthly budget counts what was used
-    await admin.rpc('ai_usage_add', {
-      p_feature: 'chance',
-      p_in: usage.input_tokens,
-      p_out: usage.output_tokens,
-    });
+    const others = r.answers.filter((a) => a !== r.shown);
+    for (const a of others) {
+      const err = await save(a, false);
+      if (err) console.warn('ai-lead-chance', a.provider, err);
+    }
+    // if the shown one can't be kept, the other AI's answer takes its place
+    let lastError: string | null = null;
+    for (const a of [r.shown, ...others]) {
+      lastError = await save(a, true);
+      if (!lastError) break;
+    }
+    if (lastError) throw new Error(lastError);
     return 'ok';
   } catch (e) {
-    const { msg, kind } = classify(e);
-    if (kind === 'key' || kind === 'credit') {
-      await keyResult(false, msg);
-      await admin.rpc('ai_chance_release', { p_lead: leadId });
-      return 'stop';
-    }
-    if (kind === 'busy') {
-      await admin.rpc('ai_chance_release', { p_lead: leadId });
-      return 'stop';
-    }
     await admin.rpc('ai_chance_fail', {
       p_lead: leadId,
-      p_error: msg,
+      p_error: e instanceof Error ? e.message : String(e),
       p_retry: true,
     });
     return 'ok';

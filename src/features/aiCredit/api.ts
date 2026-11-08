@@ -1,3 +1,4 @@
+import { modeOf, type AiMode, type AiProvider } from '@/features/aiProviders/api';
 import { getSetting, updateSetting } from '@/features/settings/api';
 import { memo, forget } from '@/shared/lib/memo';
 import { supabase } from '@/shared/lib/supabase';
@@ -12,6 +13,8 @@ import type { Json } from '@/shared/types/database';
 
 export type AiCreditSettings = {
   enabled: boolean;
+  /** which AI: claude | gemini | gemini_then_claude | compare (Settings → AI) */
+  provider: AiMode;
   model: string;
   effort: 'low' | 'medium' | 'high';
   window_days: number;
@@ -21,6 +24,7 @@ export type AiCreditSettings = {
 
 export const DEFAULT_AI_CREDIT: AiCreditSettings = {
   enabled: true,
+  provider: 'claude',
   model: 'claude-sonnet-5-5',
   effort: 'medium',
   window_days: 180,
@@ -78,6 +82,19 @@ export type LeadCredit = {
   error: string | null;
   done_at: string | null;
   model: string | null;
+  /** which AI gave the shares above */
+  provider: AiProvider | null;
+  /** 🗂 every AI's latest answer (newest first) */
+  answers: CreditAnswer[];
+};
+
+/** One AI's latest answer for an admission */
+export type CreditAnswer = {
+  provider: AiProvider;
+  shares: CreditShare[];
+  decisive: string | null;
+  confidence: 'high' | 'medium' | 'low' | null;
+  done_at: string | null;
 };
 
 function toError(error: { message: string }): Error {
@@ -105,6 +122,7 @@ export async function getAiCreditSettings(): Promise<AiCreditSettings> {
   return {
     ...DEFAULT_AI_CREDIT,
     ...(saved ?? {}),
+    provider: modeOf(saved?.provider),
     view: { ...DEFAULT_AI_CREDIT.view, ...(saved?.view ?? {}) },
   };
 }
@@ -135,7 +153,9 @@ export async function testAiKey(): Promise<{
   error?: string;
   model?: string;
 }> {
-  const { data, error } = await supabase.functions.invoke('ai-admission-credit', { body: { action: 'test' } });
+  const { data, error } = await supabase.functions.invoke('ai-admission-credit', {
+    body: { action: 'test', provider: 'claude' },
+  });
   if (error) {
     // the function answered with an error message of its own
     const ctx = (error as { context?: Response }).context;
@@ -215,6 +235,11 @@ export function getLeadCredit(leadId: string, force = false): Promise<LeadCredit
         error: d.error ?? null,
         done_at: d.done_at ?? null,
         model: d.model ?? null,
+        provider: d.provider ?? null,
+        answers: (d.answers ?? []).map((a) => ({
+          ...a,
+          shares: (a.shares ?? []).map((x) => ({ ...x, share: Number(x.share) })),
+        })),
       } as LeadCredit;
     } catch (e) {
       if (missing(e)) return null;
