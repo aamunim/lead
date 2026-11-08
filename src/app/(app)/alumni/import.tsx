@@ -353,6 +353,7 @@ function FromExcel({
           })}
 
           <Text style={ui.label}>ALUMNI COURSE FOR ALL ROWS * (BATCH IF YOU WANT)</Text>
+          <Text style={ui.muted}>For new alumni. Those already in Alumni keep their own course.</Text>
           {courses.length === 0 && (
             <Text style={ui.error}>
               No alumni course yet. An admin can add one in Settings → Alumni → Alumni courses.

@@ -58,7 +58,7 @@ drop policy if exists "batches: course access" on public.batches;
 create policy "batches: course access" on public.batches as restrictive for select to authenticated
   using ((select public.my_course_ids()) is null
          or course_id = any (coalesce((select public.my_course_ids()), '{}'::uuid[]))
-         or public.is_alumni_course(course_id));
+         or course_id in (select c.id from public.courses c where c.is_alumni));
 
 -- a lead can't get an alumni course
 create or replace function public.lead_courses_no_alumni()
@@ -159,7 +159,12 @@ begin
     end if;
     return new;
   end if;
-  if new.course_id is not null and new.batch_id is null and public.is_alumni_course(new.course_id) then
+  if new.course_id is not null and public.is_alumni_course(new.course_id) then
+    -- an alumni course given: a batch of another course is dropped (never a new batch made for it)
+    if new.batch_id is not null
+       and not exists (select 1 from public.batches b where b.id = new.batch_id and b.course_id = new.course_id) then
+      new.batch_id := null;
+    end if;
     return new;
   end if;
   m := public.alumni_course_for(new.course_id, new.batch_id);
@@ -232,8 +237,9 @@ begin
     if exists (select 1 from public.courses where not is_alumni and lower(name) = lower(c.name) and id <> c.id) then
       raise exception 'There is already a lead course named %.', c.name;
     end if;
-    if exists (select 1 from public.alumni where course_id = c.id and deleted_at is null) then
-      raise exception 'Alumni are in this course. Move them to another alumni course first.';
+    -- deleted ones too (they could be brought back)
+    if exists (select 1 from public.alumni where course_id = c.id) then
+      raise exception 'Alumni are in this course (deleted ones count too). Move them to another alumni course first.';
     end if;
     update public.courses set is_alumni = false, is_active = true, from_course_id = null where id = c.id;
   end if;
@@ -281,6 +287,40 @@ begin
     end if;
     execute d;
   end loop;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- Excel import, "update existing": an alumnus keeps their course and batch
+-- (the chosen course is only for new ones, or those without a course);
+-- Home "Alumni to contact": says who must not be contacted (no 📞 button)
+-- ---------------------------------------------------------------------
+do $$
+declare
+  d text;
+begin
+  d := pg_get_functiondef('public.import_alumni(jsonb, boolean)'::regprocedure);
+  if position('course_id = coalesce(a.course_id,' in d) = 0 then
+    d := replace(d, 'course_id = coalesce(nullif(r ->> ''course_id'', '''')::uuid, a.course_id),',
+                    'course_id = coalesce(a.course_id, nullif(r ->> ''course_id'', '''')::uuid),');
+    d := replace(d, 'batch_id = coalesce(nullif(r ->> ''batch_id'', '''')::uuid, a.batch_id),',
+                    'batch_id = case when a.course_id is null then nullif(r ->> ''batch_id'', '''')::uuid else a.batch_id end,');
+    if position('course_id = coalesce(a.course_id,' in d) = 0 or position('when a.course_id is null then' in d) = 0 then
+      raise exception 'import_alumni: the update lines were not found, update this migration';
+    end if;
+    execute d;
+  end if;
+
+  d := pg_get_functiondef('public.alumni_today(integer)'::regprocedure);
+  if position('a.do_not_contact, a.next_contact_at < now() as late' in d) = 0 then
+    d := replace(d, 'b.name as batch_name,
+                     a.next_contact_at < now() as late',
+                    'b.name as batch_name,
+                     a.do_not_contact, a.next_contact_at < now() as late');
+    if position('a.do_not_contact, a.next_contact_at < now() as late' in d) = 0 then
+      raise exception 'alumni_today: the list line was not found, update this migration';
+    end if;
+    execute d;
+  end if;
 end $$;
 
 notify pgrst, 'reload schema';

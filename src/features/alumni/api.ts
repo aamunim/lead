@@ -1189,6 +1189,8 @@ export type AlumniToday = {
     next_contact_note: string | null;
     batch_name: string | null;
     late: boolean;
+    /** ⛔ do not contact: no 📞 button */
+    do_not_contact?: boolean;
   }[];
   birthdays: { id: string; name: string; phone: string | null }[];
 };

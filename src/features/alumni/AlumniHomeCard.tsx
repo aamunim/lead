@@ -31,7 +31,8 @@ export function AlumniHomeCard() {
     }, [access.view, setData]),
   );
 
-  if (!access.view || !data || (data.due === 0 && data.birthdays.length === 0)) return null;
+  // (the popup stays even if the card goes away while it is open)
+  if (!access.view || !data || (data.due === 0 && data.birthdays.length === 0)) return dialer.sheet;
   const late = data.list.filter((x) => x.late).length;
   return (
     <>
@@ -64,7 +65,7 @@ export function AlumniHomeCard() {
                 {x.next_contact_note ? ` · ${x.next_contact_note}` : x.batch_name ? ` · ${x.batch_name}` : ''}
               </Text>
             </Pressable>
-            {!!x.phone && (
+            {!!x.phone && !x.do_not_contact && (
               <Tap
                 onPress={() => dialer.call({ id: x.id, name: x.name, phone: x.phone, whatsapp_number: null })}
                 style={styles.call}
