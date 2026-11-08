@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-09-c',
+    date: '9 Nov 2026',
+    title: '🎓 Alumni, easier to use',
+    items: [
+      '📞 The alumni list shows each number, the course (a red “No course” when there is none), “Never contacted”, tags and the latest note',
+      '👁 Tap the picture (or the note) for a quick look: numbers, next contact, the latest notes and calls, add a note, Call / WhatsApp / Next contact, without opening the page',
+      '🧰 Filter → Course & batch: “No course”, “No batch” and “No number”',
+      '⌨️ Typing in Alumni: the keyboard no longer covers the box (notes, next contact, messages, add / edit)',
+      '📝 On an alumnus, “Add a note” is near the top, the number is shown, and the buttons (Call, WhatsApp, Message, Share link) always fit',
+    ],
+  },
+  {
     key: '2026-11-09-b',
     date: '9 Nov 2026',
     title: '🎓 Alumni: referrals that grow',

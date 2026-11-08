@@ -286,7 +286,7 @@ function Option({ label, onPress }: { label: string; onPress: () => void }) {
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
       <View style={styles.sheet}>
         <View style={styles.handle} />

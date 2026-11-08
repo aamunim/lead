@@ -1,6 +1,7 @@
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { AlumniMessageSheet } from '@/features/alumni/AlumniMessageSheet';
 import { createAlumniCampaign, listAlumniCampaigns, MESSAGE_VARS, type AlumniCampaign } from '@/features/alumni/api';
@@ -58,7 +59,8 @@ export default function CampaignsScreen() {
   };
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
       style={styles.screen}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
@@ -174,7 +176,7 @@ export default function CampaignsScreen() {
           }}
         />
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

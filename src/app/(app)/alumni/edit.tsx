@@ -1,6 +1,7 @@
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import {
   getAlumnus,
@@ -201,7 +202,12 @@ export default function AlumnusEditScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: id ? 'Change alumnus' : 'Add alumnus' }} />
 
       <View style={ui.card}>
@@ -344,7 +350,7 @@ export default function AlumnusEditScreen() {
         </Pressable>
       )}
       <Button title={id ? 'Save' : 'Add'} onPress={save} loading={saving} fullWidth />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

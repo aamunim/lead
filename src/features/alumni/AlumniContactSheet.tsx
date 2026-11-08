@@ -168,7 +168,7 @@ export function AlumniContactSheet(p: Props) {
         : `Call with ${p.alumnus.name}`;
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={p.onClose}>
+    <Modal visible transparent keyboard animationType="slide" onRequestClose={p.onClose}>
       <Pressable style={styles.backdrop} onPress={p.onClose} accessibilityLabel="Close" />
       <View style={styles.sheet}>
         <View style={styles.handle} />

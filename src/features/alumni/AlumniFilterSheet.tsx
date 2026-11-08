@@ -122,6 +122,22 @@ export function AlumniFilterSheet(p: Props) {
       case 'course':
         return p.courses.length === 0 ? null : (
           <Block key={key} title="🎓 COURSE & BATCH">
+            <Chip
+              text="⚠ No course"
+              on={f.courseId === 'none'}
+              onPress={() => set({ courseId: f.courseId === 'none' ? null : 'none', batchId: null })}
+            />
+            <Chip
+              text="⚠ No batch"
+              on={f.batchId === 'none' && f.courseId !== 'none'}
+              onPress={() => set({ batchId: f.batchId === 'none' ? null : 'none' })}
+            />
+            <Chip
+              text="📵 No number"
+              on={f.noPhone === true}
+              onPress={() => set({ noPhone: f.noPhone ? null : true })}
+            />
+            <View style={styles.break} />
             {p.courses.map((c) => (
               <Chip
                 key={c.id}
@@ -296,7 +312,7 @@ export function AlumniFilterSheet(p: Props) {
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={p.onClose}>
+    <Modal visible transparent keyboard animationType="slide" onRequestClose={p.onClose}>
       <Pressable style={styles.backdrop} onPress={p.onClose} accessibilityLabel="Close" />
       <View style={styles.sheet}>
         <View style={styles.handle} />

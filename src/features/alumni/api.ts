@@ -344,8 +344,12 @@ export const ALUMNI_SORTS: { key: AlumniSort; label: string; manage?: boolean }[
 
 /** Everything the filter sheet can set (all optional; empty = no filter) */
 export type AlumniFilters = {
+  /** a course id, or 'none' (no course) */
   courseId?: string | null;
+  /** a batch id, or 'none' (no batch) */
   batchId?: string | null;
+  /** 📵 no phone number */
+  noPhone?: boolean | null;
   yearFrom?: number | null;
   yearTo?: number | null;
   session?: string | null;
@@ -393,6 +397,7 @@ export function countAlumniFilters(f: AlumniFilters | undefined): number {
   if (!f) return 0;
   let n = 0;
   if (f.courseId || f.batchId) n++;
+  if (f.noPhone) n++;
   if (f.yearFrom || f.yearTo) n++;
   for (const k of [
     'session',
@@ -457,8 +462,11 @@ function alumniFilters<
   const courseId = f.courseId ?? q.courseId;
   const batchId = f.batchId ?? q.batchId;
   const district = f.district ?? q.district;
-  if (courseId) query = query.eq('course_id' as never, courseId as never);
-  if (batchId) query = query.eq('batch_id' as never, batchId as never);
+  if (courseId === 'none') query = query.is('course_id' as never, null as never);
+  else if (courseId) query = query.eq('course_id' as never, courseId as never);
+  if (batchId === 'none') query = query.is('batch_id' as never, null as never);
+  else if (batchId) query = query.eq('batch_id' as never, batchId as never);
+  if (f.noPhone) query = query.is('phone' as never, null as never);
   if (district) query = query.ilike('district' as never, district as never);
   if (f.upazila) query = query.ilike('upazila' as never, f.upazila as never);
   if (f.session) query = query.eq('session' as never, f.session as never);
@@ -731,7 +739,7 @@ export type AlumniEvent = {
 /** The contact kinds (shown with a result) */
 export const CONTACT_KINDS: AlumniEventKind[] = ['call', 'whatsapp', 'message'];
 
-export async function listAlumniEvents(alumniId: string): Promise<AlumniEvent[]> {
+export async function listAlumniEvents(alumniId: string, limit = 300): Promise<AlumniEvent[]> {
   const cols =
     'id, kind, body, data, created_at, by_user, happened_at, pinned, deleted_at, deleted_by, outcome, direction, ' +
     'duration_sec, channel, media, source, by:profiles!alumni_events_by_user_fkey(full_name)';
@@ -740,7 +748,7 @@ export async function listAlumniEvents(alumniId: string): Promise<AlumniEvent[]>
     .select(cols)
     .eq('alumni_id' as never, alumniId as never)
     .order('created_at' as never, { ascending: false })
-    .limit(300);
+    .limit(limit);
   if (r.error && /column .* does not exist/i.test(r.error.message)) {
     // a database from before calls on alumni
     r = await supabase
@@ -748,7 +756,7 @@ export async function listAlumniEvents(alumniId: string): Promise<AlumniEvent[]>
       .select('id, kind, body, data, created_at, by:profiles!alumni_events_by_user_fkey(full_name)')
       .eq('alumni_id' as never, alumniId as never)
       .order('created_at' as never, { ascending: false })
-      .limit(300);
+      .limit(limit);
   }
   if (r.error) throw toError(r.error);
   const rows = (r.data ?? []) as unknown as AlumniEvent[];

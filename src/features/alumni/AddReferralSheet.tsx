@@ -71,7 +71,7 @@ export function AddReferralSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
       <View style={styles.sheet}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
