@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-e',
+    date: '8 Nov 2026',
+    title: '🤝 Admission Contribution + more AI control',
+    items: [
+      '🤝 More → Admission Contribution: each person’s share of the admissions, every student with a coloured bar, by source and course; tap for the details (who did what, when); export to Excel',
+      '🔮 Tap the 🔮 % on a lead card (or the website table) to see the chance, why and what to say without opening the lead; also in the lead’s quick view',
+      '☑ Mark leads → 🔮 AI to look at many at once; a warning before looking again at leads already looked at today',
+      '⇅ New sorts: AI call first, rising, falling, lowest; and a 🔮 AI Hot chip',
+      '⚙️ Admins (Settings → AI): a daily run at the hour you choose, up to 1000 a day, a monthly budget, run a group (never looked at / new calls / old / today) with the cost shown first, and Stop',
+    ],
+  },
+  {
     key: '2026-11-08-d',
     date: '8 Nov 2026',
     title: '🔮 AI: chance of admission and what to say',

@@ -11,6 +11,8 @@ import {
   type RecentRange,
   type RecentRow,
 } from '@/features/leads/find';
+import { useCanSeeAiChance, requestManyChances } from '@/features/aiChance/api';
+import { ask } from '@/features/aiChance/ask';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation, type Href } from 'expo-router';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -141,7 +143,7 @@ import { MIcon, md } from '@/features/home/md';
 import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 
 // The floating buttons shown while leads are marked ("lost" opens the Lost sheet)
-type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received' | 'course';
+type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received' | 'course' | 'ai';
 
 const ACTIONS: {
   field: FloatAction;
@@ -173,6 +175,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   // 🔥 Admission chance on the cards (Settings → Lead score on/off)
   useScoreOn();
   const { profile, hasPermission, assignmentOn, sharedMode, assignment, refreshProfile } = useAuth();
+  // 🔮 the AI Hot chip (only for people who may see AI chance)
+  const aiChanceOn = useCanSeeAiChance();
   // Everyone may give leads to someone (Settings → Lead assignment → Hand over)
   const mayHandOver = canHandOver(assignment, hasPermission);
 
@@ -234,6 +238,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         { key: 'all', label: 'All' },
         { key: 'recent', label: '🕘 Recent' },
         { key: 'starred', label: '⭐ Starred' },
+        ...(aiChanceOn ? [{ key: 'ai_hot' as QuickFilter, label: '🔮 AI Hot' }] : []),
       ];
 
   // Many leads lost at once: only for people who edit their team's or all leads
@@ -739,9 +744,10 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
             { key: 'recent', label: '🕘 Recent' },
             { key: 'starred', label: '⭐ Starred' },
             { key: 'new', label: '🆕 Not called' },
+            ...(aiChanceOn ? [{ key: 'ai_hot' as QuickFilter, label: '🔮 AI Hot' }] : []),
           ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [students, assignmentOn, seesOthers],
+    [students, assignmentOn, seesOthers, aiChanceOn],
   );
   const chipKeys = modernChips.map((c) => c.key).join(',');
   const [chipCounts, setChipCounts] = useState<Map<string, number | null>>(new Map());
@@ -1560,10 +1566,45 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       { key: 'placement', field: 'placement', label: 'Move', icon: 'swap-horiz' },
       { key: 'received', field: 'received', label: 'ITTC', icon: 'account-balance' },
       { key: 'course', field: 'course', label: 'Course', icon: 'school' },
-    ].filter((a) => a.field === 'rating' || actions.some((x) => x.field === a.field)) as (ModernAction & {
+      { key: 'ai', field: 'ai', label: 'AI', icon: 'auto-awesome' },
+    ].filter(
+      (a) =>
+        a.field === 'rating' ||
+        (a.field === 'ai' && aiChanceOn && !students) ||
+        actions.some((x) => x.field === a.field),
+    ) as (ModernAction & {
       field: FloatAction;
     })[];
+    // 🔮 the marked open leads → the AI (skips ones looked at today with nothing new, then asks)
+    const runAiMany = () => {
+      const ids = markedLeads.filter((l) => (l.stage?.kind ?? 'open') === 'open').map((l) => l.id);
+      if (ids.length === 0) return showToast('Only open leads can be looked at by AI.');
+      if (ids.length > 50) return showToast('Mark at most 50 leads for AI at a time.');
+      requestManyChances(ids, false)
+        .then((r) => {
+          const done = r.queued > 0 ? `🔮 ${r.queued} sent to AI (about half a minute each).` : '';
+          if (r.fresh_today > 0) {
+            ask(
+              '⚠️ আজই দেখা হয়েছে',
+              `${r.fresh_today}টা লিড আজই AI দেখেছে, এরপর নতুন কিছু হয়নি, তাই বাদ রাখা হলো। ${done}\n\nএগুলোও আবার দেখবেন? (উত্তর প্রায় একই হবে, খরচ হবে)`,
+              [
+                {
+                  label: `${r.fresh_today}টাও দেখুন`,
+                  run: () =>
+                    requestManyChances(ids, true)
+                      .then((x) => showToast(`🔮 ${x.queued} sent to AI.`))
+                      .catch((e) => showToast(e instanceof Error ? e.message : 'Could not send.')),
+                },
+              ],
+            );
+            return;
+          }
+          showToast(done || 'Nothing to send.');
+        })
+        .catch((e) => showToast(e instanceof Error ? e.message : 'Could not send.'));
+    };
     const runAction = (field: FloatAction) => {
+      if (field === 'ai') return runAiMany();
       if (field === 'lost') return setLostVisible(true);
       if (field === 'placement') return setMoveOpen(true);
       if (field === 'received') return setReceivedOpen(true);
@@ -2535,6 +2576,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                         courseIds: one.lead_courses.map((c) => c.course?.id ?? '').filter(Boolean),
                       });
                     }
+                    if (a.field === 'ai') return;
                     setSheetField(a.field);
                   }}
                   disabled={markingAll}

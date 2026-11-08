@@ -10,6 +10,7 @@ import {
   type ChanceLevel,
   type LeadChance,
 } from '@/features/aiChance/api';
+import { ask } from '@/features/aiChance/ask';
 import { scheduleFollowUp } from '@/features/follow-ups/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
@@ -97,6 +98,16 @@ export const ChanceCard = memo(function ChanceCard({
     } finally {
       setBusy(false);
     }
+  };
+
+  // ⚠️ looked at today and nothing new since: the answer would be about the same
+  const checkOrWarn = () => {
+    if (!c.fresh_today) return check();
+    ask(
+      '⚠️ আজই দেখা হয়েছে',
+      'এই লিড আজই AI দেখেছে, এরপর নতুন কোনো কল বা নোট হয়নি। আবার দেখলে উত্তর প্রায় একই হবে, কিন্তু খরচ হবে। তবু দেখবেন?',
+      [{ label: 'আবার দেখুন', run: check }],
+    );
   };
 
   const setNextCall = async () => {
@@ -265,7 +276,7 @@ export const ChanceCard = memo(function ChanceCard({
           {c.status === 'pending' && !waiting && c.due_at ? ' · নতুন কল/নোট: আবার দেখবে' : ''}
         </Text>
         {!waiting && (
-          <Pressable onPress={check} disabled={busy} accessibilityRole="button" style={styles.checkBtn}>
+          <Pressable onPress={checkOrWarn} disabled={busy} accessibilityRole="button" style={styles.checkBtn}>
             <Text style={styles.checkText}>{has ? '🔄 আবার দেখুন' : '🔮 AI দিয়ে দেখুন'}</Text>
           </Pressable>
         )}

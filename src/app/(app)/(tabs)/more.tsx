@@ -1,10 +1,11 @@
 import Constants from 'expo-constants';
 import { Redirect, router, useFocusEffect, type Href } from 'expo-router';
-import { Children, useCallback, useState, type ReactNode } from 'react';
+import { Children, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { signOut } from '@/features/auth/api';
+import { canSeeContribution } from '@/features/contribution/api';
 import { isWeb } from '@/features/web/api';
 import { APP_PRODUCT } from '@/features/web/brand';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -61,6 +62,13 @@ function PhoneMore() {
   const [callSyncOn, setCallSyncOn] = useState(false);
   const [syncProblems, setSyncProblems] = useState(0);
   const [reportsAllowed, setReportsAllowed] = useState(false);
+  // 🤝 Admission Contribution (Settings → AI → who sees the shares)
+  const [contribOk, setContribOk] = useState(false);
+  useEffect(() => {
+    canSeeContribution()
+      .then(setContribOk)
+      .catch(() => undefined);
+  }, []);
   const [activityAllowed, setActivityAllowed] = useState(false);
   const [unread, setUnread] = useState(0);
 
@@ -297,6 +305,15 @@ function PhoneMore() {
               title="Reports"
               subtitle="Pipeline, sources, team, best time to call"
               onPress={go('/reports')}
+            />
+          )}
+          {contribOk && (
+            <Row
+              icon="handshake"
+              tone="purple"
+              title="Admission Contribution"
+              subtitle="Who did how much in every admission (AI)"
+              onPress={go('/contribution')}
             />
           )}
           <Row

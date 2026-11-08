@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 import { getSetting, updateSetting } from '@/features/settings/api';
 import { forget, memo } from '@/shared/lib/memo';
 import { supabase } from '@/shared/lib/supabase';
@@ -19,6 +21,10 @@ export type AiChanceSettings = {
   effort: 'low' | 'medium' | 'high';
   window_days: number;
   daily_auto_limit: number;
+  /** ⏰ once a day at `hour` (Dhaka): which leads to look at again */
+  daily_run: { on: boolean; hour: number; changed: boolean; never: boolean; older: boolean; older_days: number };
+  /** 💵 all AI stops by itself once this month's cost reaches it ($; 0 = no limit) */
+  monthly_budget: number;
   view: { all: boolean; roles: string[]; people: string[] };
   guidance: string;
 };
@@ -30,6 +36,8 @@ export const DEFAULT_AI_CHANCE: AiChanceSettings = {
   effort: 'medium',
   window_days: 180,
   daily_auto_limit: 100,
+  daily_run: { on: true, hour: 7, changed: true, never: false, older: false, older_days: 15 },
+  monthly_budget: 80,
   view: { all: true, roles: [], people: [] },
   guidance: '',
 };
@@ -52,6 +60,8 @@ export type LeadChance = {
   next_call_why: string | null;
   done_at: string | null;
   error: string | null;
+  /** looked at today and nothing new since (warn before asking again) */
+  fresh_today: boolean;
 };
 
 export type ChanceToday = {
@@ -123,6 +133,7 @@ export async function getAiChanceSettings(): Promise<AiChanceSettings> {
     ...DEFAULT_AI_CHANCE,
     ...(saved ?? {}),
     view: { ...DEFAULT_AI_CHANCE.view, ...(saved?.view ?? {}) },
+    daily_run: { ...DEFAULT_AI_CHANCE.daily_run, ...(saved?.daily_run ?? {}) },
   };
 }
 
@@ -132,6 +143,70 @@ export async function saveAiChanceSettings(s: AiChanceSettings): Promise<void> {
 }
 
 export const getAiChanceOverview = () => rpc<AiChanceOverview>('ai_chance_overview');
+
+/** Settings → AI: the groups, what is waiting, what was spent */
+export type AiChanceCounts = {
+  open: number;
+  never: number;
+  changed: number;
+  older: number;
+  today: number;
+  today_changed: number;
+  waiting_now: number;
+  waiting_later: number;
+  working: number;
+  done_today: number;
+  auto_today: number;
+  /** $ per look (from what was used; 0.03 until there are a few) */
+  avg_cost: number;
+  spent_month: number;
+  budget_ok: boolean;
+  last_daily_run: string | null;
+};
+export type ChanceGroup = 'never' | 'changed' | 'older' | 'today';
+
+export const getAiChanceCounts = (olderDays: number) =>
+  rpc<AiChanceCounts>('ai_chance_counts', { p_older_days: olderDays });
+
+/** Run a group: `now` = all at once (no daily limit; the budget still applies) */
+export async function queueChanceGroup(
+  kind: ChanceGroup,
+  opts: { olderDays: number; onlyChanged: boolean; now: boolean },
+): Promise<number> {
+  const n = await rpc<number>('ai_chance_queue', {
+    p_kind: kind,
+    p_older_days: opts.olderDays,
+    p_only_changed: opts.onlyChanged,
+    p_now: opts.now,
+  });
+  forget('aichance:*');
+  wakeAiChance();
+  return n;
+}
+
+/** ⏹ Empty the queue (old answers stay) */
+export async function stopChanceQueue(): Promise<number> {
+  const n = await rpc<number>('ai_chance_stop');
+  forget('aichance:*');
+  return n;
+}
+
+/** 📋 Many leads from a list (at most 50). `force`: also the ones looked at today with nothing new */
+export async function requestManyChances(
+  leadIds: string[],
+  force: boolean,
+): Promise<{ queued: number; fresh_today: number; skipped: number }> {
+  const r = await rpc<{ queued: number; fresh_today: number; skipped: number }>('ai_chance_request_many', {
+    p_leads: leadIds.slice(0, 50),
+    p_force: force,
+  });
+  leadIds.forEach((id) => forget(`aichance:lead:${id}`));
+  wakeAiChance();
+  return r;
+}
+
+/** Dollars, short: "$0.42", "$12" */
+export const usd = (n: number) => '$' + (n < 10 ? n.toFixed(2) : Math.round(n).toLocaleString());
 
 /** Every open lead not looked at yet → the queue (today's limit applies) */
 export async function queueOpenLeads(): Promise<number> {
@@ -173,6 +248,7 @@ export function getLeadChance(leadId: string, force = false): Promise<LeadChance
         next_call_why: d.next_call_why ?? null,
         done_at: d.done_at ?? null,
         error: d.error ?? null,
+        fresh_today: !!d.fresh_today,
       } as LeadChance;
     } catch (e) {
       if (missing(e)) return null;
@@ -202,4 +278,28 @@ export function getChanceToday(force = false): Promise<ChanceToday[]> {
       throw e;
     }
   });
+}
+
+/** May this person see AI chance? (asked once, kept for 5 minutes) */
+export function canSeeAiChance(): Promise<boolean> {
+  return memo('aichance:cansee', 5 * 60_000, async () => {
+    try {
+      return !!(await rpc<boolean>('ai_chance_can_view'));
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** React: true once we know this person may see AI chance */
+export function useCanSeeAiChance(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let live = true;
+    canSeeAiChance().then((v) => live && setOn(v));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return on;
 }

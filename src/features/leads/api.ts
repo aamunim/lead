@@ -156,6 +156,8 @@ export type QuickPatch = {
 
 export type QuickFilter =
   | 'all'
+  // 🔮 the AI says Hot
+  | 'ai_hot'
   // 🔎 Finding a lead again (Leads tab): what I worked on, and my ⭐ list
   | 'recent'
   | 'starred'
@@ -202,6 +204,10 @@ export type LeadSort =
   | 'next_call'
   // 🔮 the AI's chance of admission
   | 'ai_chance'
+  | 'ai_chance_low'
+  | 'ai_rise'
+  | 'ai_drop'
+  | 'ai_call_first'
   | 'newest'
   | 'oldest'
   | 'name'
@@ -247,7 +253,11 @@ export const SORT_OPTIONS: { value: LeadSort; label: string; text: string; icon:
   { value: 'discount_most', label: 'Biggest discount', text: 'Largest discount first, no discount last', icon: '💰' },
   { value: 'fee_latest', label: 'Fee talk: latest', text: 'Last fee talk or discount change first', icon: '💬' },
   { value: 'score', label: 'Most likely to join', text: 'Highest admission chance first', icon: '🔥' },
-  { value: 'ai_chance', label: 'AI chance', text: 'Highest AI chance first (not looked at yet: last)', icon: '🔮' },
+  { value: 'ai_chance', label: 'AI chance: highest', text: 'Highest AI chance first (not looked at yet: last)', icon: '🔮' },
+  { value: 'ai_call_first', label: 'AI: call first', text: 'Hot, then Warm; longest without a talk first', icon: '📞' },
+  { value: 'ai_rise', label: 'AI chance: rising', text: 'The chance went up the most since the last look', icon: '📈' },
+  { value: 'ai_drop', label: 'AI chance: falling', text: 'The chance went down the most (at risk) first', icon: '📉' },
+  { value: 'ai_chance_low', label: 'AI chance: lowest', text: 'Lowest AI chance first', icon: '❄️' },
 ];
 
 /** Sorts for the 🎓 Students list */
@@ -350,8 +360,15 @@ const LIST_SELECT = `
 // 🔮 The AI chance rides along (lead_chances). An older database doesn't have
 //   it yet: the first error turns it off, and the request goes again without.
 let chanceDb = true;
+export const isAiSort = (sort: LeadSort) => sort.startsWith('ai_');
 const chanceSelect = (sort: LeadSort, f: LeadFilters, full: boolean) =>
-  !chanceDb ? '' : full ? ', lead_chances(chance, level)' : sort === 'ai_chance' ? ', lead_chances(chance)' : '';
+  !chanceDb
+    ? ''
+    : full
+      ? ', lead_chances(chance, level, trend, level_rank)'
+      : isAiSort(sort)
+        ? ', lead_chances(chance, trend, level_rank)'
+        : '';
 
 async function chanceSafe<T extends { error: { message: string } | null }>(run: () => PromiseLike<T>): Promise<T> {
   const res = await run();
@@ -399,17 +416,19 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' 
     pipelineCourseId = null,
   } = options;
   const idOnly = withCount === 'only' || withCount === 'ids';
+  // 🔮 AI Hot is a chip for the AI chance filter
+  const effFilters: LeadFilters = quick === 'ai_hot' ? { ...filters, aiChance: ['hot'] } : filters;
 
   let query = supabase
     .from('leads')
     .select(
       withCount === 'chips'
-        ? CHIP_COLUMNS + chanceSelect(sort, filters, false) + filterSelect(filters, chanceDb)
+        ? CHIP_COLUMNS + chanceSelect(sort, filters, false) + filterSelect(effFilters, chanceDb)
         : withCount === 'paid'
-          ? 'id, fee_paid' + chanceSelect(sort, filters, false) + filterSelect(filters, chanceDb)
+          ? 'id, fee_paid' + chanceSelect(sort, filters, false) + filterSelect(effFilters, chanceDb)
           : idOnly
-            ? 'id' + chanceSelect(sort, filters, false) + filterSelect(filters, chanceDb)
-            : LIST_SELECT + chanceSelect(sort, filters, true) + filterSelect(filters, chanceDb),
+            ? 'id' + chanceSelect(sort, filters, false) + filterSelect(effFilters, chanceDb)
+            : LIST_SELECT + chanceSelect(sort, filters, true) + filterSelect(effFilters, chanceDb),
       withCount === 'only' ? { count: 'exact', head: true } : withCount === true ? { count: 'exact' } : undefined,
     )
     .is('deleted_at', null);
@@ -487,10 +506,10 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' 
   if (stageId) query = query.eq('stage_id', stageId);
   if (pipelineCourseId) query = query.eq('pipeline_course_id', pipelineCourseId);
 
-  // Full filters
-  query = applyLeadFilters(query, filters, chanceDb);
+  // Full filters (🔮 AI Hot is a chip for the AI chance filter)
+  query = applyLeadFilters(query, effFilters, chanceDb);
 
-  return orderLeads(query, chanceDb || sort !== 'ai_chance' ? sort : DEFAULT_SORT);
+  return orderLeads(query, chanceDb || !isAiSort(sort) ? sort : DEFAULT_SORT);
 }
 
 /**
@@ -538,6 +557,21 @@ function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: 
       q = q
         .order('lead_chances(chance)', { ascending: false, nullsFirst: false })
         .order('score', { ascending: false });
+      break;
+    case 'ai_chance_low':
+      q = q.order('lead_chances(chance)', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
+      break;
+    case 'ai_rise':
+      q = q.order('lead_chances(trend)', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+      break;
+    case 'ai_drop':
+      q = q.order('lead_chances(trend)', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
+      break;
+    case 'ai_call_first':
+      // 🔥 Hot, then 🌤 Warm, then ❄️ Cold; in each, the longest without a talk first
+      q = q
+        .order('lead_chances(level_rank)', { ascending: true, nullsFirst: false })
+        .order('last_contacted_at', { ascending: true, nullsFirst: true });
       break;
     case 'admitted_newest':
       q = q.order('admitted_at', { ascending: false, nullsFirst: false });
