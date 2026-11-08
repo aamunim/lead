@@ -185,8 +185,10 @@ export type AiChanceCounts = {
   working: number;
   done_today: number;
   auto_today: number;
-  /** $ per look (from what was used; 0.03 until there are a few) */
+  /** $ per look (from what was used; 0.03 until there are a few; 0 when Gemini goes first) */
   avg_cost: number;
+  /** the chance uses Gemini first: looks are free */
+  free?: boolean;
   spent_month: number;
   budget_ok: boolean;
   last_daily_run: string | null;
