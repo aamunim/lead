@@ -418,3 +418,7 @@ enabled = true
 # (x-cron-secret), the app with the signed-in user; the function checks both
 [functions.ai-admission-credit]
 verify_jwt = false
+
+# 🔮 AI chance of admission: same as above
+[functions.ai-lead-chance]
+verify_jwt = false

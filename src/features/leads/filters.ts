@@ -58,11 +58,14 @@ export type LeadFilters = {
   visit?: VisitFilter;
   contact?: ContactFilter;
   fee?: FeeFilter;
+  /** 🔮 the AI's chance: 'hot' | 'warm' | 'cold' */
+  aiChance?: string[];
 };
 
 export type FilterKey =
   | 'follow_up'
   | 'rating'
+  | 'ai_chance'
   | 'stage'
   | 'tags'
   | 'assigned'
@@ -88,6 +91,7 @@ export const NONE = 'none';
 export const FILTER_FIELDS: Record<FilterKey, { label: string; icon: string }> = {
   follow_up: { label: 'Next call', icon: 'alarm' },
   rating: { label: 'Rating', icon: 'star' },
+  ai_chance: { label: 'AI chance', icon: 'sparkles' },
   stage: { label: 'Stage', icon: 'flag' },
   tags: { label: 'Tags', icon: 'pricetags' },
   assigned: { label: 'Assigned to', icon: 'person' },
@@ -180,6 +184,7 @@ const list = (v?: string[]) => (v && v.length > 0 ? v : null);
 export function countActiveFilters(f: LeadFilters): number {
   return [
     list(f.ratings),
+    list(f.aiChance),
     list(f.stageIds),
     list(f.tagIds),
     list(f.assigned),
@@ -251,8 +256,9 @@ const localDay = (d: Date) =>
  * Extra joins needed by the filters (added to the select).
  * Separate names, so the lead's own tag/course lists stay complete.
  */
-export function filterSelect(f: LeadFilters): string {
+export function filterSelect(f: LeadFilters, chanceOk = true): string {
   const extra: string[] = [];
+  if (chanceOk && list(f.aiChance)) extra.push('chance_filter:lead_chances!inner(level)');
   if (list(f.tagIds)) extra.push('tag_filter:lead_tags!inner(tag_id)');
   if (list(f.courseIds)) extra.push('course_filter:lead_courses!inner(course_id)');
   return extra.length > 0 ? `, ${extra.join(', ')}` : '';
@@ -263,9 +269,13 @@ const inList = (ids: string[]) => ids.map((id) => `"${id}"`).join(',');
 
 /** Adds the filter conditions to a leads query */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applyLeadFilters<Q extends { [k: string]: any }>(query: Q, f: LeadFilters): Q {
+export function applyLeadFilters<Q extends { [k: string]: any }>(query: Q, f: LeadFilters, chanceOk = true): Q {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q: any = query;
+
+  // 🔮 The AI's chance (Hot 60%+, Warm 30-59%, Cold below)
+  const chance = list(f.aiChance);
+  if (chanceOk && chance) q = q.in('chance_filter.level', chance);
   const now = new Date();
   const today = startOfDay(now);
 
@@ -543,6 +553,7 @@ export const DEFAULT_FILTER_CONFIG: FilterConfig = {
   fields: [
     { key: 'follow_up', enabled: true },
     { key: 'rating', enabled: true },
+    { key: 'ai_chance', enabled: true },
     { key: 'stage', enabled: true },
     { key: 'tags', enabled: true },
     { key: 'assigned', enabled: true },

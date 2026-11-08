@@ -1,7 +1,7 @@
-import { getSetting, updateSetting } from "@/features/settings/api";
-import { memo, forget } from "@/shared/lib/memo";
-import { supabase } from "@/shared/lib/supabase";
-import type { Json } from "@/shared/types/database";
+import { getSetting, updateSetting } from '@/features/settings/api';
+import { memo, forget } from '@/shared/lib/memo';
+import { supabase } from '@/shared/lib/supabase';
+import type { Json } from '@/shared/types/database';
 
 // =====================================================================
 // 🤖 AI admission credit: who did how much for each admission
@@ -13,7 +13,7 @@ import type { Json } from "@/shared/types/database";
 export type AiCreditSettings = {
   enabled: boolean;
   model: string;
-  effort: "low" | "medium" | "high";
+  effort: 'low' | 'medium' | 'high';
   window_days: number;
   view: { all: boolean; roles: string[]; people: string[] };
   guidance: string;
@@ -21,11 +21,11 @@ export type AiCreditSettings = {
 
 export const DEFAULT_AI_CREDIT: AiCreditSettings = {
   enabled: true,
-  model: "claude-sonnet-5-5",
-  effort: "medium",
+  model: 'claude-sonnet-5-5',
+  effort: 'medium',
   window_days: 180,
   view: { all: false, roles: [], people: [] },
-  guidance: "",
+  guidance: '',
 };
 
 export type AiKeyStatus = {
@@ -67,11 +67,11 @@ export type CreditStat = {
   papers?: number;
 };
 export type LeadCredit = {
-  status: "none" | "pending" | "working" | "done" | "failed";
+  status: 'none' | 'pending' | 'working' | 'done' | 'failed';
   shares: CreditShare[];
   stats: CreditStat[];
   decisive: string | null;
-  confidence: "high" | "medium" | "low" | null;
+  confidence: 'high' | 'medium' | 'low' | null;
   manual: boolean;
   edit_reason: string | null;
   edited_by: string | null;
@@ -82,35 +82,26 @@ export type LeadCredit = {
 
 function toError(error: { message: string }): Error {
   const m = error.message.toLowerCase();
-  if (m.includes("network request failed") || m.includes("failed to fetch")) {
-    return new Error("No internet connection. Please try again.");
+  if (m.includes('network request failed') || m.includes('failed to fetch')) {
+    return new Error('No internet connection. Please try again.');
   }
   return new Error(error.message);
 }
 
-async function rpc<T>(
-  name: string,
-  args?: Record<string, unknown>,
-): Promise<T> {
-  const { data, error } = await supabase.rpc(
-    name as never,
-    (args ?? {}) as never,
-  );
+async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.rpc(name as never, (args ?? {}) as never);
   if (error) throw toError(error);
   return data as T;
 }
 
 /** An older database without this feature */
-const missing = (e: unknown) =>
-  e instanceof Error && /could not find the function/i.test(e.message);
+const missing = (e: unknown) => e instanceof Error && /could not find the function/i.test(e.message);
 
 // ---------------------------------------------------------------------
 // ⚙️ Settings
 // ---------------------------------------------------------------------
 export async function getAiCreditSettings(): Promise<AiCreditSettings> {
-  const saved = await getSetting<Partial<AiCreditSettings>>("ai_credit").catch(
-    () => null,
-  );
+  const saved = await getSetting<Partial<AiCreditSettings>>('ai_credit').catch(() => null);
   return {
     ...DEFAULT_AI_CREDIT,
     ...(saved ?? {}),
@@ -119,24 +110,24 @@ export async function getAiCreditSettings(): Promise<AiCreditSettings> {
 }
 
 export async function saveAiCreditSettings(s: AiCreditSettings): Promise<void> {
-  await updateSetting("ai_credit", s as unknown as Json);
-  forget("aicredit:*");
+  await updateSetting('ai_credit', s as unknown as Json);
+  forget('aicredit:*');
 }
 
 // ---------------------------------------------------------------------
 // 🔑 The key (admins)
 // ---------------------------------------------------------------------
-export const getAiKeyStatus = () => rpc<AiKeyStatus>("ai_key_status");
+export const getAiKeyStatus = () => rpc<AiKeyStatus>('ai_key_status');
 
 export async function saveAiKey(key: string): Promise<void> {
-  const base = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-  await rpc("set_ai_key", {
+  const base = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+  await rpc('set_ai_key', {
     p_key: key.trim(),
-    p_functions_url: base ? `${base.replace(/\/$/, "")}/functions/v1` : null,
+    p_functions_url: base ? `${base.replace(/\/$/, '')}/functions/v1` : null,
   });
 }
 
-export const removeAiKey = () => rpc<void>("remove_ai_key");
+export const removeAiKey = () => rpc<void>('remove_ai_key');
 
 /** Ask Claude whether the key works (a free check) */
 export async function testAiKey(): Promise<{
@@ -144,14 +135,11 @@ export async function testAiKey(): Promise<{
   error?: string;
   model?: string;
 }> {
-  const { data, error } = await supabase.functions.invoke(
-    "ai-admission-credit",
-    { body: { action: "test" } },
-  );
+  const { data, error } = await supabase.functions.invoke('ai-admission-credit', { body: { action: 'test' } });
   if (error) {
     // the function answered with an error message of its own
     const ctx = (error as { context?: Response }).context;
-    if (ctx && typeof ctx.json === "function") {
+    if (ctx && typeof ctx.json === 'function') {
       const body = (await ctx.json().catch(() => null)) as {
         error?: string;
       } | null;
@@ -160,7 +148,7 @@ export async function testAiKey(): Promise<{
     return {
       ok: false,
       error: /not found|404/i.test(error.message)
-        ? "The ai-admission-credit Edge Function is not deployed yet."
+        ? 'The ai-admission-credit Edge Function is not deployed yet.'
         : error.message,
     };
   }
@@ -170,25 +158,22 @@ export async function testAiKey(): Promise<{
 // ---------------------------------------------------------------------
 // ⚙️ The work
 // ---------------------------------------------------------------------
-export const getAiCreditOverview = () =>
-  rpc<AiCreditOverview>("ai_credit_overview");
+export const getAiCreditOverview = () => rpc<AiCreditOverview>('ai_credit_overview');
 
 /** Every admitted lead not worked out yet → the queue */
 export async function queueAllAdmissions(): Promise<number> {
-  const n = await rpc<number>("ai_credit_queue_all");
+  const n = await rpc<number>('ai_credit_queue_all');
   wakeAiCredit();
   return n;
 }
 
 /** Wake the server now (it also wakes itself every 2 minutes). Never waits, never fails. */
 export function wakeAiCredit(): void {
-  supabase.functions
-    .invoke("ai-admission-credit", { body: {} })
-    .catch(() => undefined);
+  supabase.functions.invoke('ai-admission-credit', { body: {} }).catch(() => undefined);
 }
 
 export async function redoLeadCredit(leadId: string): Promise<void> {
-  await rpc("ai_credit_redo", { p_lead: leadId });
+  await rpc('ai_credit_redo', { p_lead: leadId });
   forget(`aicredit:lead:${leadId}`);
   wakeAiCredit();
 }
@@ -198,7 +183,7 @@ export async function setLeadCreditByHand(
   shares: { user_id: string; share: number; reason?: string | null }[],
   reason: string,
 ): Promise<void> {
-  await rpc("ai_credit_set_manual", {
+  await rpc('ai_credit_set_manual', {
     p_lead: leadId,
     p_shares: shares,
     p_reason: reason,
@@ -210,19 +195,16 @@ export async function setLeadCreditByHand(
 // 👀 Reading
 // ---------------------------------------------------------------------
 /** null: this person may not see admission credit (or an older database) */
-export function getLeadCredit(
-  leadId: string,
-  force = false,
-): Promise<LeadCredit | null> {
+export function getLeadCredit(leadId: string, force = false): Promise<LeadCredit | null> {
   if (force) forget(`aicredit:lead:${leadId}`);
   return memo(`aicredit:lead:${leadId}`, 60_000, async () => {
     try {
-      const d = await rpc<Partial<LeadCredit> | null>("lead_admission_credit", {
+      const d = await rpc<Partial<LeadCredit> | null>('lead_admission_credit', {
         p_lead: leadId,
       });
       if (!d) return null;
       return {
-        status: d.status ?? "none",
+        status: d.status ?? 'none',
         shares: (d.shares ?? []).map((s) => ({ ...s, share: Number(s.share) })),
         stats: d.stats ?? [],
         decisive: d.decisive ?? null,

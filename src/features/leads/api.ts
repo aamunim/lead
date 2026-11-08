@@ -1,3 +1,4 @@
+import type { ChanceOnRow } from '@/features/aiChance/api';
 import { supabase } from '@/shared/lib/supabase';
 import type { Json, Tables } from '@/shared/types/database';
 import type { AddedQuery } from '@/features/leads/added';
@@ -106,6 +107,8 @@ export type LeadListItem = Pick<
   admitted_section: Named | null;
   /** 📞📝 Last call and last note (kept by the database) */
   last: LeadLast | null;
+  /** 🔮 The AI's chance of admission (null: not looked at / not allowed) */
+  lead_chances?: ChanceOnRow;
 };
 
 export type LeadDetail = Tables<'leads'> & {
@@ -197,6 +200,8 @@ export type ClosedMode = 'hide' | 'show';
 /** How the list is ordered (chosen on the list, remembered on the phone) */
 export type LeadSort =
   | 'next_call'
+  // 🔮 the AI's chance of admission
+  | 'ai_chance'
   | 'newest'
   | 'oldest'
   | 'name'
@@ -242,6 +247,7 @@ export const SORT_OPTIONS: { value: LeadSort; label: string; text: string; icon:
   { value: 'discount_most', label: 'Biggest discount', text: 'Largest discount first, no discount last', icon: '💰' },
   { value: 'fee_latest', label: 'Fee talk: latest', text: 'Last fee talk or discount change first', icon: '💬' },
   { value: 'score', label: 'Most likely to join', text: 'Highest admission chance first', icon: '🔥' },
+  { value: 'ai_chance', label: 'AI chance', text: 'Highest AI chance first (not looked at yet: last)', icon: '🔮' },
 ];
 
 /** Sorts for the 🎓 Students list */
@@ -341,6 +347,21 @@ const LIST_SELECT = `
   ${LAST_SELECT}
 `;
 
+// 🔮 The AI chance rides along (lead_chances). An older database doesn't have
+//   it yet: the first error turns it off, and the request goes again without.
+let chanceDb = true;
+const chanceSelect = (sort: LeadSort, f: LeadFilters, full: boolean) =>
+  !chanceDb ? '' : full ? ', lead_chances(chance, level)' : sort === 'ai_chance' ? ', lead_chances(chance)' : '';
+
+async function chanceSafe<T extends { error: { message: string } | null }>(run: () => PromiseLike<T>): Promise<T> {
+  const res = await run();
+  if (res.error && chanceDb && /lead_chances|chance_filter/i.test(res.error.message)) {
+    chanceDb = false;
+    return run();
+  }
+  return res;
+}
+
 const DETAIL_SELECT = `
   *,
   stage:pipeline_stages(id, key, name, color, kind),
@@ -383,12 +404,12 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' 
     .from('leads')
     .select(
       withCount === 'chips'
-        ? CHIP_COLUMNS + filterSelect(filters)
+        ? CHIP_COLUMNS + chanceSelect(sort, filters, false) + filterSelect(filters, chanceDb)
         : withCount === 'paid'
-          ? 'id, fee_paid' + filterSelect(filters)
+          ? 'id, fee_paid' + chanceSelect(sort, filters, false) + filterSelect(filters, chanceDb)
           : idOnly
-            ? 'id' + filterSelect(filters)
-            : LIST_SELECT + filterSelect(filters),
+            ? 'id' + chanceSelect(sort, filters, false) + filterSelect(filters, chanceDb)
+            : LIST_SELECT + chanceSelect(sort, filters, true) + filterSelect(filters, chanceDb),
       withCount === 'only' ? { count: 'exact', head: true } : withCount === true ? { count: 'exact' } : undefined,
     )
     .is('deleted_at', null);
@@ -467,9 +488,9 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' 
   if (pipelineCourseId) query = query.eq('pipeline_course_id', pipelineCourseId);
 
   // Full filters
-  query = applyLeadFilters(query, filters);
+  query = applyLeadFilters(query, filters, chanceDb);
 
-  return orderLeads(query, sort);
+  return orderLeads(query, chanceDb || sort !== 'ai_chance' ? sort : DEFAULT_SORT);
 }
 
 /**
@@ -512,6 +533,12 @@ function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: 
     case 'score':
       q = q.order('score', { ascending: false }).order('next_follow_up_at', { ascending: true, nullsFirst: false });
       break;
+    case 'ai_chance':
+      // 🔮 the AI's chance first (leads it has not looked at yet: last)
+      q = q
+        .order('lead_chances(chance)', { ascending: false, nullsFirst: false })
+        .order('score', { ascending: false });
+      break;
     case 'admitted_newest':
       q = q.order('admitted_at', { ascending: false, nullsFirst: false });
       break;
@@ -548,7 +575,7 @@ function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: 
 function cleanRows(data: unknown[] | null): LeadListItem[] {
   return (data ?? []).map((row) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { tag_filter, course_filter, ...rest } = row as Record<string, unknown>;
+    const { tag_filter, course_filter, chance_filter, ...rest } = row as Record<string, unknown>;
     return rest as unknown as LeadListItem;
   });
 }
@@ -559,9 +586,8 @@ export async function listLeads(
 ): Promise<{ items: LeadListItem[]; hasMore: boolean; total: number | null }> {
   const page = options.page ?? 0;
 
-  const { data, error, count } = await buildLeadQuery(options, page === 0).range(
-    page * PAGE_SIZE,
-    page * PAGE_SIZE + PAGE_SIZE - 1,
+  const { data, error, count } = await chanceSafe(() =>
+    buildLeadQuery(options, page === 0).range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1),
   );
   if (error) throw toError(error);
 
@@ -571,7 +597,7 @@ export async function listLeads(
 
 /** 🔢 How many leads match (the new list's chips show it), without loading them */
 export async function countLeads(options: LeadQuery): Promise<number | null> {
-  const { count, error } = await buildLeadQuery(options, 'only');
+  const { count, error } = await chanceSafe(() => buildLeadQuery(options, 'only'));
   return error ? null : (count ?? null);
 }
 
@@ -677,7 +703,7 @@ export async function sumLeadPaid(options: LeadQuery): Promise<{ total: number; 
 
 /** Every lead that matches (up to MAX_MARK_ALL), for "Mark all matching" */
 export async function listAllMatchingLeads(options: LeadQuery): Promise<LeadListItem[]> {
-  const { data, error } = await buildLeadQuery(options, false).range(0, MAX_MARK_ALL - 1);
+  const { data, error } = await chanceSafe(() => buildLeadQuery(options, false).range(0, MAX_MARK_ALL - 1));
   if (error) throw toError(error);
   return cleanRows(data);
 }
@@ -690,7 +716,7 @@ export const KEEP_MAX = 3000;
 
 /** The ids in list order, as the list is right now */
 export async function listLeadIds(options: LeadQuery): Promise<string[]> {
-  const { data, error } = await buildLeadQuery(options, 'ids').range(0, KEEP_MAX - 1);
+  const { data, error } = await chanceSafe(() => buildLeadQuery(options, 'ids').range(0, KEEP_MAX - 1));
   if (error) throw toError(error);
   return ((data ?? []) as unknown as { id: string }[]).map((r) => r.id);
 }
@@ -700,7 +726,13 @@ export async function listLeadsByIds(ids: string[]): Promise<LeadListItem[]> {
   const out = new Map<string, LeadListItem>();
   for (let i = 0; i < ids.length; i += 100) {
     const part = ids.slice(i, i + 100);
-    const { data, error } = await supabase.from('leads').select(LIST_SELECT).in('id', part).is('deleted_at', null);
+    const { data, error } = await chanceSafe(() =>
+      supabase
+        .from('leads')
+        .select(LIST_SELECT + (chanceDb ? ', lead_chances(chance, level)' : ''))
+        .in('id', part)
+        .is('deleted_at', null),
+    );
     if (error) throw toError(error);
     cleanRows(data).forEach((r) => out.set(r.id, r));
   }
@@ -710,7 +742,9 @@ export async function listLeadsByIds(ids: string[]): Promise<LeadListItem[]> {
 /** Which of these leads still match the list's search, chips and filters */
 export async function matchingLeadIds(options: LeadQuery, ids: string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
-  const { data, error } = await buildLeadQuery({ ...options, onlyIds: ids }, 'ids').range(0, ids.length - 1);
+  const { data, error } = await chanceSafe(() =>
+    buildLeadQuery({ ...options, onlyIds: ids }, 'ids').range(0, ids.length - 1),
+  );
   if (error) throw toError(error);
   return new Set(((data ?? []) as unknown as { id: string }[]).map((r) => r.id));
 }

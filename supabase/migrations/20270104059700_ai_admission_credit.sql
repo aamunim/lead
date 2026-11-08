@@ -220,11 +220,12 @@ create trigger leads_admission_credit after update of admitted_at, stage_id on p
   execute function public.admission_credit_queue();
 
 -- ---------------------------------------------------------------------
--- 📜 One lead's story for the AI (the server only)
---   people are codes (P1, P2…): no names, no phone numbers leave here;
---   numbers inside notes are blanked. Newest 250 events in the window.
--- ---------------------------------------------------------------------
-create or replace function public.admission_credit_input(p_lead uuid)
+-- 📜 One lead's story between two times (the AI functions use it; server only)
+--   people become codes (P1, P2…) by first appearance: no names leave here;
+--   phone numbers inside notes are blanked. Newest p_limit events.
+--   p_admit: add "who pressed Admitted" (admission credit)
+create or replace function public.ai_lead_story(p_lead uuid, p_from timestamptz, p_to timestamptz,
+                                               p_admit boolean default false, p_limit int default 250)
 returns jsonb
 language plpgsql
 security definer
@@ -232,24 +233,21 @@ set search_path = public
 as $$
 declare
   l        record;
-  v_days   int := coalesce((select (value ->> 'window_days')::int from public.app_settings where key = 'ai_credit'), 180);
-  v_from   timestamptz;
-  v_to     timestamptz;
   v_events jsonb;
   v_people jsonb;
   v_stats  jsonb;
 begin
-  select ld.*, src.name as source_name, c.name as course_name
+  select ld.id, ld.created_at, ld.created_by, ld.import_batch_id, ld.admitted_at, ld.admitted_by,
+         src.name as source_name
   into l
   from public.leads ld
   left join public.lead_sources src on src.id = ld.source_id
-  left join public.courses c on c.id = ld.admitted_course_id
   where ld.id = p_lead;
-  if l.id is null or l.admitted_at is null then return null; end if;
-  v_from := l.admitted_at - make_interval(days => greatest(v_days, 7));
-  v_to := l.admitted_at + interval '1 day';
+  if l.id is null then return null; end if;
 
-  create temporary table if not exists _ac_ev (t timestamptz, who uuid, kind text, data jsonb) on commit drop;
+  if to_regclass('pg_temp._ac_ev') is null then
+    create temporary table _ac_ev (t timestamptz, who uuid, kind text, data jsonb) on commit drop;
+  end if;
   truncate _ac_ev;
 
   -- ➕ who brought the lead
@@ -269,9 +267,9 @@ begin
            'note', left(regexp_replace(nullif(trim(c.notes), ''), '\+?(88)?0?1[3-9]([ \-]?[0-9]){8}', '[number]', 'g'), 400)))
   from public.call_logs c
   where c.lead_id = p_lead and c.deleted_at is null and c.user_id is not null
-    and c.called_at between v_from and v_to;
+    and c.called_at between p_from and p_to;
 
-  -- 📝 notes, visits, papers, hand-overs, stage moves (the activity log)
+  -- 📝 notes, visits, papers, hand-overs, stage moves, next calls (the activity log)
   insert into _ac_ev
   select a.created_at, a.user_id, a.action,
          jsonb_strip_nulls(case a.action
@@ -284,22 +282,24 @@ begin
   where a.lead_id = p_lead and a.user_id is not null
     and a.action in ('note_added', 'visit_planned', 'visit_done', 'paper_received', 'assigned', 'stage_changed',
                      'follow_up_set', 'template_sent', 'fee_offer', 'fee_discount')
-    and a.created_at between v_from and v_to;
+    and a.created_at between p_from and p_to;
 
   -- 💰 fee talks and payments
   insert into _ac_ev
   select e.created_at, e.created_by, 'fee_' || e.kind,
          jsonb_strip_nulls(jsonb_build_object('amount', e.amount, 'note', left(e.note, 300)))
   from public.negotiation_events e
-  where e.lead_id = p_lead and e.created_by is not null and e.created_at between v_from and v_to;
+  where e.lead_id = p_lead and e.created_by is not null and e.created_at between p_from and p_to;
   insert into _ac_ev
   select p.paid_at, p.received_by, case when p.kind = 'refund' then 'refund' else 'payment' end,
          jsonb_build_object('amount', p.amount)
   from public.fee_payments p
-  where p.lead_id = p_lead and p.voided_at is null and p.received_by is not null and p.paid_at between v_from and v_to;
+  where p.lead_id = p_lead and p.voided_at is null and p.received_by is not null and p.paid_at between p_from and p_to;
 
   -- 🎓 the click itself
-  insert into _ac_ev select l.admitted_at, l.admitted_by, 'marked_admitted', '{}'::jsonb where l.admitted_by is not null;
+  if p_admit then
+    insert into _ac_ev select l.admitted_at, l.admitted_by, 'marked_admitted', '{}'::jsonb where l.admitted_by is not null;
+  end if;
 
   -- people → codes, by first appearance (hand-over targets too)
   with ids as (
@@ -331,7 +331,7 @@ begin
   into v_stats
   from jsonb_array_elements(coalesce(v_people, '[]'::jsonb)) pp;
 
-  -- the events, oldest first (the newest 250), people as codes
+  -- the events, oldest first (the newest p_limit), people as codes
   select jsonb_agg(ev order by ev ->> 'at')
   into v_events
   from (
@@ -345,8 +345,38 @@ begin
                else e.data end) as ev
     from _ac_ev e
     order by e.t desc
-    limit 250
+    limit greatest(1, least(coalesce(p_limit, 250), 500))
   ) z;
+
+  return jsonb_build_object(
+    'people', coalesce(v_people, '[]'::jsonb),
+    'stats', coalesce(v_stats, '[]'::jsonb),
+    'events', coalesce(v_events, '[]'::jsonb));
+end;
+$$;
+revoke all on function public.ai_lead_story(uuid, timestamptz, timestamptz, boolean, int) from public, anon, authenticated;
+grant execute on function public.ai_lead_story(uuid, timestamptz, timestamptz, boolean, int) to service_role;
+
+-- ---------------------------------------------------------------------
+-- 📜 One admitted lead's story for the AI (the server only)
+-- ---------------------------------------------------------------------
+create or replace function public.admission_credit_input(p_lead uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  l      record;
+  v_days int := coalesce((select (value ->> 'window_days')::int from public.app_settings where key = 'ai_credit'), 180);
+begin
+  select ld.*, src.name as source_name, c.name as course_name
+  into l
+  from public.leads ld
+  left join public.lead_sources src on src.id = ld.source_id
+  left join public.courses c on c.id = ld.admitted_course_id
+  where ld.id = p_lead;
+  if l.id is null or l.admitted_at is null then return null; end if;
 
   return jsonb_build_object(
     'lead', jsonb_strip_nulls(jsonb_build_object(
@@ -356,10 +386,9 @@ begin
       'source', l.source_name,
       'course', l.course_name,
       'referred_by_alumnus', l.referred_by_alumni_id is not null,
-      'window_days', v_days)),
-    'people', coalesce(v_people, '[]'::jsonb),
-    'stats', coalesce(v_stats, '[]'::jsonb),
-    'events', coalesce(v_events, '[]'::jsonb));
+      'window_days', v_days)))
+    || public.ai_lead_story(p_lead, l.admitted_at - make_interval(days => greatest(v_days, 7)),
+                            l.admitted_at + interval '1 day', true, 250);
 end;
 $$;
 revoke all on function public.admission_credit_input(uuid) from public, anon, authenticated;
@@ -469,8 +498,9 @@ $$;
 revoke all on function public.ai_key_result(boolean, text) from public, anon, authenticated;
 grant execute on function public.ai_key_result(boolean, text) to service_role;
 
--- What the Edge Function needs, in one go (the server only)
-create or replace function public.ai_credit_server_config()
+-- What an AI Edge Function needs, in one go (the server only):
+--   the key, the job password and its own setting (p_setting)
+create or replace function public.ai_server_config(p_setting text)
 returns jsonb
 language sql
 stable
@@ -480,10 +510,10 @@ as $$
   select jsonb_build_object(
     'key', (select value from public.ai_secrets where name = 'anthropic'),
     'cron_secret', (select value from public.ai_secrets where name = 'cron_secret'),
-    'settings', coalesce((select value from public.app_settings where key = 'ai_credit'), '{}'::jsonb));
+    'settings', coalesce((select value from public.app_settings where key = p_setting), '{}'::jsonb));
 $$;
-revoke all on function public.ai_credit_server_config() from public, anon, authenticated;
-grant execute on function public.ai_credit_server_config() to service_role;
+revoke all on function public.ai_server_config(text) from public, anon, authenticated;
+grant execute on function public.ai_server_config(text) to service_role;
 
 -- ⏱ Every 2 minutes: if something waits and the key is set, wake the
 --   Edge Function (nothing happens when the queue is empty)

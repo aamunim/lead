@@ -1,12 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
   getLeadCredit,
@@ -14,10 +7,10 @@ import {
   setLeadCreditByHand,
   type CreditStat,
   type LeadCredit,
-} from "@/features/aiCredit/api";
-import { useAuth } from "@/features/auth/AuthProvider";
-import { colors, fontSize, fontWeight, radius, spacing } from "@/shared/theme";
-import { Button } from "@/shared/ui/Button";
+} from '@/features/aiCredit/api';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
+import { Button } from '@/shared/ui/Button';
 
 // =====================================================================
 // 🤝 Admission credit (admitted leads): who did how much, worked out by
@@ -28,27 +21,25 @@ import { Button } from "@/shared/ui/Button";
 // =====================================================================
 
 const CONF: Record<string, string> = {
-  high: "Sure",
-  medium: "Fairly sure",
-  low: "Not sure",
+  high: 'Sure',
+  medium: 'Fairly sure',
+  low: 'Not sure',
 };
 const POLL_MS = 20_000;
 const POLLS = 6;
 
 function statLine(s: CreditStat | undefined): string {
-  if (!s) return "";
+  if (!s) return '';
   const parts = [
-    s.calls
-      ? `📞 ${s.calls}${s.answered_calls ? ` (${s.answered_calls} answered)` : ""}`
-      : "",
-    s.talk_minutes ? `⏱ ${s.talk_minutes} min` : "",
-    s.whatsapp ? `💬 ${s.whatsapp}` : "",
-    s.notes ? `📝 ${s.notes}` : "",
-    s.visits ? `🏫 ${s.visits}` : "",
-    s.fee_actions ? `💰 ${s.fee_actions}` : "",
-    s.papers ? `📄 ${s.papers}` : "",
+    s.calls ? `📞 ${s.calls}${s.answered_calls ? ` (${s.answered_calls} answered)` : ''}` : '',
+    s.talk_minutes ? `⏱ ${s.talk_minutes} min` : '',
+    s.whatsapp ? `💬 ${s.whatsapp}` : '',
+    s.notes ? `📝 ${s.notes}` : '',
+    s.visits ? `🏫 ${s.visits}` : '',
+    s.fee_actions ? `💰 ${s.fee_actions}` : '',
+    s.papers ? `📄 ${s.papers}` : '',
   ].filter(Boolean);
-  return parts.join("  ");
+  return parts.join('  ');
 }
 
 export function AdmissionCreditCard({
@@ -62,7 +53,7 @@ export function AdmissionCreditCard({
   nameOf: (userId: string | null | undefined) => string | null;
 }) {
   const { hasPermission } = useAuth();
-  const isAdmin = hasPermission("settings.manage");
+  const isAdmin = hasPermission('settings.manage');
   const [c, setC] = useState<LeadCredit | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,11 +70,7 @@ export function AdmissionCreditCard({
           if (!alive) return;
           setC(d);
           // still waiting: look again a few times while the page is open
-          if (
-            d &&
-            (d.status === "pending" || d.status === "working") &&
-            polls.current < POLLS
-          ) {
+          if (d && (d.status === 'pending' || d.status === 'working') && polls.current < POLLS) {
             polls.current += 1;
             timer = setTimeout(() => load(true), POLL_MS);
           }
@@ -106,7 +93,7 @@ export function AdmissionCreditCard({
     try {
       await redoLeadCredit(leadId);
       polls.current = 0;
-      setC({ ...c, status: "pending" });
+      setC({ ...c, status: 'pending' });
       // look again shortly
       setTimeout(
         () =>
@@ -116,53 +103,44 @@ export function AdmissionCreditCard({
         POLL_MS,
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start.");
+      setError(e instanceof Error ? e.message : 'Could not start.');
     } finally {
       setBusy(false);
     }
   };
 
   const statOf = (userId: string) => c.stats.find((s) => s.user_id === userId);
-  const name = (userId: string, fallback: string | null) =>
-    fallback ?? nameOf(userId) ?? "Someone";
+  const name = (userId: string, fallback: string | null) => fallback ?? nameOf(userId) ?? 'Someone';
 
   return (
     <View style={styles.card}>
       <View style={styles.head}>
         <Text style={styles.title}>🤝 Admission credit</Text>
-        {c.status === "done" && (
+        {c.status === 'done' && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>
-              {c.manual
-                ? "✍️ Set by hand"
-                : `🤖 AI · ${CONF[c.confidence ?? ""] ?? ""}`}
+              {c.manual ? '✍️ Set by hand' : `🤖 AI · ${CONF[c.confidence ?? ''] ?? ''}`}
             </Text>
           </View>
         )}
       </View>
 
-      {(c.status === "pending" ||
-        c.status === "working" ||
-        c.status === "none") && (
+      {(c.status === 'pending' || c.status === 'working' || c.status === 'none') && (
         <View style={styles.waitRow}>
-          {c.status !== "none" && (
-            <ActivityIndicator size="small" color={colors.primary} />
-          )}
+          {c.status !== 'none' && <ActivityIndicator size="small" color={colors.primary} />}
           <Text style={styles.muted}>
-            {c.status === "none"
-              ? "Not worked out yet."
-              : "The AI is working out who did how much… (it runs in the background; this page need not stay open)"}
+            {c.status === 'none'
+              ? 'Not worked out yet.'
+              : 'The AI is working out who did how much… (it runs in the background; this page need not stay open)'}
           </Text>
         </View>
       )}
 
-      {c.status === "failed" && (
-        <Text style={styles.bad}>
-          Could not be worked out{isAdmin && c.error ? `: ${c.error}` : "."}
-        </Text>
+      {c.status === 'failed' && (
+        <Text style={styles.bad}>Could not be worked out{isAdmin && c.error ? `: ${c.error}` : '.'}</Text>
       )}
 
-      {c.status === "done" && !editing && (
+      {c.status === 'done' && !editing && (
         <>
           {c.shares.map((s) => (
             <View key={s.user_id} style={styles.share}>
@@ -173,30 +151,21 @@ export function AdmissionCreditCard({
                 <Text style={styles.pct}>{Math.round(s.share)}%</Text>
               </View>
               <View style={styles.track}>
-                <View
-                  style={[
-                    styles.fill,
-                    { width: `${Math.max(2, Math.min(100, s.share))}%` },
-                  ]}
-                />
+                <View style={[styles.fill, { width: `${Math.max(2, Math.min(100, s.share))}%` }]} />
               </View>
               {!!s.reason && <Text style={styles.reason}>{s.reason}</Text>}
-              {!!statLine(statOf(s.user_id)) && (
-                <Text style={styles.stats}>{statLine(statOf(s.user_id))}</Text>
-              )}
+              {!!statLine(statOf(s.user_id)) && <Text style={styles.stats}>{statLine(statOf(s.user_id))}</Text>}
             </View>
           ))}
           {!!c.decisive && (
             <View style={styles.decisive}>
-              <Text style={styles.decisiveLabel}>
-                ⭐ What turned the student
-              </Text>
+              <Text style={styles.decisiveLabel}>⭐ What turned the student</Text>
               <Text style={styles.decisiveText}>{c.decisive}</Text>
             </View>
           )}
           {c.manual && !!c.edit_reason && (
             <Text style={styles.muted}>
-              ✍️ {c.edited_by ?? "An admin"}: “{c.edit_reason}”
+              ✍️ {c.edited_by ?? 'An admin'}: “{c.edit_reason}”
             </Text>
           )}
         </>
@@ -205,9 +174,7 @@ export function AdmissionCreditCard({
       {editing && (
         <ManualEditor
           credit={c}
-          nameOf={(id) =>
-            name(id, c.shares.find((s) => s.user_id === id)?.name ?? null)
-          }
+          nameOf={(id) => name(id, c.shares.find((s) => s.user_id === id)?.name ?? null)}
           onCancel={() => setEditing(false)}
           onSaved={async () => {
             setEditing(false);
@@ -222,24 +189,13 @@ export function AdmissionCreditCard({
 
       {isAdmin && !editing && (
         <View style={styles.actions}>
-          {c.status !== "pending" && c.status !== "working" && (
-            <Pressable
-              onPress={redo}
-              disabled={busy}
-              accessibilityRole="button"
-              style={styles.link}
-            >
-              <Text style={styles.linkText}>
-                {c.status === "none" ? "🤖 Work it out" : "🔄 Work out again"}
-              </Text>
+          {c.status !== 'pending' && c.status !== 'working' && (
+            <Pressable onPress={redo} disabled={busy} accessibilityRole="button" style={styles.link}>
+              <Text style={styles.linkText}>{c.status === 'none' ? '🤖 Work it out' : '🔄 Work out again'}</Text>
             </Pressable>
           )}
-          {(c.status === "done" || c.status === "failed") && (
-            <Pressable
-              onPress={() => setEditing(true)}
-              accessibilityRole="button"
-              style={styles.link}
-            >
+          {(c.status === 'done' || c.status === 'failed') && (
+            <Pressable onPress={() => setEditing(true)} accessibilityRole="button" style={styles.link}>
               <Text style={styles.linkText}>✍️ Change by hand</Text>
             </Pressable>
           )}
@@ -267,45 +223,32 @@ function ManualEditor({
 }) {
   // everyone the AI looked at (stats) and everyone with a share
   const ids = Array.from(
-    new Set(
-      [
-        ...credit.shares.map((s) => s.user_id),
-        ...credit.stats.map((s) => s.user_id ?? ""),
-      ].filter(Boolean),
-    ),
+    new Set([...credit.shares.map((s) => s.user_id), ...credit.stats.map((s) => s.user_id ?? '')].filter(Boolean)),
   );
   const [pct, setPct] = useState<Record<string, string>>(() =>
     Object.fromEntries(
-      ids.map((id) => [
-        id,
-        String(
-          Math.round(credit.shares.find((s) => s.user_id === id)?.share ?? 0),
-        ),
-      ]),
+      ids.map((id) => [id, String(Math.round(credit.shares.find((s) => s.user_id === id)?.share ?? 0))]),
     ),
   );
-  const [why, setWhy] = useState("");
+  const [why, setWhy] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const total = ids.reduce((sum, id) => sum + (Number(pct[id]) || 0), 0);
 
   const save = async () => {
-    if (total !== 100)
-      return setError(`The shares must add up to 100 (now ${total}).`);
-    if (!why.trim()) return setError("Please write why.");
+    if (total !== 100) return setError(`The shares must add up to 100 (now ${total}).`);
+    if (!why.trim()) return setError('Please write why.');
     setSaving(true);
     setError(null);
     try {
       await setLeadCreditByHand(
         leadId,
-        ids
-          .filter((id) => (Number(pct[id]) || 0) > 0)
-          .map((id) => ({ user_id: id, share: Number(pct[id]) })),
+        ids.filter((id) => (Number(pct[id]) || 0) > 0).map((id) => ({ user_id: id, share: Number(pct[id]) })),
         why.trim(),
       );
       onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save.");
+      setError(e instanceof Error ? e.message : 'Could not save.');
     } finally {
       setSaving(false);
     }
@@ -320,9 +263,7 @@ function ManualEditor({
           </Text>
           <TextInput
             value={pct[id]}
-            onChangeText={(t) =>
-              setPct((p) => ({ ...p, [id]: t.replace(/\D/g, "").slice(0, 3) }))
-            }
+            onChangeText={(t) => setPct((p) => ({ ...p, [id]: t.replace(/\D/g, '').slice(0, 3) }))}
             keyboardType="number-pad"
             style={styles.pctInput}
             accessibilityLabel={`${nameOf(id)} percent`}
@@ -330,9 +271,7 @@ function ManualEditor({
           <Text style={styles.muted}>%</Text>
         </View>
       ))}
-      <Text style={[styles.muted, total !== 100 && styles.bad]}>
-        Total: {total}%
-      </Text>
+      <Text style={[styles.muted, total !== 100 && styles.bad]}>Total: {total}%</Text>
       <TextInput
         value={why}
         onChangeText={setWhy}
@@ -365,9 +304,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   head: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.sm,
   },
   title: {
@@ -386,11 +325,11 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
     color: colors.textMuted,
   },
-  waitRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  waitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   muted: { flexShrink: 1, fontSize: fontSize.small, color: colors.textMuted },
   bad: { fontSize: fontSize.small, color: colors.danger },
   share: { gap: 4, paddingVertical: spacing.xs },
-  shareTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  shareTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   person: {
     flex: 1,
     fontSize: fontSize.small,
@@ -406,7 +345,7 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: colors.background,
-    overflow: "hidden",
+    overflow: 'hidden',
   },
   fill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
   reason: { fontSize: fontSize.small, lineHeight: 20, color: colors.text },
@@ -428,10 +367,10 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   actions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
-    alignItems: "center",
+    alignItems: 'center',
   },
   link: { paddingVertical: spacing.xs, paddingHorizontal: spacing.xs },
   linkText: {
@@ -440,11 +379,11 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   editor: { gap: spacing.sm },
-  editRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  editRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   pctInput: {
     width: 64,
     minHeight: 40,
-    textAlign: "center",
+    textAlign: 'center',
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,

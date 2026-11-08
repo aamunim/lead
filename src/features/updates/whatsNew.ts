@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-d',
+    date: '8 Nov 2026',
+    title: '🔮 AI: chance of admission and what to say',
+    items: [
+      '🔮 On every open lead: the AI reads the calls, minutes, every note and everyone’s work, and shows the chance of admission (%)',
+      '👉 What to do next, the doubts it heard (fee, family, time…), the best time to call, and “💬 What to say” — short lines in Bangla (hold a line to copy it)',
+      '🔄 It looks again by itself after a new call or note; press “🔄 আবার দেখুন” any time',
+      '🏠 Home: “Call these first” — your leads with a good chance; Leads: 🔮 % on the cards, sort and filter by AI chance (website table too)',
+    ],
+  },
+  {
     key: '2026-11-08-c',
     date: '8 Nov 2026',
     title: '🤖 AI shares each admission',

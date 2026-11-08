@@ -86,6 +86,7 @@ import { deleteLeadFile, isRecordedVoice, listLeadFiles, type LeadFile } from '@
 import { onVoiceSaved } from '@/features/voice/useVoiceNotes';
 import { isWeb } from '@/features/web/api';
 import { WebStudentLayout } from '@/features/web/student/WebStudentLayout';
+import { ChanceCard } from '@/features/aiChance/ChanceCard';
 import { AdmissionCreditCard } from '@/features/aiCredit/AdmissionCreditCard';
 import { ApprovalCard } from '@/features/approval/ApprovalCard';
 import { peekMemo, remember } from '@/shared/lib/memo';
@@ -1062,6 +1063,17 @@ export function LeadDetailView({
           load();
         }}
       />
+      {/* 🔮 AI: chance of admission, what to do and say (open leads) */}
+      {stageKind === 'open' && (
+        <ChanceCard
+          leadId={lead.id}
+          stateKey={`${lead.last_contacted_at ?? ''}|${lead.next_follow_up_at ?? ''}`}
+          onChanged={(message) => {
+            if (message) showToast(message);
+            if (message !== 'Copied') load();
+          }}
+        />
+      )}
     </>
   );
   const approvalEl = (
