@@ -419,8 +419,8 @@ export default function AiSettingsScreen() {
             <Text style={[styles.rowText, styles.bad]}>Last problem: {cov.last_error}</Text>
           )}
           <Text style={styles.rowText}>
-            Used so far: {cov.tokens_in.toLocaleString()} tokens in, {cov.tokens_out.toLocaleString()} out (about $
-            {((cov.tokens_in * 2 + cov.tokens_out * 10) / 1_000_000).toFixed(2)})
+            Claude used so far: {cov.tokens_in.toLocaleString()} tokens in, {cov.tokens_out.toLocaleString()} out (about
+            ${((cov.tokens_in * 2 + cov.tokens_out * 10) / 1_000_000).toFixed(2)})
           </Text>
         </View>
       )}
@@ -505,7 +505,7 @@ export default function AiSettingsScreen() {
             <Text style={[styles.rowText, styles.bad]}>Last problem: {ov.last_error}</Text>
           )}
           <Text style={styles.rowText}>
-            Used so far: {ov.tokens_in.toLocaleString()} tokens in, {ov.tokens_out.toLocaleString()} out (about $
+            Claude used so far: {ov.tokens_in.toLocaleString()} tokens in, {ov.tokens_out.toLocaleString()} out (about $
             {((ov.tokens_in * 2 + ov.tokens_out * 10) / 1_000_000).toFixed(2)})
           </Text>
           <Button

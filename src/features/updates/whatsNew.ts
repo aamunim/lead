@@ -8,6 +8,15 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-j',
+    date: '8 Nov 2026',
+    title: '💵 Gemini shows as free',
+    items: [
+      '💵 Settings → AI: when the chance of admission uses Gemini first, “Run a group” shows $0 (Gemini, free) instead of Claude’s price',
+      '📊 “Claude used so far” counts Claude’s answers only; Gemini’s are free',
+    ],
+  },
+  {
     key: '2026-11-08-i',
     date: '8 Nov 2026',
     title: '🔧 Gemini: “model not found” fixed',

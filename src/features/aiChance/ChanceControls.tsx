@@ -88,7 +88,8 @@ export function ChanceControls({
       });
   };
 
-  const cost = (n: number) => usd(n * (counts?.avg_cost ?? 0.03));
+  // Gemini first: free (Claude only steps in when Gemini can't)
+  const cost = (n: number) => (counts?.free ? '$0 (Gemini, free)' : usd(n * (counts?.avg_cost ?? 0.03)));
 
   // a group: how many, the cost, then "now" or "within the daily limit"
   const askGroup = (kind: ChanceGroup, n: number, label: string) => {
@@ -216,7 +217,7 @@ export function ChanceControls({
           {LIMITS.map((n) => (
             <Chip
               key={n}
-              label={`${n} · ~${usd(n * (counts?.avg_cost ?? 0.03))}/day`}
+              label={counts?.free ? `${n}` : `${n} · ~${usd(n * (counts?.avg_cost ?? 0.03))}/day`}
               on={cs.daily_auto_limit === n && !customLimit}
               onPress={() => {
                 setCustomLimit('');
@@ -306,7 +307,9 @@ export function ChanceControls({
             </Text>
           </>
         )}
-        <Text style={styles.hint}>Both AI features count (chance and admission credit).</Text>
+        <Text style={styles.hint}>
+          Claude only (both features: chance and admission credit). Gemini is free and not counted.
+        </Text>
       </View>
 
       {/* 👤 groups by hand */}
