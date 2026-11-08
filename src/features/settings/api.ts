@@ -115,13 +115,67 @@ export type CourseWithDetails = Course & {
 
 export type FeeInput = { id?: string; name: string; amount: number };
 
+/** The courses of leads (🎓 alumni courses are kept apart: listAlumniCourses) */
 export async function listCourses(includeInactive = false): Promise<CourseWithDetails[]> {
-  let query = supabase.from('courses').select('*, course_fees(*), batches(*)').order('sort_order').order('name');
+  let query = supabase
+    .from('courses')
+    .select('*, course_fees(*), batches(*)')
+    .eq('is_alumni' as never, false as never)
+    .order('sort_order')
+    .order('name');
   if (!includeInactive) query = query.eq('is_active', true);
 
   const { data, error } = await query;
   if (error) throw toError(error);
   return (data ?? []) as CourseWithDetails[];
+}
+
+// ---------------------------------------------------------------------
+// 🎓 Alumni courses: never shown where leads are
+// ---------------------------------------------------------------------
+export async function listAlumniCourses(): Promise<CourseWithDetails[]> {
+  const { data, error } = await supabase
+    .from('courses')
+    .select('*, course_fees(*), batches(*)')
+    .eq('is_alumni' as never, true as never)
+    .order('sort_order')
+    .order('name');
+  if (error) throw toError(error);
+  const list = (data ?? []) as CourseWithDetails[];
+  for (const c of list) c.batches.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+  return list;
+}
+
+/** A new alumni course (Settings → Alumni) */
+export async function createAlumniCourse(name: string): Promise<void> {
+  const { error } = await supabase.from('courses').insert({ name: name.trim(), is_alumni: true } as never);
+  if (error) throw toError(error);
+}
+
+/** A lead course becomes an alumni course (or back). Gives how many open leads still have it. */
+export async function setCourseAlumni(
+  courseId: string,
+  alumni: boolean,
+): Promise<{ alumni_moved?: number; open_leads?: number }> {
+  const { data, error } = await supabase.rpc(
+    'set_course_alumni' as never,
+    { p_course: courseId, p_alumni: alumni } as never,
+  );
+  if (error) throw toError(error);
+  return (data ?? {}) as { alumni_moved?: number; open_leads?: number };
+}
+
+/** Open leads that have this course (asked before making it an alumni course) */
+export async function countOpenLeadsOfCourse(courseId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('lead_courses')
+    .select('lead_id, leads!inner(id)', { count: 'exact', head: true })
+    .eq('course_id', courseId)
+    .is('leads.deleted_at', null)
+    .is('leads.admitted_at', null)
+    .is('leads.closed_at', null);
+  if (error) return 0;
+  return count ?? 0;
 }
 
 export async function getCourse(id: string): Promise<CourseWithDetails | null> {

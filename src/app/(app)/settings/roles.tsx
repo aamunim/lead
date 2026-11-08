@@ -49,7 +49,13 @@ export default function RolesScreen() {
     try {
       const [r, c] = await Promise.all([
         listRolesFull(),
-        supabase.from('courses').select('id, name').order('sort_order').order('name'),
+        // alumni courses are seen by everyone: not part of course access
+        supabase
+          .from('courses')
+          .select('id, name')
+          .eq('is_alumni' as never, false as never)
+          .order('sort_order')
+          .order('name'),
       ]);
       setRoles(r);
       setCourses(c.data ?? []);

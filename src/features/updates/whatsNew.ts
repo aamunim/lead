@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-09-d',
+    date: '9 Nov 2026',
+    title: '🎓 Alumni courses apart from lead courses',
+    items: [
+      '📞 Call / 💬 WhatsApp from the Alumni list (and Home) right away, without opening the alumnus; when you come back, the popup asks what happened',
+      '🎓 Every alumnus must have a course: Add, Excel import and phone contacts ask for it first',
+      '📚 Alumni courses are apart from lead courses: they never show for leads. Add one in Settings → Alumni → Alumni courses, or make a lead course an alumni course in Settings → Courses',
+      '🔁 Students brought into Alumni go into the alumni course of the same name (made the first time)',
+    ],
+  },
+  {
     key: '2026-11-09-c',
     date: '9 Nov 2026',
     title: '🎓 Alumni, easier to use',
