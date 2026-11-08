@@ -28,6 +28,7 @@ export function PersonCourses({
     supabase
       .from('courses')
       .select('id, name')
+      .eq('is_alumni' as never, false as never)
       .order('sort_order')
       .order('name')
       .then(({ data }) => setCourses(data ?? []));

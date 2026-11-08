@@ -42,15 +42,17 @@ import {
   type AlumniSummary,
   type Alumnus,
 } from '@/features/alumni/api';
+import { AlumniCoursePicker } from '@/features/alumni/AlumniCoursePicker';
 import { AlumniFilterSheet } from '@/features/alumni/AlumniFilterSheet';
 import { AlumniPeekSheet } from '@/features/alumni/AlumniPeekSheet';
+import { useAlumniDialer } from '@/features/alumni/useAlumniDialer';
 import { campaignDraft } from '@/features/alumni/draft';
 import { MenuSheet, NextContactSheet, OwnerSheet, TextSheet, whenText } from '@/features/alumni/sheets';
 import { alumniChanged, Avatar, Chip, s as ui, useAlumniAccess, useAlumniVersion } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { MIcon, md, Tap, type MIconName } from '@/features/home/md';
 import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
-import { listCourses, type CourseWithDetails } from '@/features/settings/api';
+import { listAlumniCourses, type CourseWithDetails } from '@/features/settings/api';
 import { useSavedState } from '@/shared/lib/saved';
 import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -123,6 +125,7 @@ export default function AlumniScreen() {
   const [exporting, setExporting] = useState(false);
   // 👁 peek, and "next contact" for one alumnus from the peek
   const [peek, setPeek] = useState<Alumnus | null>(null);
+  const dialer = useAlumniDialer();
   const [nextFor, setNextFor] = useState<Alumnus | null>(null);
   // 🌐 a wide browser window: a table (one line per alumnus)
   const { width } = useWindowDimensions();
@@ -150,7 +153,7 @@ export default function AlumniScreen() {
   const [sheet, setSheet] = useState<null | 'note' | 'next' | 'tag_add' | 'tag_remove' | 'owner' | 'more'>(null);
 
   useEffect(() => {
-    listCourses()
+    listAlumniCourses()
       .then(setCourses)
       .catch(() => undefined);
     getAlumniSettings()
@@ -319,13 +322,6 @@ export default function AlumniScreen() {
       .catch(() => undefined);
     setSheet(kind);
   };
-  const unassign = async () => {
-    if (
-      !(await confirm('Remove the course?', `${selected.size} marked alumni will have no course and batch.`, 'Remove'))
-    )
-      return;
-    run({ action: 'unassign' }, (n) => `${n} alumni have no course now.`);
-  };
   const remove = async () => {
     if (
       !(await confirm(
@@ -342,7 +338,6 @@ export default function AlumniScreen() {
     { label: 'Remove a tag', icon: 'label-off', onPress: () => openTagSheet('tag_remove') },
     { label: 'Looked after by…', icon: 'person', onPress: () => setSheet('owner') },
     { label: 'Course & batch', icon: 'school', onPress: () => (setSheet(null), setCoursePicker(true)) },
-    { label: 'No course', icon: 'layers-clear', onPress: () => (setSheet(null), unassign()) },
     {
       label: 'Do not contact: on',
       icon: 'do-not-disturb-on',
@@ -656,6 +651,8 @@ export default function AlumniScreen() {
                     onToggle={toggle}
                     onLongPress={startSelect}
                     onPeek={setPeek}
+                    onCall={dialer.call}
+                    onWa={dialer.whatsapp}
                   />
                 )}
               </>
@@ -781,12 +778,15 @@ export default function AlumniScreen() {
         <AlumniPeekSheet
           a={peek}
           onClose={() => setPeek(null)}
+          onCall={() => (setPeek(null), dialer.call(peek))}
+          onWa={() => (setPeek(null), dialer.whatsapp(peek))}
           onNextContact={() => {
             setNextFor(peek);
             setPeek(null);
           }}
         />
       )}
+      {dialer.sheet}
       {nextFor && (
         <NextContactSheet
           title={`Next contact · ${nextFor.name}`}
@@ -818,9 +818,9 @@ export default function AlumniScreen() {
       )}
 
       {coursePicker && (
-        <CoursePicker
+        <AlumniCoursePicker
+          title={`Course for ${selected.size} alumni`}
           courses={courses}
-          count={selected.size}
           onClose={() => setCoursePicker(false)}
           onPick={(c, b) => {
             setCoursePicker(false);
@@ -992,6 +992,8 @@ const AlumnusRow = memo(function AlumnusRow({
   onToggle,
   onLongPress,
   onPeek,
+  onCall,
+  onWa,
 }: {
   a: Alumnus;
   search: string;
@@ -1001,6 +1003,9 @@ const AlumnusRow = memo(function AlumnusRow({
   onLongPress: (id: string) => void;
   /** 👁 the peek sheet (tap the picture or the last note) */
   onPeek: (a: Alumnus) => void;
+  /** 📞 / 💬 right here: the popup asks what happened when you come back */
+  onCall: (a: Alumnus) => void;
+  onWa: (a: Alumnus) => void;
 }) {
   const course = [a.course_name, a.batch_name].filter(Boolean).join(' · ');
   const line = [course, a.passing_year ? `Passed ${a.passing_year}` : null].filter(Boolean).join(' · ');
@@ -1114,18 +1119,10 @@ const AlumnusRow = memo(function AlumnusRow({
       {!selecting && !!a.phone && !a.do_not_contact && (
         <View style={styles.quick}>
           {/* the page calls / opens WhatsApp and asks what happened when you come back */}
-          <Tap
-            onPress={() => router.push(`/alumni/${a.id}?dial=1` as Href)}
-            style={styles.quickBtn}
-            label={`Call ${a.name}`}
-          >
+          <Tap onPress={() => onCall(a)} style={styles.quickBtn} label={`Call ${a.name}`}>
             <MIcon name="call" size={20} color={md.onOkC} />
           </Tap>
-          <Tap
-            onPress={() => router.push(`/alumni/${a.id}?wa=1` as Href)}
-            style={[styles.quickBtn, styles.quickWa]}
-            label={`WhatsApp ${a.name}`}
-          >
+          <Tap onPress={() => onWa(a)} style={[styles.quickBtn, styles.quickWa]} label={`WhatsApp ${a.name}`}>
             <MIcon name="chat" size={20} color={md.onWaC} />
           </Tap>
         </View>
@@ -1143,73 +1140,6 @@ function Pill({ text, bg, fg }: { text: string; bg: string; fg: string }) {
 }
 
 // 🎓 Choose the course (and, if wanted, the batch) for the marked ones
-function CoursePicker({
-  courses,
-  count,
-  onClose,
-  onPick,
-}: {
-  courses: CourseWithDetails[];
-  count: number;
-  onClose: () => void;
-  onPick: (courseId: string, batchId: string | null) => void;
-}) {
-  const [course, setCourse] = useState<string | null>(null);
-  const [batch, setBatch] = useState<string | null>(null);
-  const batches = courses.find((c) => c.id === course)?.batches ?? [];
-  return (
-    <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
-      <View style={styles.sheet}>
-        <View style={styles.handle} />
-        <Text style={styles.sheetTitle}>Course for {count} alumni</Text>
-        <ScrollView contentContainerStyle={styles.sheetBody}>
-          {courses.length === 0 && <Text style={ui.muted}>No courses yet (Settings → Courses).</Text>}
-          {courses.map((c) => {
-            const on = course === c.id;
-            return (
-              <Tap
-                key={c.id}
-                onPress={() => {
-                  setCourse(c.id);
-                  setBatch(null);
-                }}
-                style={[styles.option, on && styles.optionOn]}
-                label={c.name}
-              >
-                <MIcon
-                  name={on ? 'radio-button-checked' : 'radio-button-unchecked'}
-                  color={on ? colors.primary : colors.textMuted}
-                />
-                <Text style={styles.optionText}>{c.name}</Text>
-              </Tap>
-            );
-          })}
-          {batches.length > 0 && (
-            <>
-              <Text style={[ui.label, styles.batchLabel]}>BATCH (IF YOU WANT)</Text>
-              <View style={ui.chips}>
-                <Chip text="No batch" on={!batch} onPress={() => setBatch(null)} />
-                {batches.map((b) => (
-                  <Chip key={b.id} text={b.name} on={batch === b.id} onPress={() => setBatch(b.id)} />
-                ))}
-              </View>
-            </>
-          )}
-        </ScrollView>
-        <View style={styles.sheetButtons}>
-          <View style={styles.flex}>
-            <Button title="Cancel" variant="ghost" onPress={onClose} fullWidth />
-          </View>
-          <View style={styles.flex}>
-            <Button title="Save" onPress={() => course && onPick(course, batch)} disabled={!course} fullWidth />
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },

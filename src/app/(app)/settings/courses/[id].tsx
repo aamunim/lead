@@ -2,6 +2,8 @@ import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,11 +17,13 @@ import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyb
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-    getCourse,
-    saveBatch,
-    saveCourse,
-    saveCourseFees,
-    type Batch,
+  countOpenLeadsOfCourse,
+  getCourse,
+  saveBatch,
+  setCourseAlumni,
+  saveCourse,
+  saveCourseFees,
+  type Batch,
 } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -71,6 +75,43 @@ export default function CourseEditScreen() {
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [batchDraft, setBatchDraft] = useState<Partial<Batch> | null>(null);
+  const [isAlumni, setIsAlumni] = useState(false);
+  const [moving, setMoving] = useState(false);
+
+  // 🎓 This lead course → an alumni course: gone from everything about leads, kept for alumni
+  const makeAlumni = async () => {
+    if (!id) return;
+    const open = await countOpenLeadsOfCourse(id);
+    const text =
+      `“${form.name}” will be an alumni course: it no longer shows for leads (forms, filters, the website form, ` +
+      `admission). Alumni can be put in it.` +
+      (open > 0
+        ? `\n\n⚠ ${open} open lead${open === 1 ? '' : 's'} have this course. They keep it, but nobody can choose it for a lead any more.`
+        : '');
+    const ok =
+      Platform.OS === 'web'
+        ? window.confirm(`Make it an alumni course?\n\n${text}`)
+        : await new Promise<boolean>((resolve) =>
+            Alert.alert('Make it an alumni course?', text, [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Make alumni course', style: 'destructive', onPress: () => resolve(true) },
+            ]),
+          );
+    if (!ok) return;
+    setMoving(true);
+    setError(null);
+    try {
+      const r = await setCourseAlumni(id, true);
+      const msg = `“${form.name}” is an alumni course now${r.alumni_moved ? ` (${r.alumni_moved} alumni moved into it)` : ''}.`;
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Done', msg);
+      router.back();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not change it.');
+    } finally {
+      setMoving(false);
+    }
+  };
 
   // --- load an existing course ---------------------------------------
   const load = useCallback(async () => {
@@ -100,6 +141,7 @@ export default function CourseEditScreen() {
         })),
       );
       setBatches(course.batches);
+      setIsAlumni(!!(course as { is_alumni?: boolean }).is_alumni);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load this course.');
     } finally {
@@ -266,9 +308,7 @@ export default function CourseEditScreen() {
             <Text style={styles.total}>Total {formatTaka(totalFee)}</Text>
           </View>
 
-          {fees.length === 0 && (
-            <Text style={styles.muted}>No fees yet. Add admission fee, tuition and others.</Text>
-          )}
+          {fees.length === 0 && <Text style={styles.muted}>No fees yet. Add admission fee, tuition and others.</Text>}
 
           {fees.map((f) => (
             <View key={f.key} style={styles.feeRow}>
@@ -289,11 +329,7 @@ export default function CourseEditScreen() {
                 style={[styles.feeInput, styles.feeAmount]}
                 accessibilityLabel="Fee amount"
               />
-              <Pressable
-                onPress={() => removeFee(f.key)}
-                hitSlop={8}
-                accessibilityLabel={`Remove ${f.name || 'fee'}`}
-              >
+              <Pressable onPress={() => removeFee(f.key)} hitSlop={8} accessibilityLabel={`Remove ${f.name || 'fee'}`}>
                 <Text style={styles.remove}>✕</Text>
               </Pressable>
             </View>
@@ -325,9 +361,7 @@ export default function CourseEditScreen() {
             <Text style={styles.muted}>Create the course first, then add its batches.</Text>
           ) : (
             <>
-              {batches.length === 0 && (
-                <Text style={styles.muted}>No batches yet, for example “January 2027”.</Text>
-              )}
+              {batches.length === 0 && <Text style={styles.muted}>No batches yet, for example “January 2027”.</Text>}
 
               {batches.map((b) => (
                 <Pressable
@@ -343,7 +377,11 @@ export default function CourseEditScreen() {
                   <View style={styles.batchBody}>
                     <Text style={styles.batchTitle}>{b.name}</Text>
                     <Text style={styles.batchMeta}>
-                      {[b.start_date && `Starts ${b.start_date}`, b.class_time, b.seat_capacity != null && `${b.seat_capacity} seats`]
+                      {[
+                        b.start_date && `Starts ${b.start_date}`,
+                        b.class_time,
+                        b.seat_capacity != null && `${b.seat_capacity} seats`,
+                      ]
                         .filter(Boolean)
                         .join(' · ') || 'No details'}
                     </Text>
@@ -362,6 +400,23 @@ export default function CourseEditScreen() {
             </>
           )}
         </View>
+        {/* 🎓 Alumni course */}
+        {!isNew && !isAlumni && !loading && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>🎓 Alumni course</Text>
+            <Text style={styles.muted}>
+              A course you no longer take admissions for, kept only for alumni: it disappears from everything about
+              leads.
+            </Text>
+            <Button
+              title="Make it an alumni course"
+              variant="secondary"
+              onPress={makeAlumni}
+              loading={moving}
+              fullWidth
+            />
+          </View>
+        )}
       </KeyboardAwareScrollView>
 
       {batchDraft && !isNew && id && (
@@ -440,10 +495,7 @@ function BatchModal({
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.sheetWrap}
-        >
+        <KeyboardAvoidingView behavior="padding" style={styles.sheetWrap}>
           <SafeAreaView edges={['bottom']} style={styles.sheet}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>{initial.id ? 'Edit batch' : 'New batch'}</Text>
@@ -457,7 +509,13 @@ function BatchModal({
               contentContainerStyle={styles.sheetContent}
               keyboardShouldPersistTaps="handled"
             >
-              <TextField label="Batch name" required value={name} onChangeText={setName} placeholder="e.g. January 2027" />
+              <TextField
+                label="Batch name"
+                required
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g. January 2027"
+              />
               <TextField
                 label="Start date"
                 value={startDate}
@@ -466,7 +524,12 @@ function BatchModal({
                 keyboardType="numbers-and-punctuation"
                 maxLength={10}
               />
-              <TextField label="Class time" value={classTime} onChangeText={setClassTime} placeholder="e.g. Morning shift" />
+              <TextField
+                label="Class time"
+                value={classTime}
+                onChangeText={setClassTime}
+                placeholder="e.g. Morning shift"
+              />
               <TextField
                 label="Seats"
                 value={seats}

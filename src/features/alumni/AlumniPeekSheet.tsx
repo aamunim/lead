@@ -24,9 +24,14 @@ export function AlumniPeekSheet({
   a,
   onClose,
   onNextContact,
+  onCall,
+  onWa,
 }: {
   a: Alumnus;
   onClose: () => void;
+  /** 📞 / 💬 without opening the page */
+  onCall: () => void;
+  onWa: () => void;
   /** close the peek and open "Next contact" for this alumnus */
   onNextContact: () => void;
 }) {
@@ -107,12 +112,12 @@ export function AlumniPeekSheet({
       <View style={styles.actions}>
         {canContact && (
           <View style={styles.flex}>
-            <Button title="📞 Call" variant="secondary" onPress={() => go(`/alumni/${a.id}?dial=1`)} fullWidth />
+            <Button title="📞 Call" variant="secondary" onPress={onCall} fullWidth />
           </View>
         )}
         {canContact && (
           <View style={styles.flex}>
-            <Button title="💬 WhatsApp" variant="secondary" onPress={() => go(`/alumni/${a.id}?wa=1`)} fullWidth />
+            <Button title="💬 WhatsApp" variant="secondary" onPress={onWa} fullWidth />
           </View>
         )}
         <View style={styles.flex}>

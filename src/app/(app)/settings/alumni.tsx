@@ -35,7 +35,14 @@ import {
 import { alumniChanged, Chip, s as ui } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
-import { listCourses, type CourseWithDetails } from '@/features/settings/api';
+import {
+  createAlumniCourse,
+  listAlumniCourses,
+  listCourses,
+  saveBatch,
+  setCourseAlumni,
+  type CourseWithDetails,
+} from '@/features/settings/api';
 import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { copyLink, shareLink } from '@/shared/lib/shareLink';
@@ -330,6 +337,9 @@ export default function AlumniSettingsScreen() {
       {error && <Text style={ui.error}>{error}</Text>}
       <Button title="Save" onPress={save} loading={saving} disabled={!dirty} fullWidth />
 
+      {/* 🎓 Alumni courses (apart from lead courses) */}
+      <AlumniCoursesCard />
+
       <PublicLinksCard />
 
       {/* 🧩 Custom fields (saved one by one) */}
@@ -529,6 +539,18 @@ function FieldsCard({ fields, reload }: { fields: AlumniField[]; reload: () => P
 }
 
 const styles = StyleSheet.create({
+  acRow: { gap: spacing.xs, paddingVertical: spacing.xs },
+  acLink: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
+  acInput: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    fontSize: fontSize.body,
+    color: colors.text,
+    backgroundColor: colors.background,
+  },
   flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   screen: { flex: 1, backgroundColor: colors.background },
@@ -596,6 +618,131 @@ const styles = StyleSheet.create({
 
 // 🔗 Public links (website, no sign-in): each alumnus's referral link, and
 //   the interested-person form. Saved as soon as a switch changes.
+// 🎓 The courses alumni are put in. Never shown where leads are.
+//   New ones here, or Settings → Courses → a lead course → "Make it an alumni course".
+function AlumniCoursesCard() {
+  const [list, setList] = useState<CourseWithDetails[] | null>(null);
+  const [name, setName] = useState('');
+  const [batchFor, setBatchFor] = useState<string | null>(null);
+  const [batchName, setBatchName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    listAlumniCourses()
+      .then(setList)
+      .catch((e) => {
+        setList([]);
+        setError(e instanceof Error ? e.message : 'Could not load.');
+      });
+  }, []);
+  useEffect(load, [load]);
+
+  const run = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await work();
+      alumniChanged();
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const back = (c: CourseWithDetails) => {
+    const go = () => run(() => setCourseAlumni(c.id, false));
+    const text = `“${c.name}” goes back to the lead courses (it shows for leads again). Only when no alumni are in it.`;
+    if (Platform.OS === 'web') {
+      if (window.confirm(text)) go();
+    } else
+      Alert.alert('Back to lead courses?', text, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Move back', onPress: go },
+      ]);
+  };
+
+  return (
+    <View style={ui.card}>
+      <Text style={styles.title}>🎓 Alumni courses</Text>
+      <Text style={ui.muted}>
+        Every alumnus is in one of these. They never show for leads. A lead course can be made one in Settings →
+        Courses; students brought from Students go into the alumni course of the same name.
+      </Text>
+      {list === null && <ActivityIndicator color={colors.primary} />}
+      {list?.length === 0 && <Text style={ui.muted}>None yet.</Text>}
+      {list?.map((c) => (
+        <View key={c.id} style={styles.acRow}>
+          <View style={styles.switchRow}>
+            <Text style={[styles.flex, styles.text]}>{c.name}</Text>
+            <Pressable onPress={() => back(c)} hitSlop={8} accessibilityRole="button" disabled={busy}>
+              <Text style={styles.acLink}>↩ Lead course</Text>
+            </Pressable>
+          </View>
+          <View style={ui.chips}>
+            {c.batches.map((b) => (
+              <Chip key={b.id} text={b.name} on={false} onPress={() => undefined} />
+            ))}
+            <Chip
+              text="＋ Batch"
+              on={batchFor === c.id}
+              onPress={() => {
+                setBatchFor(batchFor === c.id ? null : c.id);
+                setBatchName('');
+              }}
+            />
+          </View>
+          {batchFor === c.id && (
+            <View style={styles.switchRow}>
+              <TextInput
+                value={batchName}
+                onChangeText={setBatchName}
+                placeholder="Batch name, e.g. 2019-20"
+                placeholderTextColor={colors.textMuted}
+                style={[styles.flex, styles.acInput]}
+                maxLength={60}
+              />
+              <Button
+                title="Add"
+                disabled={!batchName.trim() || busy}
+                onPress={() =>
+                  run(async () => {
+                    await saveBatch({ course_id: c.id, name: batchName.trim(), status: 'closed' });
+                    setBatchFor(null);
+                  })
+                }
+              />
+            </View>
+          )}
+        </View>
+      ))}
+      <View style={styles.switchRow}>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="New alumni course, e.g. B.Ed (old)"
+          placeholderTextColor={colors.textMuted}
+          style={[styles.flex, styles.acInput]}
+          maxLength={80}
+        />
+        <Button
+          title="Add"
+          disabled={!name.trim() || busy}
+          onPress={() =>
+            run(async () => {
+              await createAlumniCourse(name);
+              setName('');
+            })
+          }
+        />
+      </View>
+      {error && <Text style={ui.error}>{error}</Text>}
+    </View>
+  );
+}
+
 function PublicLinksCard() {
   const [v, setV] = useState<PublicForms | null>(null);
   const [err, setErr] = useState<string | null>(null);

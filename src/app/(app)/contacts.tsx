@@ -17,18 +17,19 @@ import {
 import { Modal } from '@/shared/ui/Modal';
 
 import { importAlumni } from '@/features/alumni/api';
+import { AlumniCoursePicker } from '@/features/alumni/AlumniCoursePicker';
 import { alumniChanged, useAlumniAccess } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
-    askContactsPermission,
-    canImportContacts,
-    findExistingLeadPhones,
-    getContactsPermission,
-    loadPhoneContacts,
-    saveContactsAsLeads,
-    undoContactsSave,
-    type PhoneContact,
-    type SaveContactResult,
+  askContactsPermission,
+  canImportContacts,
+  findExistingLeadPhones,
+  getContactsPermission,
+  loadPhoneContacts,
+  saveContactsAsLeads,
+  undoContactsSave,
+  type PhoneContact,
+  type SaveContactResult,
 } from '@/features/contacts/api';
 import { listAssignableUsers, normalizePhone } from '@/features/leads/api';
 import { getContactGroups, getGroupContactIds, hasContactGroups, type ContactGroup } from '../../../modules/call-log';
@@ -39,11 +40,11 @@ import { Button } from '@/shared/ui/Button';
 type Option = { value: string; label: string; color?: string };
 
 type Stage =
-  | 'checking'     // checking access + permission
-  | 'no_access'    // admin hasn't allowed this user
-  | 'ask'          // phone permission not given yet
-  | 'blocked'      // phone permission denied for good
-  | 'loading'      // reading contacts
+  | 'checking' // checking access + permission
+  | 'no_access' // admin hasn't allowed this user
+  | 'ask' // phone permission not given yet
+  | 'blocked' // phone permission denied for good
+  | 'loading' // reading contacts
   | 'ready';
 
 const ROW_HEIGHT = 64;
@@ -172,10 +173,14 @@ export default function PhoneContactsScreen() {
   const groupAsAlumni = visible
     .map((c) => ({ name: c.name, phone: chosenNumber(c)?.normalized ?? '', from: 'contacts' }))
     .filter((r) => r.phone && r.name.trim());
-  const saveGroupAsAlumni = async () => {
+  // 🎓 every new alumnus needs an alumni course: asked first
+  const [alumniPick, setAlumniPick] = useState<null | 'group' | 'marked'>(null);
+  const withCourse = <T extends object>(rows: T[], courseId: string, batchId: string | null) =>
+    rows.map((r) => ({ ...r, course_id: courseId, batch_id: batchId ?? undefined }));
+  const saveGroupAsAlumni = async (courseId: string, batchId: string | null) => {
     setSavingAlumni(true);
     try {
-      const r = await importAlumni(groupAsAlumni);
+      const r = await importAlumni(withCourse(groupAsAlumni, courseId, batchId));
       alumniChanged();
       const msg = `Added ${r.added} · already in Alumni ${r.skipped}${r.failed ? ` · could not add ${r.failed}` : ''}`;
       if (Platform.OS === 'web') window.alert(msg);
@@ -189,10 +194,16 @@ export default function PhoneContactsScreen() {
     }
   };
   // 🎓 Alumni mode: the marked ones → Alumni
-  const saveMarkedAsAlumni = async () => {
+  const saveMarkedAsAlumni = async (courseId: string, batchId: string | null) => {
     setSavingAlumni(true);
     try {
-      const r = await importAlumni(markedRows.map((row) => ({ ...row, from: 'contacts' })));
+      const r = await importAlumni(
+        withCourse(
+          markedRows.map((row) => ({ ...row, from: 'contacts' })),
+          courseId,
+          batchId,
+        ),
+      );
       setSelected(new Set());
       alumniChanged();
       const msg = `Added ${r.added} · already in Alumni ${r.skipped}${r.failed ? ` · could not add ${r.failed}` : ''}`;
@@ -302,7 +313,9 @@ export default function PhoneContactsScreen() {
         <View style={styles.bigIcon}>
           <Ionicons name="people" size={40} color={colors.primary} />
         </View>
-        <Text style={styles.bigTitle}>{forAlumni ? 'Add alumni from your contacts' : 'Add leads from your contacts'}</Text>
+        <Text style={styles.bigTitle}>
+          {forAlumni ? 'Add alumni from your contacts' : 'Add leads from your contacts'}
+        </Text>
         <Text style={styles.centerText}>
           Pick people from your phone’s contact list and save them as {forAlumni ? 'alumni' : 'leads'} in one go. Only
           the contacts you mark are saved. Nothing else leaves your phone.
@@ -372,7 +385,7 @@ export default function PhoneContactsScreen() {
 
       {!forAlumni && group && alumniAccess.manage && groupAsAlumni.length > 0 && (
         <Pressable
-          onPress={saveGroupAsAlumni}
+          onPress={() => setAlumniPick('group')}
           disabled={savingAlumni}
           style={[styles.alumniBtn, savingAlumni && styles.pressed]}
           accessibilityRole="button"
@@ -391,9 +404,7 @@ export default function PhoneContactsScreen() {
         </Text>
         {selectable.length > 0 && (
           <Pressable onPress={markAllVisible} hitSlop={8} accessibilityRole="button">
-            <Text style={styles.link}>
-              {allVisibleMarked ? 'Unmark all' : `Mark all ${selectable.length}`}
-            </Text>
+            <Text style={styles.link}>{allVisibleMarked ? 'Unmark all' : `Mark all ${selectable.length}`}</Text>
           </Pressable>
         )}
       </View>
@@ -500,7 +511,7 @@ export default function PhoneContactsScreen() {
           {forAlumni ? (
             <Button
               title={`🎓 Save ${selected.size} as alumni`}
-              onPress={saveMarkedAsAlumni}
+              onPress={() => setAlumniPick('marked')}
               loading={savingAlumni}
               fullWidth
             />
@@ -510,12 +521,19 @@ export default function PhoneContactsScreen() {
         </View>
       )}
 
-      <SaveSheet
-        visible={sheetOpen}
-        rows={markedRows}
-        onClose={() => setSheetOpen(false)}
-        onSaved={onSaved}
-      />
+      <SaveSheet visible={sheetOpen} rows={markedRows} onClose={() => setSheetOpen(false)} onSaved={onSaved} />
+      {alumniPick && (
+        <AlumniCoursePicker
+          title={`🎓 Course for ${alumniPick === 'group' ? groupAsAlumni.length : markedRows.length} alumni`}
+          saveLabel="Save as alumni"
+          onClose={() => setAlumniPick(null)}
+          onPick={(c, b) => {
+            const which = alumniPick;
+            setAlumniPick(null);
+            return which === 'group' ? saveGroupAsAlumni(c, b) : saveMarkedAsAlumni(c, b);
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -649,11 +667,19 @@ function SaveSheet({
               </Field>
 
               <Field label="Source">
-                <ChipRow options={sources} selected={sourceId ? [sourceId] : []} onPress={(v) => setSourceId(sourceId === v ? null : v)} />
+                <ChipRow
+                  options={sources}
+                  selected={sourceId ? [sourceId] : []}
+                  onPress={(v) => setSourceId(sourceId === v ? null : v)}
+                />
               </Field>
 
               <Field label="Rating">
-                <ChipRow options={RATINGS} selected={rating ? [rating] : []} onPress={(v) => setRating(rating === v ? null : v)} />
+                <ChipRow
+                  options={RATINGS}
+                  selected={rating ? [rating] : []}
+                  onPress={(v) => setRating(rating === v ? null : v)}
+                />
               </Field>
 
               {tags.length > 0 && (

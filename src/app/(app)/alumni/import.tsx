@@ -13,7 +13,7 @@ import {
 } from '@/features/alumni/api';
 import { alumniChanged, Chip, s as ui, useAlumniAccess } from '@/features/alumni/ui';
 import { pickSpreadsheet, readSpreadsheet, type Spreadsheet } from '@/features/import-export/excel';
-import { listCourses, type CourseWithDetails } from '@/features/settings/api';
+import { listAlumniCourses, listCourses, type CourseWithDetails } from '@/features/settings/api';
 import { isWeb } from '@/features/web/api';
 import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -34,7 +34,9 @@ const norm = (t: string) =>
 
 export default function AlumniImportScreen() {
   const access = useAlumniAccess();
+  // From Students: the lead courses (where the students are); Excel: the alumni courses
   const [courses, setCourses] = useState<CourseWithDetails[]>([]);
+  const [alumniCourses, setAlumniCourses] = useState<CourseWithDetails[]>([]);
   const [fields, setFields] = useState<AlumniField[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -42,6 +44,9 @@ export default function AlumniImportScreen() {
   useEffect(() => {
     listCourses()
       .then(setCourses)
+      .catch(() => undefined);
+    listAlumniCourses()
+      .then(setAlumniCourses)
       .catch(() => undefined);
     listAlumniFields()
       .then(setFields)
@@ -61,7 +66,7 @@ export default function AlumniImportScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Import alumni' }} />
       <FromStudents courses={courses} onResult={setResult} onError={setError} />
-      <FromExcel courses={courses} fields={fields} onResult={setResult} onError={setError} />
+      <FromExcel courses={alumniCourses} fields={fields} onResult={setResult} onError={setError} />
       <View style={ui.card}>
         <Text style={styles.h}>📱 From phone contacts</Text>
         {Platform.OS === 'web' ? (
@@ -155,8 +160,8 @@ function FromStudents({
     <View style={ui.card}>
       <Text style={styles.h}>🎓 From Students (a batch that passed)</Text>
       <Text style={ui.muted}>
-        Every admitted student of the batch becomes an alumnus: name, phone, course, batch and Student ID come along.
-        Ones already in Alumni are skipped.
+        Every admitted student of the batch becomes an alumnus: name, phone, batch and Student ID come along. They go
+        into the alumni course of the same name (made the first time). Ones already in Alumni are skipped.
       </Text>
       <View style={ui.chips}>
         {courses.map((c) => (
@@ -272,6 +277,7 @@ function FromExcel({
 
   const run = async () => {
     if (map.name === null || map.name === undefined) return onError('Choose which column is the Name.');
+    if (!courseId) return onError('Choose the alumni course for these rows (needed).');
     setBusy(true);
     onError(null);
     try {
@@ -346,7 +352,12 @@ function FromExcel({
             );
           })}
 
-          <Text style={ui.label}>COURSE / BATCH FOR ALL ROWS (OPTIONAL)</Text>
+          <Text style={ui.label}>ALUMNI COURSE FOR ALL ROWS * (BATCH IF YOU WANT)</Text>
+          {courses.length === 0 && (
+            <Text style={ui.error}>
+              No alumni course yet. An admin can add one in Settings → Alumni → Alumni courses.
+            </Text>
+          )}
           <View style={ui.chips}>
             {courses.map((c) => (
               <Chip

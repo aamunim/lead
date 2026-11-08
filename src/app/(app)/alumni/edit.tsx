@@ -13,7 +13,7 @@ import {
 } from '@/features/alumni/api';
 import { alumniChanged, Chip, s as ui, useAlumniAccess } from '@/features/alumni/ui';
 import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
-import { listCourses, type CourseWithDetails } from '@/features/settings/api';
+import { listAlumniCourses, type CourseWithDetails } from '@/features/settings/api';
 import { isWeb } from '@/features/web/api';
 import type { Json } from '@/shared/types/database';
 import { colors, spacing } from '@/shared/theme';
@@ -102,7 +102,7 @@ export default function AlumnusEditScreen() {
     Promise.all([
       id ? getAlumnus(id) : Promise.resolve(null),
       listAlumniFields(),
-      listCourses().catch(() => []),
+      listAlumniCourses().catch(() => []),
       listAssignableUsers().catch(() => []),
     ])
       .then(([a, f, c, p]) => {
@@ -149,6 +149,8 @@ export default function AlumnusEditScreen() {
 
   const save = async () => {
     if (!form.name.trim()) return setError('Please type the name.');
+    // 🎓 every alumnus needs an alumni course
+    if (!form.course_id) return setError('Please choose the course.');
     if (form.passing_year && !/^\d{4}$/.test(form.passing_year.trim()))
       return setError('Passing year: 4 digits, like 2024.');
     const birth = birthIso(form.birth);
@@ -230,8 +232,12 @@ export default function AlumnusEditScreen() {
       </View>
 
       <View style={ui.card}>
-        <Text style={ui.label}>STUDY</Text>
-        {courses.length > 0 && (
+        <Text style={ui.label}>COURSE *</Text>
+        {courses.length === 0 ? (
+          <Text style={ui.error}>
+            No alumni course yet. An admin can add one in Settings → Alumni → Alumni courses.
+          </Text>
+        ) : (
           <View style={ui.chips}>
             {courses.map((c) => (
               <Chip
@@ -239,12 +245,13 @@ export default function AlumnusEditScreen() {
                 text={c.name}
                 on={form.course_id === c.id}
                 onPress={() =>
-                  setForm((f) => ({ ...f, course_id: f.course_id === c.id ? null : c.id, batch_id: null }))
+                  setForm((f) => ({ ...f, course_id: c.id, batch_id: f.course_id === c.id ? f.batch_id : null }))
                 }
               />
             ))}
           </View>
         )}
+        {!form.course_id && courses.length > 0 && <Text style={ui.muted}>Choose one (needed).</Text>}
         {batches.length > 0 && (
           <View style={ui.chips}>
             {batches.map((b) => (
