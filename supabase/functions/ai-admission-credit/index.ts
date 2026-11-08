@@ -182,6 +182,12 @@ async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' |
     });
     if (saveError) throw new Error(saveError.message);
     await keyResult(true);
+    // 💵 the monthly budget counts what was used
+    await admin.rpc('ai_usage_add', {
+      p_feature: 'credit',
+      p_in: res.usage.input_tokens,
+      p_out: res.usage.output_tokens,
+    });
     return 'ok';
   } catch (e) {
     const { msg, kind } = classify(e);

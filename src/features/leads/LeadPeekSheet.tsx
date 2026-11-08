@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ChanceCard } from '@/features/aiChance/ChanceCard';
 import { Modal } from '@/shared/ui/Modal';
 
 import { channelLabel, formatDuration, listLeadCalls, outcomeInfo } from '@/features/calls/api';
@@ -44,7 +45,7 @@ export function LeadPeekSheet({
 }: {
   /** 🌐 every call and note, not just the last few */
   all?: boolean;
-  lead: Pick<LeadListItem, 'id' | 'name'>;
+  lead: Pick<LeadListItem, 'id' | 'name'> & { stage?: { kind?: string | null } | null };
   nameOf: (id: string | null) => string | null;
   onClose: () => void;
   onOpen: () => void;
@@ -134,6 +135,8 @@ export function LeadPeekSheet({
           <Text style={styles.sub}>{all ? 'All calls and notes (newest first)' : 'Last calls and notes'}</Text>
 
           <ScrollView contentContainerStyle={styles.list}>
+            {/* 🔮 the AI's chance, why, what to say (open leads; shown only to those allowed) */}
+            {(lead.stage?.kind ?? 'open') === 'open' && <ChanceCard leadId={lead.id} stateKey="peek" />}
             {items === null ? (
               <ActivityIndicator color={colors.primary} style={styles.loader} />
             ) : items.length === 0 ? (

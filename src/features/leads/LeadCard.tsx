@@ -15,7 +15,8 @@ import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { stageBadge } from '@/features/approval/api';
 import { ScoreChip, showScore } from '@/features/leads/score';
-import { ChanceChip, aiChanceOf } from '@/features/aiChance/ChanceChip';
+import { aiChanceOf } from '@/features/aiChance/ChanceChip';
+import { ChanceChipButton } from '@/features/aiChance/ChanceSheet';
 
 // =====================================================================
 // 🗂 One lead's card: the Leads / Students list and the pipeline board
@@ -184,7 +185,7 @@ export function LeadCard({
           )}
           {/* 🔥 Admission chance */}
           {aiChanceOf(lead) ? (
-            <ChanceChip {...aiChanceOf(lead)!} />
+            <ChanceChipButton lead={lead} {...aiChanceOf(lead)!} />
           ) : (
             showScore(lead) && <ScoreChip score={lead.score} compact />
           )}

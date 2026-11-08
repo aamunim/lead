@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput
 
 import { signOut } from '@/features/auth/api';
 import { useAlumniAccess } from '@/features/alumni/ui';
+import { canSeeContribution } from '@/features/contribution/api';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { canSeeStudents, getStudentsSettings } from '@/features/students/api';
 import { canApprove, countWaitingApproval, getApprovalSettings } from '@/features/approval/api';
@@ -82,6 +83,7 @@ function pageTitle(path: string): string {
   if (path.startsWith('/settings/uploads')) return 'Settings › Upload rules';
   if (path.startsWith('/photo-studio')) return 'Photo Studio';
   if (path.startsWith('/scorecard')) return 'Weekly scorecard';
+  if (path.startsWith('/contribution')) return 'Admission Contribution';
   if (path.startsWith('/alumni/referrals')) return 'Referral inbox';
   if (path.startsWith('/alumni')) return 'Alumni';
   if (path.startsWith('/feedback')) return 'Contact developer';
@@ -161,6 +163,13 @@ export function WebShell({ children }: { children: React.ReactNode }) {
   // ⏱ Team activity / Change log and 📊 Reports: the phone's rules
   const [activityOk, setActivityOk] = useState(false);
   const [reportsOk, setReportsOk] = useState(false);
+  // 🤝 Admission Contribution (Settings → AI → who sees the shares)
+  const [contribOk, setContribOk] = useState(false);
+  useEffect(() => {
+    canSeeContribution()
+      .then(setContribOk)
+      .catch(() => undefined);
+  }, []);
   useEffect(() => {
     getActivitySettings()
       .then((a) => setActivityOk(canOpenActivity(a, hasPermission)))
@@ -245,6 +254,16 @@ export function WebShell({ children }: { children: React.ReactNode }) {
       ? [
           { label: 'Team activity', icon: '⏱', href: '/activity', match: (p: string) => p.startsWith('/activity') },
           { label: 'Change log', icon: '📜', href: '/changes', match: (p: string) => p.startsWith('/changes') },
+        ]
+      : []),
+    ...(contribOk
+      ? [
+          {
+            label: 'Admission Contribution',
+            icon: '🤝',
+            href: '/contribution',
+            match: (p: string) => p.startsWith('/contribution'),
+          },
         ]
       : []),
     { label: 'Leaderboard', icon: '🏆', href: '/leaderboard', match: (p: string) => p.startsWith('/leaderboard') },

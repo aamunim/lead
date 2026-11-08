@@ -64,7 +64,9 @@ import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { countActiveFilters, type LeadFilters } from '@/features/leads/filters';
 import { ago, callLineText } from '@/features/leads/lastActivity';
 import { dialogOpen, loadPref, onKey, savePref, typingInField } from '@/features/web/prefs';
-import { ChanceChip, aiChanceOf } from '@/features/aiChance/ChanceChip';
+import { aiChanceOf } from '@/features/aiChance/ChanceChip';
+import { ChanceChipButton } from '@/features/aiChance/ChanceSheet';
+import { useCanSeeAiChance } from '@/features/aiChance/api';
 import { colors, fontSize, fontWeight, isDark, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -292,11 +294,13 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   const [bulk, setBulk] = useState<QuickField | 'lost' | null>(null);
   const [oneBulk, setOneBulk] = useState<{ field: QuickField | 'lost'; row: LeadListItem } | null>(null);
 
+  const aiChanceOn = useCanSeeAiChance();
   const leadQuick: { key: QuickFilter; label: string }[] = [
     { key: 'all', label: 'All open' },
     { key: 'recent', label: '📞 Called today' },
     { key: 'starred', label: '⭐ Starred' },
     { key: 'new', label: '🆕 New' },
+    ...(aiChanceOn ? [{ key: 'ai_hot' as QuickFilter, label: '🔮 AI Hot' }] : []),
     { key: 'closed', label: 'Closed' },
   ];
   const quickFilters: { key: QuickFilter; label: string }[] = leadsMode
@@ -1864,7 +1868,7 @@ function Cell({
       const a = aiChanceOf(r);
       return a ? (
         <View style={styles.chipCell}>
-          <ChanceChip {...a} />
+          <ChanceChipButton lead={r} {...a} />
         </View>
       ) : (
         <Text style={styles.dim}>—</Text>

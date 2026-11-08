@@ -175,6 +175,7 @@ serveAiWorker({
         return idsOf(data, 'ai_chance_claim');
       },
       (id) => one(ai, cfg, id),
+      5, // leads at a time (a group of hundreds finishes in an hour or two)
     );
   },
 });
@@ -271,6 +272,12 @@ async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' |
     });
     if (saveError) throw new Error(saveError.message);
     await keyResult(true);
+    // 💵 the monthly budget counts what was used
+    await admin.rpc('ai_usage_add', {
+      p_feature: 'chance',
+      p_in: res.usage.input_tokens,
+      p_out: res.usage.output_tokens,
+    });
     return 'ok';
   } catch (e) {
     const { msg, kind } = classify(e);

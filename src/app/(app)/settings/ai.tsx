@@ -30,12 +30,12 @@ import {
 import {
   getAiChanceOverview,
   getAiChanceSettings,
-  queueOpenLeads,
   saveAiChanceSettings,
   wakeAiChance,
   type AiChanceOverview,
   type AiChanceSettings,
 } from '@/features/aiChance/api';
+import { ChanceControls } from '@/features/aiChance/ChanceControls';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { listRoles, type RoleOption } from '@/features/users/api';
 import { supabase } from '@/shared/lib/supabase';
@@ -190,19 +190,6 @@ export default function AiSettingsScreen() {
       loadStatus();
     });
 
-  const onQueueOpen = () =>
-    run('open', async () => {
-      const n = await queueOpenLeads();
-      setNote({
-        ok: true,
-        text:
-          n > 0
-            ? `${n} open leads are in the queue. Up to ${cs?.daily_auto_limit ?? 100} a day are looked at; the rest follow on the next days.`
-            : 'Nothing new: every open lead is looked at or already waiting.',
-      });
-      loadStatus();
-    });
-
   const onSave = () =>
     run('save', async () => {
       if (!s) return;
@@ -308,7 +295,6 @@ export default function AiSettingsScreen() {
         </View>
       )}
 
-      {/* 🤝 admission credit */}
       {/* 🔮 chance of admission */}
       <Text style={styles.sectionLabel}>🔮 CHANCE OF ADMISSION</Text>
       <View style={styles.card}>
@@ -323,29 +309,9 @@ export default function AiSettingsScreen() {
           </View>
           <Switch value={cs.enabled} onValueChange={(v) => patchC({ enabled: v })} />
         </View>
-        <View style={styles.row}>
-          <View style={styles.flex}>
-            <Text style={styles.rowTitle}>By itself after a call / note</Text>
-            <Text style={styles.rowText}>
-              {cs.auto
-                ? 'On: a new call or note → looked at again (at most once a day per lead; “Check” on the lead page any time).'
-                : 'Off: only when someone presses “Check” on the lead page.'}
-            </Text>
-          </View>
-          <Switch value={cs.auto} onValueChange={(v) => patchC({ auto: v })} />
-        </View>
-        <Text style={styles.small}>The most a day by itself (pressing “Check” is not counted)</Text>
-        <View style={styles.chips}>
-          {[50, 100, 300].map((n) => (
-            <Chip
-              key={n}
-              label={`${n} (about $${Math.round(n * 0.03)}/day)`}
-              on={cs.daily_auto_limit === n}
-              onPress={() => patchC({ daily_auto_limit: n })}
-            />
-          ))}
-        </View>
       </View>
+
+      <ChanceControls cs={cs} patch={patchC} keySet={!!key?.set} onNote={setNote} />
 
       {cov && (
         <View style={styles.card}>
@@ -375,17 +341,6 @@ export default function AiSettingsScreen() {
           <Text style={styles.rowText}>
             Used so far: {cov.tokens_in.toLocaleString()} tokens in, {cov.tokens_out.toLocaleString()} out (about $
             {((cov.tokens_in * 2 + cov.tokens_out * 10) / 1_000_000).toFixed(2)})
-          </Text>
-          <Button
-            title={cov.open_without > 0 ? `Look at all open leads (${cov.open_without})` : 'Look at all open leads'}
-            variant="secondary"
-            onPress={onQueueOpen}
-            loading={busy === 'open'}
-            disabled={!!busy || !key?.set || !cs.enabled}
-            fullWidth
-          />
-          <Text style={styles.hint}>
-            Optional: new calls and notes bring leads in by themselves. This adds the rest, a day’s limit at a time.
           </Text>
         </View>
       )}
@@ -493,7 +448,7 @@ export default function AiSettingsScreen() {
 
       <Text style={styles.sectionLabel}>WHO SEES THE SHARES</Text>
       <View style={styles.card}>
-        <Text style={styles.rowText}>Admins always see them (lead page and Credits). Also:</Text>
+        <Text style={styles.rowText}>Admins always see them (lead page, Credits, Admission Contribution). Also:</Text>
         <View style={styles.row}>
           <View style={styles.flex}>
             <Text style={styles.rowTitle}>Everyone</Text>

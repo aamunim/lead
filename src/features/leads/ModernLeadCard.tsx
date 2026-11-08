@@ -3,7 +3,8 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { stageBadge } from '@/features/approval/api';
 import { ScoreChip, showScore } from '@/features/leads/score';
-import { ChanceChip, aiChanceOf } from '@/features/aiChance/ChanceChip';
+import { aiChanceOf } from '@/features/aiChance/ChanceChip';
+import { ChanceChipButton } from '@/features/aiChance/ChanceSheet';
 import { feeBadge } from '@/features/fees/api';
 import { MIcon, md, type MIconName } from '@/features/home/md';
 import type { LeadListItem } from '@/features/leads/api';
@@ -227,7 +228,7 @@ function ModernLeadCardBase({
           <Highlighted text={lead.name} search={search} style={styles.name} />
           {/* 🔥 Admission chance */}
           {aiChanceOf(lead) ? (
-            <ChanceChip {...aiChanceOf(lead)!} />
+            <ChanceChipButton lead={lead} {...aiChanceOf(lead)!} />
           ) : (
             showScore(lead) && <ScoreChip score={lead.score} compact />
           )}
