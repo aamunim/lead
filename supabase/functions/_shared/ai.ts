@@ -28,9 +28,18 @@ export type AiSettings = {
   guidance?: string;
 };
 export type AiConfig = {
+  /** Claude */
   key: string | null;
+  gemini_key: string | null;
+  gemini_model: string | null;
   cron_secret: string | null;
   settings: AiSettings;
+  /** which AIs this feature may use now, in order (switched-off ones are left out) */
+  plan: {
+    mode: 'claude' | 'gemini' | 'gemini_then_claude' | 'compare';
+    providers: ('claude' | 'gemini')[];
+    budget_ok: boolean;
+  };
 };
 
 /** The key, the job password and the setting called `setting` */
@@ -42,8 +51,15 @@ export async function loadConfig(setting: string): Promise<AiConfig> {
   const c = (data ?? {}) as Partial<AiConfig>;
   return {
     key: c.key ?? null,
+    gemini_key: c.gemini_key ?? null,
+    gemini_model: c.gemini_model ?? null,
     cron_secret: c.cron_secret ?? null,
     settings: c.settings ?? {},
+    plan: {
+      mode: c.plan?.mode ?? 'claude',
+      providers: c.plan?.providers ?? [],
+      budget_ok: c.plan?.budget_ok ?? true,
+    },
   };
 }
 
@@ -99,9 +115,9 @@ export function classify(e: unknown): {
   return { msg: e instanceof Error ? e.message : String(e), kind: 'other' };
 }
 
-/** The key works again / does not: shown in Settings → AI (a refused key also stops the jobs) */
-export async function keyResult(ok: boolean, error: string | null = null) {
-  await admin.rpc('ai_key_result', { p_ok: ok, p_error: error });
+/** A key works again / does not: shown in Settings → AI (a refused key also stops that AI) */
+export async function keyResult(ok: boolean, error: string | null = null, provider: 'claude' | 'gemini' = 'claude') {
+  await admin.rpc('ai_key_result', { p_ok: ok, p_error: error, p_provider: provider });
 }
 
 /** A free check: can this key see the model? */
@@ -136,14 +152,15 @@ export function readJson<T>(res: Anthropic.Beta.BetaMessage): {
 export function serveAiWorker(opts: {
   name: string;
   setting: string;
-  allowTest?: boolean;
+  /** Settings → AI "Test" (admins): checks one AI's key */
+  test?: (cfg: AiConfig, provider: 'claude' | 'gemini') => Promise<unknown>;
   drain: (cfg: AiConfig) => Promise<void>;
 }) {
   Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
     if (req.method !== 'POST') return json({ error: 'POST only.' }, 405);
     try {
-      const body = (await req.json().catch(() => ({}))) as { action?: string };
+      const body = (await req.json().catch(() => ({}))) as { action?: string; provider?: string };
       const cfg = await loadConfig(opts.setting);
 
       const secret = req.headers.get('x-cron-secret');
@@ -153,17 +170,24 @@ export function serveAiWorker(opts: {
         if (!user) return json({ error: 'Please sign in again.' }, 401);
       }
 
-      if (body.action === 'test' && opts.allowTest) {
+      if (body.action === 'test' && opts.test) {
         if (fromJob) return json({ error: 'Not allowed.' }, 403);
         const { data: isAdmin } = await asUser(req).rpc('has_permission', {
           perm: 'settings.manage',
         });
         if (!isAdmin) return json({ error: 'Only an admin can do this.' }, 403);
-        if (!cfg.key) return json({ error: 'No Claude API key is saved.', code: 'no_key' }, 409);
-        return json(await testKey(cfg));
+        const provider = body.provider === 'gemini' ? 'gemini' : 'claude';
+        if (provider === 'claude' && !cfg.key) {
+          return json({ error: 'No Claude API key is saved.', code: 'no_key' }, 409);
+        }
+        if (provider === 'gemini' && !cfg.gemini_key) {
+          return json({ error: 'No Gemini API key is saved.', code: 'no_key' }, 409);
+        }
+        return json(await opts.test(cfg, provider));
       }
 
-      if (!cfg.key) return json({ ok: false, code: 'no_key' });
+      // no AI on for this feature (both switched off, or no working key): nothing to do
+      if (cfg.plan.providers.length === 0) return json({ ok: false, code: 'no_ai' });
       if (cfg.settings.enabled === false) return json({ ok: false, code: 'off' });
 
       const work = opts.drain(cfg).catch((e) => console.error(opts.name, e));

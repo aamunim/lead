@@ -36,6 +36,16 @@ import {
   type AiChanceSettings,
 } from '@/features/aiChance/api';
 import { ChanceControls } from '@/features/aiChance/ChanceControls';
+import {
+  getAiProviders,
+  getAiProviderStats,
+  getGeminiKeyStatus,
+  saveAiProviders,
+  type AiProviderStats,
+  type AiProvidersSetting,
+  type GeminiKeyStatus,
+} from '@/features/aiProviders/api';
+import { GeminiCard, ModePicker, ProviderNumbers } from '@/features/aiProviders/AiProvidersSection';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { listRoles, type RoleOption } from '@/features/users/api';
 import { supabase } from '@/shared/lib/supabase';
@@ -44,8 +54,10 @@ import { Button } from '@/shared/ui/Button';
 
 // =====================================================================
 // 🤖 Settings → AI (admins)
-//   · the Claude API key: paste, Test, change or remove any time (only
-//     the server can read it; here only "sk-ant-…abcd" is shown)
+//   · Claude and Gemini (free): an on/off switch for each, their keys
+//     (paste, Test, change or remove any time; only the server can read
+//     them; here only "sk-ant-…abcd" / "AIza…abcd" is shown), the Gemini
+//     model, and which AI each feature uses
 //   · admission credit: on/off, who sees it, how far back, extra rules
 //   · work out every past admission once
 // =====================================================================
@@ -92,6 +104,10 @@ export default function AiSettingsScreen() {
   // 🔮 chance of admission
   const [cs, setCs] = useState<AiChanceSettings | null>(null);
   const [cov, setCov] = useState<AiChanceOverview | null>(null);
+  // 🤖 the two AIs
+  const [prov, setProv] = useState<AiProvidersSetting | null>(null);
+  const [gkey, setGkey] = useState<GeminiKeyStatus | null>(null);
+  const [pstats, setPstats] = useState<AiProviderStats | null>(null);
 
   const loadStatus = useCallback(() => {
     getAiKeyStatus()
@@ -103,12 +119,19 @@ export default function AiSettingsScreen() {
     getAiChanceOverview()
       .then(setCov)
       .catch(() => undefined);
+    getGeminiKeyStatus()
+      .then(setGkey)
+      .catch(() => undefined);
+    getAiProviderStats()
+      .then(setPstats)
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
     if (!canManage) return;
     getAiCreditSettings().then(setS);
     getAiChanceSettings().then(setCs);
+    getAiProviders().then(setProv);
     loadStatus();
     listRoles()
       .then(setRoles)
@@ -127,6 +150,10 @@ export default function AiSettingsScreen() {
   };
   const patchC = (p: Partial<AiChanceSettings>) => {
     setCs((now) => (now ? { ...now, ...p } : now));
+    setDirty(true);
+  };
+  const patchProv = (f: (p: AiProvidersSetting) => AiProvidersSetting) => {
+    setProv((now) => (now ? f(now) : now));
     setDirty(true);
   };
   const toggleIn = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
@@ -193,9 +220,13 @@ export default function AiSettingsScreen() {
   const onSave = () =>
     run('save', async () => {
       if (!s) return;
+      if (prov) await saveAiProviders(prov);
       if (cs) await saveAiChanceSettings(cs);
       await saveAiCreditSettings(s);
       setDirty(false);
+      // an AI switched on / a new mode: start on what is waiting
+      wakeAiCredit();
+      wakeAiChance();
       router.back();
     });
 
@@ -206,13 +237,17 @@ export default function AiSettingsScreen() {
         <Text style={styles.muted}>Only admins can change these settings.</Text>
       </View>
     );
-  if (!s || !cs)
+  if (!s || !cs || !prov)
     return (
       <View style={styles.center}>
         <Stack.Screen options={{ title: 'AI' }} />
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
+
+  // can a feature run now? (the server's view: an AI on, with a key, model, not resting)
+  const chanceReady = pstats ? pstats.plan.chance.providers.length > 0 : !!key?.set;
+  const creditReady = pstats ? pstats.plan.credit.providers.length > 0 : !!key?.set;
 
   const keyLine = !key
     ? 'Checking…'
@@ -228,15 +263,32 @@ export default function AiSettingsScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'AI' }} />
       <Text style={styles.intro}>
-        When a lead is marked Admitted, the AI (Claude) reads the lead’s whole story — who called, how many times, how
-        many minutes, what each note says, visits, fee talks, papers, hand-overs — and shares the admission out among
-        the people who worked on it, with a reason for each. Credits use these shares for “Admitted”. It all happens on
-        the server in the background: nothing in the app waits for it. Names and phone numbers are not sent to the AI.
+        When a lead is marked Admitted, the AI (Claude or Gemini) reads the lead’s whole story — who called, how many
+        times, how many minutes, what each note says, visits, fee talks, papers, hand-overs — and shares the admission
+        out among the people who worked on it, with a reason for each. Credits use these shares for “Admitted”. It all
+        happens on the server in the background: nothing in the app waits for it. Names and phone numbers are not sent
+        to the AI.
       </Text>
 
-      {/* 🔑 the key */}
-      <Text style={styles.sectionLabel}>CLAUDE API KEY</Text>
+      {/* 🔑 Claude */}
+      <Text style={styles.sectionLabel}>CLAUDE</Text>
       <View style={styles.card}>
+        <View style={styles.row}>
+          <View style={styles.flex}>
+            <Text style={styles.rowTitle}>Claude (paid)</Text>
+            <Text style={styles.rowText}>
+              {prov.claude.on
+                ? 'On: the features set to use Claude below use it (paid from your Claude API credit).'
+                : 'Off: Claude is never used and its key is never sent anywhere.'}
+            </Text>
+          </View>
+          <Switch
+            value={prov.claude.on}
+            onValueChange={(v) => patchProv((p) => ({ ...p, claude: { ...p.claude, on: v } }))}
+            accessibilityLabel="Claude on or off"
+          />
+        </View>
+        <View style={styles.divider} />
         <View style={styles.row}>
           <View style={styles.flex}>
             <Text style={styles.rowTitle}>{key?.set ? key.hint : 'Not set'}</Text>
@@ -289,10 +341,36 @@ export default function AiSettingsScreen() {
         )}
       </View>
 
+      {/* 🔑 Gemini (an older database without it: nothing shown) */}
+      {gkey && (
+        <>
+          <Text style={styles.sectionLabel}>GEMINI</Text>
+          <GeminiCard
+            prov={prov}
+            patchProv={patchProv}
+            status={gkey}
+            reload={loadStatus}
+            busy={busy}
+            setBusy={setBusy}
+            onNote={(n) => {
+              setError(null);
+              setNote(n);
+            }}
+          />
+        </>
+      )}
+
       {note && (
         <View style={[styles.noteBox, !note.ok && styles.errorBox]}>
           <Text style={[styles.noteText, !note.ok && styles.errorText]}>{note.text}</Text>
         </View>
+      )}
+
+      {pstats && (
+        <>
+          <Text style={styles.sectionLabel}>EACH AI SO FAR</Text>
+          <ProviderNumbers stats={pstats} />
+        </>
       )}
 
       {/* 🔮 chance of admission */}
@@ -309,9 +387,10 @@ export default function AiSettingsScreen() {
           </View>
           <Switch value={cs.enabled} onValueChange={(v) => patchC({ enabled: v })} />
         </View>
+        {gkey && <ModePicker value={cs.provider} onChange={(m) => patchC({ provider: m })} prov={prov} />}
       </View>
 
-      <ChanceControls cs={cs} patch={patchC} keySet={!!key?.set} onNote={setNote} />
+      <ChanceControls cs={cs} patch={patchC} keySet={chanceReady} onNote={setNote} />
 
       {cov && (
         <View style={styles.card}>
@@ -409,6 +488,7 @@ export default function AiSettingsScreen() {
           </View>
           <Switch value={s.enabled} onValueChange={(v) => patch({ enabled: v })} />
         </View>
+        {gkey && <ModePicker value={s.provider} onChange={(m) => patch({ provider: m })} prov={prov} />}
       </View>
 
       {ov && (
@@ -436,7 +516,7 @@ export default function AiSettingsScreen() {
             variant="secondary"
             onPress={onQueueAll}
             loading={busy === 'all'}
-            disabled={!!busy || !key?.set}
+            disabled={!!busy || !creditReady}
             fullWidth
           />
           <Text style={styles.hint}>
@@ -520,7 +600,8 @@ export default function AiSettingsScreen() {
       )}
       <Button title="Save" onPress={onSave} loading={busy === 'save'} disabled={!dirty || !!busy} fullWidth />
       <Text style={styles.hint}>
-        Model: Claude Sonnet 5.5 · about $0.02–0.05 for each admission (paid from your Claude API credit).
+        Claude: Sonnet 5.5 · about $0.02–0.05 for each admission (paid from your Claude API credit). Gemini: the free
+        tier, $0 (it has a daily limit; when it is used up Gemini rests a while and the work waits).
       </Text>
     </ScrollView>
   );
@@ -614,6 +695,7 @@ const styles = StyleSheet.create({
   },
   multi: { minHeight: 90, paddingTop: spacing.sm, textAlignVertical: 'top' },
   buttons: { flexDirection: 'row', gap: spacing.sm },
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
   linkBtn: { alignSelf: 'flex-start', paddingVertical: spacing.xs },
   linkDanger: {
     fontSize: fontSize.small,

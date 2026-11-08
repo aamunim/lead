@@ -11,6 +11,7 @@ import {
   type LeadChance,
 } from '@/features/aiChance/api';
 import { ask } from '@/features/aiChance/ask';
+import { PROVIDER_LABEL, type AiProvider } from '@/features/aiProviders/api';
 import { scheduleFollowUp } from '@/features/follow-ups/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
@@ -19,6 +20,8 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 //   what to do next and what to say. Open leads; one small request, kept
 //   for a minute. "Check now" asks the AI again (it answers in about
 //   half a minute; the card waits by itself).
+//   Claude and Gemini: the tag says which AI answered; when both have
+//   answered, tabs show each one's answer (neither is ever deleted).
 // =====================================================================
 
 const POLL_MS = 8_000;
@@ -53,6 +56,8 @@ export const ChanceCard = memo(function ChanceCard({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [more, setMore] = useState(false);
   const [scriptOpen, setScriptOpen] = useState(false);
+  /** which AI's answer is shown (null: the latest one, the one lists use) */
+  const [view, setView] = useState<AiProvider | null>(null);
   const polls = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const alive = useRef(true);
@@ -134,15 +139,21 @@ export const ChanceCard = memo(function ChanceCard({
     );
   };
 
+  // 🗂 the other AI's answer, when one is picked in the tabs
+  const other = view && view !== c.provider ? (c.answers.find((x) => x.provider === view) ?? null) : null;
+  const a = other ?? c;
+  const shownBy: AiProvider | null = other ? other.provider : c.provider;
+  const tabs = c.answers.length > 1 ? c.answers.map((x) => x.provider) : [];
+
   const setNextCall = async () => {
-    if (c.next_call_days == null) return;
+    if (a.next_call_days == null) return;
     const d = new Date();
-    d.setDate(d.getDate() + c.next_call_days);
-    d.setHours(c.next_call_days === 0 ? Math.min(d.getHours() + 2, 20) : 11, 0, 0, 0);
+    d.setDate(d.getDate() + a.next_call_days);
+    d.setHours(a.next_call_days === 0 ? Math.min(d.getHours() + 2, 20) : 11, 0, 0, 0);
     setBusy(true);
     setError(null);
     try {
-      await scheduleFollowUp(leadId, d, c.next_call_why ? `🔮 ${c.next_call_why}` : null);
+      await scheduleFollowUp(leadId, d, a.next_call_why ? `🔮 ${a.next_call_why}` : null);
       onChanged?.('Next call set');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not set the next call.');
@@ -152,22 +163,45 @@ export const ChanceCard = memo(function ChanceCard({
   };
 
   const waiting = c.status === 'working' || (c.status === 'pending' && !!c.due_at && new Date(c.due_at) <= new Date());
-  const has = c.chance != null;
-  const tone = chanceTone(c.level);
-  const color = levelColor(c.level);
-  const trend = has && c.prev_chance != null ? c.chance! - c.prev_chance : 0;
+  const has = a.chance != null;
+  const tone = chanceTone(a.level);
+  const color = levelColor(a.level);
+  const trend = has && !other && c.prev_chance != null ? a.chance! - c.prev_chance : 0;
 
   return (
     <View style={styles.card}>
       <View style={styles.head}>
         <Text style={styles.title}>🔮 ভর্তির সম্ভাবনা</Text>
-        <Text style={styles.aiTag}>AI</Text>
+        <Text style={styles.aiTag}>{shownBy ? `AI · ${PROVIDER_LABEL[shownBy]}` : 'AI'}</Text>
       </View>
+
+      {tabs.length > 1 && (
+        <View style={styles.tabs} accessibilityRole="tablist">
+          {tabs.map((p) => {
+            const on = p === (shownBy ?? c.provider);
+            const x = c.answers.find((y) => y.provider === p);
+            return (
+              <Pressable
+                key={p}
+                onPress={() => setView(p === c.provider ? null : p)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+                style={[styles.tab, on && styles.tabOn]}
+              >
+                <Text style={[styles.tabText, on && styles.tabTextOn]}>
+                  {PROVIDER_LABEL[p]}
+                  {x?.chance != null ? ` ${x.chance}%` : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       {has ? (
         <>
           <View style={styles.scoreRow}>
-            <Text style={[styles.big, { color }]}>{c.chance}%</Text>
+            <Text style={[styles.big, { color }]}>{a.chance}%</Text>
             <View style={styles.flex}>
               <Text style={[styles.level, { color }]}>
                 {tone.icon} {tone.label}
@@ -179,15 +213,15 @@ export const ChanceCard = memo(function ChanceCard({
                 )}
               </Text>
               <View style={styles.track}>
-                <View style={[styles.fill, { width: `${Math.max(3, c.chance!)}%`, backgroundColor: color }]} />
+                <View style={[styles.fill, { width: `${Math.max(3, a.chance!)}%`, backgroundColor: color }]} />
               </View>
             </View>
           </View>
-          {!!c.summary && <Text style={styles.summary}>{c.summary}</Text>}
+          {!!a.summary && <Text style={styles.summary}>{a.summary}</Text>}
 
-          {c.objections.length > 0 && (
+          {a.objections.length > 0 && (
             <View style={styles.chips}>
-              {c.objections.map((o, i) => (
+              {a.objections.map((o, i) => (
                 <View key={i} style={styles.chip}>
                   <Text style={styles.chipText}>{OBJECTION_LABEL[o.kind] ?? o.kind}</Text>
                 </View>
@@ -195,35 +229,35 @@ export const ChanceCard = memo(function ChanceCard({
             </View>
           )}
 
-          {c.actions.length > 0 && (
+          {a.actions.length > 0 && (
             <View style={styles.block}>
               <Text style={styles.label}>👉 এখন যা করবেন</Text>
-              {c.actions.map((a, i) => (
+              {a.actions.map((act, i) => (
                 <View key={i} style={styles.action}>
                   <Text style={styles.num}>{i + 1}</Text>
                   <View style={styles.flex}>
-                    <Text style={styles.actionText}>{a.text}</Text>
-                    {!!a.why && <Text style={styles.why}>{a.why}</Text>}
+                    <Text style={styles.actionText}>{act.text}</Text>
+                    {!!act.why && <Text style={styles.why}>{act.why}</Text>}
                   </View>
                 </View>
               ))}
             </View>
           )}
 
-          {(!!c.best_time || c.next_call_days != null) && (
+          {(!!a.best_time || a.next_call_days != null) && (
             <View style={styles.timeRow}>
-              {!!c.best_time && <Text style={styles.time}>⏰ {c.best_time}</Text>}
-              {c.next_call_days != null && (
+              {!!a.best_time && <Text style={styles.time}>⏰ {a.best_time}</Text>}
+              {a.next_call_days != null && (
                 <Pressable onPress={setNextCall} disabled={busy} accessibilityRole="button" style={styles.nextBtn}>
                   <Text style={styles.nextText}>
-                    📅 {c.next_call_days === 0 ? 'আজই কল সেট করুন' : `${c.next_call_days} দিন পরে কল সেট করুন`}
+                    📅 {a.next_call_days === 0 ? 'আজই কল সেট করুন' : `${a.next_call_days} দিন পরে কল সেট করুন`}
                   </Text>
                 </Pressable>
               )}
             </View>
           )}
 
-          {c.script.length > 0 && (
+          {a.script.length > 0 && (
             <View style={styles.block}>
               <Pressable
                 onPress={() => setScriptOpen((v) => !v)}
@@ -231,11 +265,11 @@ export const ChanceCard = memo(function ChanceCard({
                 accessibilityState={{ expanded: scriptOpen }}
                 style={styles.toggle}
               >
-                <Text style={styles.label}>💬 কী বলবেন ({c.script.length})</Text>
+                <Text style={styles.label}>💬 কী বলবেন ({a.script.length})</Text>
                 <Text style={styles.chev}>{scriptOpen ? '▾' : '▸'}</Text>
               </Pressable>
               {scriptOpen &&
-                c.script.map((s, i) => (
+                a.script.map((s, i) => (
                   <View key={i} style={styles.script}>
                     <Text style={styles.situation}>{s.situation}</Text>
                     {s.lines.map((line, j) => (
@@ -255,7 +289,7 @@ export const ChanceCard = memo(function ChanceCard({
             </View>
           )}
 
-          {(c.good.length > 0 || c.risks.length > 0) && (
+          {(a.good.length > 0 || a.risks.length > 0) && (
             <Pressable onPress={() => setMore((v) => !v)} accessibilityRole="button" style={styles.toggle}>
               <Text style={styles.label}>🔍 কেন এই সম্ভাবনা</Text>
               <Text style={styles.chev}>{more ? '▾' : '▸'}</Text>
@@ -263,12 +297,12 @@ export const ChanceCard = memo(function ChanceCard({
           )}
           {more && (
             <View style={styles.block}>
-              {c.good.map((g, i) => (
+              {a.good.map((g, i) => (
                 <Text key={`g${i}`} style={styles.good}>
                   ✅ {g}
                 </Text>
               ))}
-              {c.risks.map((r, i) => (
+              {a.risks.map((r, i) => (
                 <Text key={`r${i}`} style={styles.risk}>
                   ⚠️ {r}
                 </Text>
@@ -296,7 +330,7 @@ export const ChanceCard = memo(function ChanceCard({
 
       <View style={styles.foot}>
         <Text style={styles.when}>
-          {c.done_at ? `দেখা হয়েছে ${ago(c.done_at)}` : ''}
+          {a.done_at ? `দেখা হয়েছে ${ago(a.done_at)}` : ''}
           {c.status === 'pending' && !waiting && c.due_at ? ' · নতুন কল/নোট: আবার দেখবে' : ''}
         </Text>
         {!waiting && (
@@ -376,6 +410,17 @@ const styles = StyleSheet.create({
   line: { fontSize: fontSize.small, lineHeight: 21, color: colors.text },
   good: { fontSize: fontSize.small, lineHeight: 20, color: colors.text },
   risk: { fontSize: fontSize.small, lineHeight: 20, color: colors.text },
+  tabs: { flexDirection: 'row', gap: 6 },
+  tab: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tabOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  tabText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.text },
+  tabTextOn: { color: colors.textOnPrimary },
   waitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   muted: { flexShrink: 1, fontSize: fontSize.small, lineHeight: 20, color: colors.textMuted },
   bad: { fontSize: fontSize.small, color: colors.danger },

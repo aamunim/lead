@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-g',
+    date: '8 Nov 2026',
+    title: '🤖 Gemini (free) next to Claude',
+    items: [
+      '🤖 The AI can now be Claude, Gemini (free), Gemini first then Claude, or both side by side — chosen in Settings → AI for the chance of admission and for admission credit separately',
+      '🔌 Each AI has its own on/off switch: an AI that is off is never used and its key is never sent',
+      '🗂 Every AI’s answer is kept: a Claude answer stays when Gemini looks later (and the other way round). The lead page shows which AI answered, with tabs when both have',
+      '💵 The monthly budget counts Claude only; Gemini’s free tier costs nothing (when its free limit is used up it rests a while and the work waits)',
+    ],
+  },
+  {
     key: '2026-11-08-f',
     date: '8 Nov 2026',
     title: '🔧 AI chance shows again',

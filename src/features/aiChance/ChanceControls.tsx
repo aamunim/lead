@@ -301,7 +301,7 @@ export function ChanceControls({
               This month: {usd(spent)}
               {budget > 0 ? ` of $${budget}` : ''}
               {!counts.budget_ok
-                ? ' — reached: the AI waits until next month (or a bigger budget). “Check” on a lead still works.'
+                ? ' — reached: Claude waits until next month (or a bigger budget); Gemini (free), if it is on for a feature, goes on. “Check” on a lead still works.'
                 : ''}
             </Text>
           </>
