@@ -39,6 +39,8 @@ export class AiError extends Error {
     public provider: Provider,
     public kind: ErrKind,
     message: string,
+    /** Gemini: the chosen model does not exist (any more) */
+    public modelGone = false,
   ) {
     super(message);
   }
@@ -102,7 +104,7 @@ function geminiError(status: number, data: GeminiReply): AiError {
     return new AiError('gemini', 'key', 'The Gemini API key was refused. Save a new key in Settings → AI.');
   }
   if (status === 404) {
-    return new AiError('gemini', 'other', 'This Gemini model was not found. Choose another in Settings → AI.');
+    return new AiError('gemini', 'other', 'This Gemini model was not found. Choose another in Settings → AI.', true);
   }
   if (status >= 500) return new AiError('gemini', 'busy', `Gemini is busy (${status}).`);
   return new AiError('gemini', 'other', `Gemini: ${msg}`);
@@ -185,33 +187,67 @@ const rank = (m: { name: string; outputTokenLimit?: number }) =>
   (/preview|latest/i.test(m.name) ? 0 : 2) +
   (/^models\/gemini-[\d.]+-flash$/i.test(m.name) ? 1 : 0);
 
-/** Settings → AI "Test": is the key good, and which Flash models may it use (the free tier) */
-export async function testGemini(key: string) {
+type GeminiModelInfo = {
+  name: string;
+  displayName?: string;
+  supportedGenerationMethods?: string[];
+  outputTokenLimit?: number;
+};
+
+/** The Flash models this key may use, the best for this work first (retired 1.x models left out) */
+async function flashModels(
+  key: string,
+): Promise<{ ok: true; models: GeminiModelInfo[] } | { ok: false; error: AiError }> {
   const { status, data } = await geminiFetch(key, 'models?pageSize=200');
-  if (status < 200 || status >= 300) {
-    const e = geminiError(status, data);
-    if (e.kind === 'key') await keyResult(false, e.message, 'gemini');
-    return { ok: false, error: e.message };
-  }
-  const models = (
-    ((data as unknown as { models?: unknown[] }).models ?? []) as {
-      name: string;
-      displayName?: string;
-      supportedGenerationMethods?: string[];
-      outputTokenLimit?: number;
-    }[]
-  )
+  if (status < 200 || status >= 300) return { ok: false, error: geminiError(status, data) };
+  const models = (((data as unknown as { models?: unknown[] }).models ?? []) as GeminiModelInfo[])
     .filter(
       (m) =>
         (m.supportedGenerationMethods ?? []).includes('generateContent') &&
         /flash/i.test(m.name) &&
+        // Google still lists some retired models (1.0 / 1.5) that answer "not found"
+        !/gemini-1\./i.test(m.name) &&
         !/image|tts|audio|live|embedding|vision|exp-/i.test(m.name),
     )
     // the best for this work first: big answers (2.5 and newer), not "lite", not a preview
-    .sort((a, b) => rank(b) - rank(a))
-    .map((m) => ({ name: m.name, label: m.displayName ?? m.name.replace(/^models\//, '') }));
-  await keyResult(true, null, 'gemini');
+    .sort((a, b) => rank(b) - rank(a));
   return { ok: true, models };
+}
+
+/** Settings → AI "Test": is the key good, and which Flash models may it use (the free tier) */
+export async function testGemini(key: string) {
+  const r = await flashModels(key);
+  if (!r.ok) {
+    if (r.error.kind === 'key') await keyResult(false, r.error.message, 'gemini');
+    return { ok: false, error: r.error.message };
+  }
+  await keyResult(true, null, 'gemini');
+  return {
+    ok: true,
+    models: r.models.map((m) => ({ name: m.name, label: m.displayName ?? m.name.replace(/^models\//, '') })),
+  };
+}
+
+/**
+ * 🔧 The chosen Gemini model is gone: take the best one this key may use, save it
+ * (Settings → AI shows it) and go on. Once per run, shared by the leads running together.
+ */
+let replacing: { gone: string; next: Promise<string | null> } | null = null;
+function replaceGeminiModel(cfg: AiConfig, gone: string): Promise<string | null> {
+  if (replacing?.gone !== gone) {
+    const next = (async () => {
+      const r = await flashModels(cfg.gemini_key!);
+      if (!r.ok) return null;
+      const name = r.models.find((m) => m.name !== gone && m.name !== modelPath(gone))?.name ?? null;
+      if (name) {
+        console.warn(`gemini: model ${gone} not found; now using ${name}`);
+        await admin.rpc('ai_set_gemini_model', { p_model: name });
+      }
+      return name;
+    })().catch(() => null);
+    replacing = { gone, next };
+  }
+  return replacing!.next;
 }
 
 // ---------------------------------------------------------------------
@@ -220,7 +256,15 @@ export async function testGemini(key: string) {
 export async function askJson<T>(cfg: AiConfig, provider: Provider, r: JsonRequest): Promise<Answer<T>> {
   if (provider === 'gemini') {
     if (!cfg.gemini_key || !cfg.gemini_model) throw new AiError('gemini', 'key', 'Gemini is not set up (key / model).');
-    return geminiJson<T>(cfg.gemini_key, cfg.gemini_model, r);
+    try {
+      return await geminiJson<T>(cfg.gemini_key, cfg.gemini_model, r);
+    } catch (e) {
+      if (!(e instanceof AiError) || !e.modelGone) throw e;
+      const next = await replaceGeminiModel(cfg, cfg.gemini_model);
+      if (!next) throw e;
+      cfg.gemini_model = next;
+      return geminiJson<T>(cfg.gemini_key, next, r);
+    }
   }
   if (!cfg.key) throw new AiError('claude', 'key', 'No Claude API key is saved.');
   let res;

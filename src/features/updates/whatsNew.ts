@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-i',
+    date: '8 Nov 2026',
+    title: '🔧 Gemini: “model not found” fixed',
+    items: [
+      '🔧 Gemini’s retired 1.5 models are no longer offered; a saved one moves to Gemini 2.5 Flash',
+      '🤖 If the chosen Gemini model ever goes away, the server moves to the best one by itself and keeps working',
+      '🔄 Leads that failed only because of this are looked at again',
+    ],
+  },
+  {
     key: '2026-11-08-h',
     date: '8 Nov 2026',
     title: '🔧 Gemini answers more reliably',
