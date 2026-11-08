@@ -16,7 +16,10 @@ export { Anthropic, admin, json };
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 export const DEFAULT_MODEL = 'claude-sonnet-5-5';
-const CALL_TIMEOUT_MS = 90_000;
+// A run must end inside the Edge Function's time limit (150 s on the free plan):
+// new leads start for 45 s, and one call may take 75 s (no retry; a failed one
+// waits in the queue for the next run)
+const CALL_TIMEOUT_MS = 75_000;
 
 export type AiSettings = {
   enabled?: boolean;
@@ -48,7 +51,7 @@ export function aiClient(cfg: AiConfig): Anthropic {
   return new Anthropic({
     apiKey: cfg.key!,
     timeout: CALL_TIMEOUT_MS,
-    maxRetries: 1,
+    maxRetries: 0,
   });
 }
 
@@ -184,7 +187,7 @@ export async function drainQueue(
   claim: (n: number) => Promise<string[]>,
   one: (id: string) => Promise<'ok' | 'stop'>,
   parallel = 3,
-  startNewUntilMs = 70_000,
+  startNewUntilMs = 45_000,
 ) {
   const started = Date.now();
   while (Date.now() - started < startNewUntilMs) {
@@ -198,4 +201,52 @@ export async function drainQueue(
 /** setof uuid from an RPC → string[] */
 export function idsOf(data: unknown, fn: string): string[] {
   return ((data ?? []) as unknown[]).map((x) => (typeof x === 'string' ? x : (x as Record<string, string>)[fn]));
+}
+
+/**
+ * 🗂 Prompt caching: the instructions are the same for every lead, so they
+ * are marked to be kept by Claude for a few minutes; the next leads read
+ * them at a tenth of the price (each lead's own story is never the same).
+ */
+export function cachedSystem(text: string): Anthropic.Beta.BetaTextBlockParam[] {
+  return [{ type: 'text', text, cache_control: { type: 'ephemeral' } }];
+}
+
+/**
+ * What a call cost, as plain input / output tokens for the budget:
+ * cache reads count 0.1×, cache writes 1.25× an input token.
+ */
+export function billedUsage(u: Anthropic.Beta.BetaUsage) {
+  const read = u.cache_read_input_tokens ?? 0;
+  const write = u.cache_creation_input_tokens ?? 0;
+  return {
+    input_tokens: Math.round(u.input_tokens + read * 0.1 + write * 1.25),
+    output_tokens: u.output_tokens,
+    fresh_input: u.input_tokens,
+    cache_read: read,
+    cache_write: write,
+  };
+}
+
+/**
+ * Ask Claude, with the server-side fallback for a declined request. If the
+ * API ever refuses that option itself (an older account or model), ask
+ * again without it rather than failing every lead.
+ */
+export async function askClaude(
+  ai: Anthropic,
+  params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'betas' | 'fallbacks'>,
+): Promise<Anthropic.Beta.BetaMessage> {
+  try {
+    return await ai.beta.messages.create({
+      ...params,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+    });
+  } catch (e) {
+    if (e instanceof Anthropic.BadRequestError && /fallback/i.test(e.message)) {
+      return await ai.beta.messages.create(params);
+    }
+    throw e;
+  }
 }

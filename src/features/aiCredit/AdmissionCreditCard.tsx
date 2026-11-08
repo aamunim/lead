@@ -57,6 +57,7 @@ export function AdmissionCreditCard({
   const [c, setC] = useState<LeadCredit | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const polls = useRef(0);
 
@@ -75,7 +76,11 @@ export function AdmissionCreditCard({
             timer = setTimeout(() => load(true), POLL_MS);
           }
         })
-        .catch(() => alive && setC(null));
+        .catch((e) => {
+          if (!alive) return;
+          setLoadError(e instanceof Error ? e.message : 'Could not load.');
+          setC(null);
+        });
     load(false);
     return () => {
       alive = false;
@@ -84,6 +89,13 @@ export function AdmissionCreditCard({
   }, [leadId, stateKey]);
 
   // not allowed / older database: nothing at all
+  if (c === null && loadError)
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>🤝 Admission credit</Text>
+        <Text style={styles.bad}>Could not load: {loadError}</Text>
+      </View>
+    );
   if (c === null) return null;
   if (c === undefined) return null; // no spinner: the card appears when ready
 

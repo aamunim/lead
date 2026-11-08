@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-08-f',
+    date: '8 Nov 2026',
+    title: '🔧 AI chance shows again',
+    items: [
+      '🔧 Fixed: the 🔮 AI card was empty on the lead page, in the quick view and in the 🔮 sheet',
+      '⚠️ If the AI part cannot load, the card now says why (instead of showing nothing)',
+      '💵 The AI reuses its instructions between leads (prompt caching): a little cheaper',
+    ],
+  },
+  {
     key: '2026-11-08-e',
     date: '8 Nov 2026',
     title: '🤝 Admission Contribution + more AI control',

@@ -10,6 +10,9 @@
 import {
   admin,
   aiClient,
+  askClaude,
+  billedUsage,
+  cachedSystem,
   type AiConfig,
   type Anthropic,
   classify,
@@ -204,16 +207,14 @@ async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' |
     }
 
     const extra = (cfg.settings.guidance ?? '').trim();
-    const res = await ai.beta.messages.create({
+    const res = await askClaude(ai, {
       model: modelOf(cfg),
       max_tokens: 10000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
       output_config: {
         effort: effortOf(cfg),
         format: { type: 'json_schema', schema: SCHEMA },
       },
-      system: extra ? `${SYSTEM}\n\nThe college's own notes (use them):\n${extra}` : SYSTEM,
+      system: cachedSystem(extra ? `${SYSTEM}\n\nThe college's own notes (use them):\n${extra}` : SYSTEM),
       messages: [{ role: 'user', content: JSON.stringify(input) }],
     });
 
@@ -261,22 +262,20 @@ async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' |
       next_call_why: String(a.next_call_why ?? '').slice(0, 300),
     };
 
+    const usage = billedUsage(res.usage);
     const { error: saveError } = await admin.rpc('ai_chance_save', {
       p_lead: leadId,
       p_r: result,
       p_model: res.model,
-      p_usage: {
-        input_tokens: res.usage.input_tokens,
-        output_tokens: res.usage.output_tokens,
-      },
+      p_usage: usage,
     });
     if (saveError) throw new Error(saveError.message);
     await keyResult(true);
     // 💵 the monthly budget counts what was used
     await admin.rpc('ai_usage_add', {
       p_feature: 'chance',
-      p_in: res.usage.input_tokens,
-      p_out: res.usage.output_tokens,
+      p_in: usage.input_tokens,
+      p_out: usage.output_tokens,
     });
     return 'ok';
   } catch (e) {

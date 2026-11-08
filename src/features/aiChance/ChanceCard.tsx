@@ -50,6 +50,7 @@ export const ChanceCard = memo(function ChanceCard({
   const [c, setC] = useState<LeadChance | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [more, setMore] = useState(false);
   const [scriptOpen, setScriptOpen] = useState(false);
   const polls = useRef(0);
@@ -69,7 +70,12 @@ export const ChanceCard = memo(function ChanceCard({
           timer.current = setTimeout(() => load(true), POLL_MS);
         }
       })
-      .catch(() => alive.current && setC(null));
+      .catch((e) => {
+        if (!alive.current) return;
+        // show what went wrong (an empty card helps nobody)
+        setLoadError(e instanceof Error ? e.message : 'Could not load.');
+        setC(null);
+      });
 
   useEffect(() => {
     alive.current = true;
@@ -82,6 +88,24 @@ export const ChanceCard = memo(function ChanceCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, stateKey]);
 
+  if (loadError && !c)
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>🔮 ভর্তির সম্ভাবনা</Text>
+        <Text style={styles.bad}>AI-এর তথ্য আনা যায়নি: {loadError}</Text>
+        <Pressable
+          onPress={() => {
+            setLoadError(null);
+            setC(undefined);
+            load(true);
+          }}
+          accessibilityRole="button"
+          style={styles.checkBtn}
+        >
+          <Text style={styles.checkText}>🔄 আবার চেষ্টা করুন</Text>
+        </Pressable>
+      </View>
+    );
   if (!c) return null; // not allowed / not loaded yet: nothing (no spinner on the page)
 
   const check = async () => {

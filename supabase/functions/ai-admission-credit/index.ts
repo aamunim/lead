@@ -12,6 +12,9 @@
 import {
   admin,
   aiClient,
+  askClaude,
+  billedUsage,
+  cachedSystem,
   type AiConfig,
   type Anthropic,
   classify,
@@ -128,16 +131,14 @@ async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' |
     }
 
     const extra = (cfg.settings.guidance ?? '').trim();
-    const res = await ai.beta.messages.create({
+    const res = await askClaude(ai, {
       model: modelOf(cfg),
       max_tokens: 8000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
       output_config: {
         effort: effortOf(cfg),
         format: { type: 'json_schema', schema: SCHEMA },
       },
-      system: extra ? `${SYSTEM}\n\nThe college's own rules (follow them):\n${extra}` : SYSTEM,
+      system: cachedSystem(extra ? `${SYSTEM}\n\nThe college's own rules (follow them):\n${extra}` : SYSTEM),
       messages: [{ role: 'user', content: JSON.stringify(story) }],
     });
 
@@ -168,6 +169,7 @@ async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' |
       ...rest,
     }));
 
+    const usage = billedUsage(res.usage);
     const { error: saveError } = await admin.rpc('ai_credit_save', {
       p_lead: leadId,
       p_shares: shares,
@@ -175,18 +177,15 @@ async function one(ai: Anthropic, cfg: AiConfig, leadId: string): Promise<'ok' |
       p_confidence: answer.confidence,
       p_stats: stats,
       p_model: res.model,
-      p_usage: {
-        input_tokens: res.usage.input_tokens,
-        output_tokens: res.usage.output_tokens,
-      },
+      p_usage: usage,
     });
     if (saveError) throw new Error(saveError.message);
     await keyResult(true);
     // 💵 the monthly budget counts what was used
     await admin.rpc('ai_usage_add', {
       p_feature: 'credit',
-      p_in: res.usage.input_tokens,
-      p_out: res.usage.output_tokens,
+      p_in: usage.input_tokens,
+      p_out: usage.output_tokens,
     });
     return 'ok';
   } catch (e) {

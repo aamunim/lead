@@ -253,7 +253,12 @@ export const SORT_OPTIONS: { value: LeadSort; label: string; text: string; icon:
   { value: 'discount_most', label: 'Biggest discount', text: 'Largest discount first, no discount last', icon: '💰' },
   { value: 'fee_latest', label: 'Fee talk: latest', text: 'Last fee talk or discount change first', icon: '💬' },
   { value: 'score', label: 'Most likely to join', text: 'Highest admission chance first', icon: '🔥' },
-  { value: 'ai_chance', label: 'AI chance: highest', text: 'Highest AI chance first (not looked at yet: last)', icon: '🔮' },
+  {
+    value: 'ai_chance',
+    label: 'AI chance: highest',
+    text: 'Highest AI chance first (not looked at yet: last)',
+    icon: '🔮',
+  },
   { value: 'ai_call_first', label: 'AI: call first', text: 'Hot, then Warm; longest without a talk first', icon: '📞' },
   { value: 'ai_rise', label: 'AI chance: rising', text: 'The chance went up the most since the last look', icon: '📈' },
   { value: 'ai_drop', label: 'AI chance: falling', text: 'The chance went down the most (at risk) first', icon: '📉' },
@@ -370,10 +375,14 @@ const chanceSelect = (sort: LeadSort, f: LeadFilters, full: boolean) =>
         ? ', lead_chances(chance, trend, level_rank)'
         : '';
 
+// switched off after an error: try again 10 minutes later (e.g. right after a database update)
+let chanceOffAt = 0;
 async function chanceSafe<T extends { error: { message: string } | null }>(run: () => PromiseLike<T>): Promise<T> {
+  if (!chanceDb && Date.now() - chanceOffAt > 10 * 60_000) chanceDb = true;
   const res = await run();
   if (res.error && chanceDb && /lead_chances|chance_filter/i.test(res.error.message)) {
     chanceDb = false;
+    chanceOffAt = Date.now();
     return run();
   }
   return res;
@@ -554,18 +563,22 @@ function orderLeads<Q extends { order: (...args: any[]) => Q }>(query: Q, sort: 
       break;
     case 'ai_chance':
       // 🔮 the AI's chance first (leads it has not looked at yet: last)
-      q = q
-        .order('lead_chances(chance)', { ascending: false, nullsFirst: false })
-        .order('score', { ascending: false });
+      q = q.order('lead_chances(chance)', { ascending: false, nullsFirst: false }).order('score', { ascending: false });
       break;
     case 'ai_chance_low':
-      q = q.order('lead_chances(chance)', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
+      q = q
+        .order('lead_chances(chance)', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false });
       break;
     case 'ai_rise':
-      q = q.order('lead_chances(trend)', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+      q = q
+        .order('lead_chances(trend)', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false });
       break;
     case 'ai_drop':
-      q = q.order('lead_chances(trend)', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
+      q = q
+        .order('lead_chances(trend)', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false });
       break;
     case 'ai_call_first':
       // 🔥 Hot, then 🌤 Warm, then ❄️ Cold; in each, the longest without a talk first
