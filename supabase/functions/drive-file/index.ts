@@ -1,5 +1,6 @@
 // =====================================================================
 // ⬇️ Open a lead file: GET ?id=<lead_files.id>
+//   (🎓 an alumnus's voice note: ?alumni_file=<alumni_files.id>)
 //   Row security on lead_files decides (the caller's own client): the
 //   person who added it, or admins / people allowed in Settings. The
 //   content comes from Google Drive through the script; no Drive link.
@@ -9,9 +10,11 @@ import { asUser, cors, downloadFile, json } from '../_shared/drive.ts';
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
-    const id = new URL(req.url).searchParams.get('id') ?? '';
+    const params = new URL(req.url).searchParams;
+    const alumniFile = params.get('alumni_file');
+    const id = alumniFile ?? params.get('id') ?? '';
     const { data: f } = await asUser(req)
-      .from('lead_files')
+      .from(alumniFile ? 'alumni_files' : 'lead_files')
       .select('drive_file_id, name, mime_type')
       .eq('id', id)
       .maybeSingle();

@@ -1,4 +1,5 @@
 import { LeadReferrer } from '@/features/alumni/LeadReferrer';
+import { LeadSchoolAlumni } from '@/features/alumni/LeadSchoolAlumni';
 import { LeadScoreRow, showScore, useScoreOn, type ScoreReason } from '@/features/leads/score';
 import { router, Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
 import { myStars, toggleStar } from '@/features/leads/find';
@@ -87,6 +88,7 @@ import { onVoiceSaved } from '@/features/voice/useVoiceNotes';
 import { isWeb } from '@/features/web/api';
 import { WebStudentLayout } from '@/features/web/student/WebStudentLayout';
 import { ChanceCard } from '@/features/aiChance/ChanceCard';
+import { getAlumnus } from '@/features/alumni/api';
 import { AdmissionCreditCard } from '@/features/aiCredit/AdmissionCreditCard';
 import { ApprovalCard } from '@/features/approval/ApprovalCard';
 import { peekMemo, remember } from '@/shared/lib/memo';
@@ -351,6 +353,27 @@ export function LeadDetailView({
       })
       .catch(() => undefined);
   }, [waCall, lead, id]);
+
+  // 🎓 Not a lead but an alumnus (the phone's caller card / "add a note"
+  //   alerts open /leads/<id> for alumni too): go on to the alumnus
+  useEffect(() => {
+    if (loading || lead || !id || embedded) return;
+    let live = true;
+    getAlumnus(id)
+      .then((al) => {
+        if (!live || !al) return;
+        const q = callNote
+          ? `?callNote=${encodeURIComponent(String(callNote))}`
+          : waCall
+            ? `?waCall=${encodeURIComponent(String(waCall))}`
+            : '';
+        router.replace(`/alumni/${al.id}${q}` as Href);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [loading, lead, id, embedded, callNote, waCall]);
 
   const closeSheet = () => {
     setSheetVisible(false);
@@ -1413,6 +1436,8 @@ export function LeadDetailView({
         <InfoRow label="Source" value={lead.source?.name ?? null} />
         {/* 🎓 The alumnus who referred this lead (Alumni) */}
         <LeadReferrer leadId={lead.id} />
+        {/* 🏫 Our alumni at the lead's workplace */}
+        <LeadSchoolAlumni workplace={(lead as { workplace?: string | null }).workplace} />
         {detailsOpen && (
           <>
             {lead.alt_phone && <PhoneRow label="Alternative" phone={lead.alt_phone} onCall={call} />}

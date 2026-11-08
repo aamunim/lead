@@ -33,6 +33,7 @@ import { StreakChip } from '@/features/credits/StreakChip';
 import { colors, fontSize, fontWeight } from '@/shared/theme';
 import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
 import { useAlumniAccess } from '@/features/alumni/ui';
+import { AlumniHomeCard } from '@/features/alumni/AlumniHomeCard';
 import { StoreUpdateCard } from '@/features/updates/StoreUpdateCard';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -287,6 +288,7 @@ function PhoneHome() {
           <TodayList />
           <ChanceHomeCard />
           <RecentHomeCard />
+          <AlumniHomeCard />
         </View>
 
         {/* ── Students, approvals, this month ──────── */}

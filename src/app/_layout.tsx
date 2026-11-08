@@ -56,9 +56,9 @@ const NAV_THEME = {
   },
 };
 
-// The visitor opened lead.ittc.edu.bd/apply or /refer/<code> (website only)
+// The visitor opened lead.ittc.edu.bd/apply, /refer/<code> or /update/<token> (website only)
 const OPENED_PUBLIC_FORM =
-  Platform.OS === 'web' && typeof window !== 'undefined' && /^\/(apply|refer\/)/.test(window.location.pathname);
+  Platform.OS === 'web' && typeof window !== 'undefined' && /^\/(apply|refer\/|update\/)/.test(window.location.pathname);
 
 export default function RootLayout() {
   return (
@@ -137,6 +137,7 @@ function RootNavigator() {
         <Stack.Protected guard={OPENED_PUBLIC_FORM}>
           <Stack.Screen name="refer/[code]" />
           <Stack.Screen name="apply" />
+          <Stack.Screen name="update/[token]" />
         </Stack.Protected>
       </Stack>
       {/* 📵 No internet: shown over every screen */}

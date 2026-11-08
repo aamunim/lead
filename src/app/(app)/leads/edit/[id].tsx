@@ -42,6 +42,8 @@ type Form = {
   altPhone: string;
   email: string;
   area: string;
+  /** 🏫 school / office (alumni who work there show on the lead) */
+  workplace: string;
   guardianName: string;
   guardianPhone: string;
   guardianRelation: string;
@@ -66,6 +68,7 @@ const EMPTY: Form = {
   altPhone: '',
   email: '',
   area: '',
+  workplace: '',
   guardianName: '',
   guardianPhone: '',
   guardianRelation: '',
@@ -117,6 +120,7 @@ export default function LeadFormScreen() {
   const [addedCount, setAddedCount] = useState(0);
   const [formKey, setFormKey] = useState(0);
   const lastRef = useRef<Last | null>(null);
+  const hadWorkplace = useRef(false);
   const { width } = useWindowDimensions();
   const wide = isWeb && width >= 980;
   const insets = useSafeAreaInsets();
@@ -187,6 +191,7 @@ export default function LeadFormScreen() {
         }
         setOriginalSourceId(lead.source_id);
         setOriginalAssignee(lead.assigned_to);
+        hadWorkplace.current = !!(lead as { workplace?: string | null }).workplace;
         setForm({
           name: lead.name,
           phone: lead.phone ?? '',
@@ -195,6 +200,7 @@ export default function LeadFormScreen() {
           altPhone: lead.alt_phone ?? '',
           email: lead.email ?? '',
           area: lead.area ?? '',
+          workplace: (lead as { workplace?: string | null }).workplace ?? '',
           guardianName: lead.guardian_name ?? '',
           guardianPhone: lead.guardian_phone ?? '',
           guardianRelation: lead.guardian_relation ?? '',
@@ -281,7 +287,7 @@ export default function LeadFormScreen() {
   const needCourse = courses.length > 0;
 
   const filled = {
-    contact: [form.altPhone, form.email, form.area].filter((v) => v.trim()).length,
+    contact: [form.altPhone, form.email, form.area, form.workplace].filter((v) => v.trim()).length,
     guardian: [form.guardianName, form.guardianPhone, form.guardianRelation].filter((v) => v.trim()).length,
     more:
       [form.referredBy, form.notes].filter((v) => v.trim()).length +
@@ -339,6 +345,8 @@ export default function LeadFormScreen() {
       alt_phone: form.altPhone,
       email: form.email,
       area: form.area,
+      // sent only when there is one (or it was cleared): a database without it still saves
+      ...(form.workplace.trim() || hadWorkplace.current ? { workplace: form.workplace } : {}),
       guardian_name: form.guardianName,
       guardian_phone: form.guardianPhone,
       guardian_relation: form.guardianRelation,
@@ -629,6 +637,12 @@ export default function LeadFormScreen() {
           autoCapitalize="none"
         />
         <TextField label="Area / thana" value={form.area} onChangeText={(v) => set('area', v)} />
+        <TextField
+          label="Workplace (school / office)"
+          value={form.workplace}
+          onChangeText={(v) => set('workplace', v)}
+          placeholder="e.g. Mirpur Ideal School"
+        />
       </Fold>
 
       <Fold

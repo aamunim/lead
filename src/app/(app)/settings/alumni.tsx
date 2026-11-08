@@ -25,6 +25,7 @@ import {
   type PublicForms,
   listAlumniFields,
   saveAlumniField,
+  ALUMNI_FILTER_LABEL,
   saveAlumniSettings,
   type AlumniField,
   type AlumniFieldType,
@@ -91,7 +92,10 @@ export default function AlumniSettingsScreen() {
     setSaving(true);
     setError(null);
     try {
-      await saveAlumniSettings(settings);
+      // a bonus row left empty is dropped
+      const tiers = (settings.rewards.tiers ?? []).filter((t) => t.count > 0 && t.amount > 0);
+      await saveAlumniSettings({ ...settings, rewards: { ...settings.rewards, tiers } });
+      set({ ...settings, rewards: { ...settings.rewards, tiers } });
       setDirty(false);
       alumniChanged();
       if (Platform.OS === 'web') window.alert('Saved');
@@ -178,8 +182,149 @@ export default function AlumniSettingsScreen() {
                 }}
               />
             ))}
+            <Text style={ui.label}>🏅 BONUS AT A NUMBER OF ADMITTED (ONCE EACH)</Text>
+            {(settings.rewards.tiers ?? []).map((t, i) => {
+              const tiers = settings.rewards.tiers ?? [];
+              const put = (v: { count: number; amount: number } | null) =>
+                set({
+                  ...settings,
+                  rewards: {
+                    ...settings.rewards,
+                    tiers: v === null ? tiers.filter((_, j) => j !== i) : tiers.map((x, j) => (j === i ? v : x)),
+                  },
+                });
+              return (
+                <View key={i} style={styles.amountRow}>
+                  <Text style={styles.text}>At</Text>
+                  <TextInput
+                    value={t.count ? String(t.count) : ''}
+                    onChangeText={(x) => put({ ...t, count: Number(x.replace(/[^0-9]/g, '')) || 0 })}
+                    keyboardType="number-pad"
+                    placeholder="3"
+                    placeholderTextColor={colors.textMuted}
+                    style={styles.count}
+                    accessibilityLabel="Number admitted"
+                  />
+                  <Text style={[styles.flex, styles.text]}>admitted</Text>
+                  <Text style={ui.muted}>৳</Text>
+                  <TextInput
+                    value={t.amount ? String(t.amount) : ''}
+                    onChangeText={(x) => put({ ...t, amount: Number(x.replace(/[^0-9]/g, '')) || 0 })}
+                    keyboardType="number-pad"
+                    placeholder="1000"
+                    placeholderTextColor={colors.textMuted}
+                    style={styles.amount}
+                    accessibilityLabel="Bonus amount"
+                  />
+                  <Pressable
+                    onPress={() => put(null)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove"
+                  >
+                    <Text style={styles.remove}>✕</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+            <Pressable
+              onPress={() =>
+                set({
+                  ...settings,
+                  rewards: { ...settings.rewards, tiers: [...(settings.rewards.tiers ?? []), { count: 0, amount: 0 }] },
+                })
+              }
+              accessibilityRole="button"
+            >
+              <Text style={styles.addTier}>＋ Add a bonus (e.g. ৳1000 at 3 admitted)</Text>
+            </Pressable>
+            <Text style={ui.muted}>
+              On top of the reward for each student. If an admission is cancelled and the count drops, a bonus not paid
+              yet is cancelled.
+            </Text>
           </>
         )}
+      </View>
+
+      {/* 🙏 Thanks message, 🎓 batch closed */}
+      <View style={ui.card}>
+        <Text style={styles.title}>🙏 Thanks message</Text>
+        <Text style={ui.muted}>
+          When a referral is admitted, the alert opens the alumnus with this message ready for WhatsApp.{' '}
+          {'{first_name}'}, {'{student}'}, {'{course}'} are filled in.
+        </Text>
+        <TextInput
+          value={settings.thanks_text ?? ''}
+          onChangeText={(t) => set({ ...settings, thanks_text: t })}
+          multiline
+          maxLength={1000}
+          style={styles.thanks}
+          accessibilityLabel="Thanks message"
+        />
+        <View style={styles.switchRow}>
+          <View style={styles.flex}>
+            <Text style={styles.title}>🎓 Batch closed → alumni</Text>
+            <Text style={ui.muted}>
+              When a batch is marked closed, its admitted students are added to Alumni (those already there are
+              skipped).
+            </Text>
+          </View>
+          <Switch value={!!settings.auto_from_batch} onValueChange={(v) => set({ ...settings, auto_from_batch: v })} />
+        </View>
+      </View>
+
+      {/* ⏰ Reminders */}
+      <View style={ui.card}>
+        <Text style={styles.title}>⏰ Reminders</Text>
+        <View style={styles.switchRow}>
+          <View style={styles.flex}>
+            <Text style={ui.muted}>Next contact is due → a notification to the one who looks after them</Text>
+          </View>
+          <Switch
+            value={settings.reminders.next_contact}
+            onValueChange={(v) => set({ ...settings, reminders: { ...settings.reminders, next_contact: v } })}
+          />
+        </View>
+        <View style={styles.switchRow}>
+          <View style={styles.flex}>
+            <Text style={ui.muted}>🎂 Birthdays (9 am) → to the one who looks after them, else the managers</Text>
+          </View>
+          <Switch
+            value={settings.reminders.birthdays}
+            onValueChange={(v) => set({ ...settings, reminders: { ...settings.reminders, birthdays: v } })}
+          />
+        </View>
+      </View>
+
+      {/* 🔍 Filters on the list */}
+      <View style={ui.card}>
+        <Text style={styles.title}>🔍 Filters on the alumni list</Text>
+        <Text style={ui.muted}>Switch off the ones you don’t use; ↑ moves one up.</Text>
+        {settings.filters.map((f, i) => (
+          <View key={f.key} style={styles.switchRow}>
+            <Pressable
+              onPress={() => {
+                if (i === 0) return;
+                const list = [...settings.filters];
+                [list[i - 1], list[i]] = [list[i], list[i - 1]];
+                set({ ...settings, filters: list });
+              }}
+              disabled={i === 0}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`Move ${ALUMNI_FILTER_LABEL[f.key]} up`}
+            >
+              <Text style={[styles.up, i === 0 && styles.upOff]}>↑</Text>
+            </Pressable>
+            <Text style={[styles.flex, styles.filterName]}>{ALUMNI_FILTER_LABEL[f.key]}</Text>
+            <Switch
+              value={f.enabled}
+              onValueChange={(v) =>
+                set({ ...settings, filters: settings.filters.map((x) => (x.key === f.key ? { ...x, enabled: v } : x)) })
+              }
+            />
+          </View>
+        ))}
       </View>
 
       {error && <Text style={ui.error}>{error}</Text>}
@@ -389,10 +534,43 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   title: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  up: { width: 28, fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.primary, textAlign: 'center' },
+  upOff: { color: colors.border },
+  filterName: { fontSize: fontSize.body, color: colors.text },
   text: { fontSize: fontSize.small, color: colors.text },
   small: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.primary },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  count: {
+    width: 56,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    fontSize: fontSize.body,
+    color: colors.text,
+    textAlign: 'center',
+    backgroundColor: colors.background,
+  },
+  remove: { fontSize: fontSize.body, color: colors.danger, paddingHorizontal: spacing.xs },
+  addTier: {
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+    paddingVertical: spacing.xs,
+  },
+  thanks: {
+    minHeight: 96,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontSize: fontSize.body,
+    color: colors.text,
+    textAlignVertical: 'top',
+    backgroundColor: colors.background,
+  },
   amount: {
     width: 110,
     borderWidth: 1,
@@ -444,7 +622,9 @@ function PublicLinksCard() {
       <View style={linkStyles.row}>
         <View style={linkStyles.flex}>
           <Text style={linkStyles.title}>Alumni referral links</Text>
-          <Text style={ui.muted}>Each alumnus shares their own link; friends who fill it come to the Referral inbox.</Text>
+          <Text style={ui.muted}>
+            Each alumnus shares their own link; friends who fill it come to the Referral inbox.
+          </Text>
         </View>
         <Switch value={v.refer} onValueChange={(x) => change({ ...v, refer: x })} />
       </View>
@@ -452,8 +632,8 @@ function PublicLinksCard() {
         <View style={linkStyles.flex}>
           <Text style={linkStyles.title}>Interested-person form</Text>
           <Text style={ui.muted}>
-            For the college page, posters and QR codes. Each form becomes a new lead (source “Website form”), given out by
-            the usual assignment rules. A known number adds a line to that lead instead.
+            For the college page, posters and QR codes. Each form becomes a new lead (source “Website form”), given out
+            by the usual assignment rules. A known number adds a line to that lead instead.
           </Text>
         </View>
         <Switch value={v.apply} onValueChange={(x) => change({ ...v, apply: x })} />

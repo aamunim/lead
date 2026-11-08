@@ -8,6 +8,40 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-09-b',
+    date: '9 Nov 2026',
+    title: '🎓 Alumni: referrals that grow',
+    items: [
+      '🏆 Top referrers (this month / year / all time), and 🔗 how many times each alumnus’s link was opened',
+      '🏅 Bonus rewards: Settings → Alumni → e.g. ৳1000 extra at 3 admitted (taken back if an admission is cancelled)',
+      '📣 Campaigns: mark alumni (or filter and select all) → More → Campaign. One message with each person’s name and link, sent one by one on WhatsApp, with sent / referrals / admitted counted',
+      '🙏 When a referral is admitted, the alert opens the alumnus with a thanks message ready (Settings → Alumni → Thanks message)',
+      '✨ “Message” on an alumnus: the AI writes a warm Bangla WhatsApp message (ask for referrals, catch up, birthday, thanks)',
+      '🎙 Voice notes on alumni (saved to Google Drive), ▶ play them from the history',
+      '🏫 Schools: where alumni work, with leads and admissions from each. A lead now has a Workplace; its page shows our alumni who work there',
+      '🎯 Refer score: “Most likely to refer” sort and “Call this week” chip',
+      '📊 Alumni dashboard: the funnel (opened → referred → lead → admitted), the last 6 months, districts, rewards',
+      '✍️ Update link: an alumnus updates their own details from a personal link; you approve in Updates',
+      '🎓 Settings → Alumni: when a batch is closed, its admitted students can become alumni by themselves',
+      '👥 Duplicates: find and merge alumni who are the same person',
+      '📤 Excel: export the list as filtered (or the marked ones), your own fields too · 🌐 the website shows alumni as a table',
+    ],
+  },
+  {
+    key: '2026-11-09-a',
+    date: '9 Nov 2026',
+    title: '🎓 Alumni, smarter',
+    items: [
+      '🔍 Search finds alumni by name, number, workplace, designation, place, tags or your own fields, and says where it matched',
+      '🧰 Filter: next contact, last contact, course & batch, passing year, session, district, upazila, workplace, designation, tags, who looks after them, referrals, reward due, birthday, do not contact, your own fields. Save a filter (managers can share it)',
+      '⇅ More sorts: next contact (grouped Late / Today / This week…), latest referral, contacted lately, passing year, batch, district, workplace, reward due',
+      '📞 Call or WhatsApp an alumnus from the app: when you come back, a popup asks what happened, a note and the next contact. Calls from the phone’s call log and WhatsApp calls land on the alumnus by themselves, and the caller card shows “🎓 Alumni”',
+      '⏰ Next contact with a reminder, 🎂 birthdays with a wish reminder, and “Alumni to contact” on Home',
+      '📌 Pin notes, hold to delete (↩ undo), and see the history by Calls / Notes / Referrals / Changes',
+      '☑ Mark many: note, next contact, tag, who looks after them, do not contact, course, delete',
+    ],
+  },
+  {
     key: '2026-11-08-k',
     date: '8 Nov 2026',
     title: '🧠 Claude Haiku 5.5: the cheap Claude',
