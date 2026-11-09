@@ -13,7 +13,9 @@ export const WHATS_NEW: WhatsNew[] = [
     title: '🏦 Lead Bank, and “Lost” is now “Not Now”',
     items: [
       '🏦 Lead Bank (admins, More → Lead Bank): keep many numbers aside in lists, out of the lead list. Bring them in by pasting or from Excel; numbers already in the bank or already leads are left out',
-      '🆕 New / ↩️ Returned: two tabs. Mark numbers → “Into leads” with a course, people in turn and a stage',
+      '🆕 New / ↩️ Returned: two tabs. Tap a number to see it; hold (or tap its circle) to mark. Marked → “Into leads” with a course, people in turn and a stage',
+      '👁 A returned number shows its old lead right in the bank: stage, Not Now reason, course, every call, note and timeline line',
+      '📁 Lists: “＋ New list” in the bank, and a list’s own numbers (new, returned, in leads, admitted) when you choose it',
       '↩️ Send leads back to the bank from the lead page or the list (mark → To bank), with a reason and rest days. When put back, the same lead returns with all its calls and notes',
       '📇 A call from a bank number shows “🏦 Lead Bank” on the caller card',
       '✕ “Lost” is called “Not Now” everywhere: the door stays open for later',
