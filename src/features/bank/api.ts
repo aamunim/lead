@@ -306,3 +306,48 @@ export function restingDays(r: Pick<BankRow, 'cooldown_until'>): number | null {
   const ms = new Date(r.cooldown_until).getTime() - Date.now();
   return ms > 0 ? Math.ceil(ms / 86400000) : null;
 }
+
+// ---------------------------------------------------------------------
+// 👁 A returned number's old lead: what it was, its calls, its timeline
+// ---------------------------------------------------------------------
+export type BankHistory = {
+  lead: {
+    id: string;
+    name: string;
+    phone: string | null;
+    rating: string | null;
+    stage: string | null;
+    stage_kind: string | null;
+    owner: string | null;
+    source: string | null;
+    created_at: string;
+    lost_reason: string | null;
+    lost_note: string | null;
+    hidden: boolean;
+    courses: string | null;
+  } | null;
+  calls: {
+    id: string;
+    called_at: string;
+    outcome: string;
+    duration_sec: number | null;
+    notes: string | null;
+    direction: string | null;
+    channel: string | null;
+    media: string | null;
+    by: string | null;
+  }[];
+  activity: {
+    id: string;
+    created_at: string;
+    action: string;
+    details: Record<string, unknown> | null;
+    by: string | null;
+  }[];
+  stages: Record<string, { name: string; kind: string }>;
+  people: Record<string, string>;
+};
+
+export async function bankHistory(bankId: string): Promise<BankHistory> {
+  return rpc<BankHistory>('bank_history', { p_bank_id: bankId });
+}
