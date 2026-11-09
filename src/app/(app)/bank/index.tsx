@@ -95,6 +95,10 @@ export default function LeadBankScreen() {
   }, [params.q, params.tab]);
 
   const query = useMemo<BankQuery>(() => ({ tab, listId, search, resting, dnc }), [tab, listId, search, resting, dnc]);
+  const queryNow = useRef(query);
+  useEffect(() => {
+    queryNow.current = query;
+  }, [query]);
 
   const loadSum = useCallback(() => {
     bankSummary()
@@ -126,6 +130,9 @@ export default function LeadBankScreen() {
   useEffect(() => {
     if (!admin) return;
     setSelected(new Set());
+    // the old filter's pages: no more of them (and one still on its way is dropped)
+    setMore(false);
+    reqId.current++;
     const t = setTimeout(() => load(0), search ? 300 : 0);
     return () => clearTimeout(t);
   }, [admin, load, search]);
@@ -155,7 +162,10 @@ export default function LeadBankScreen() {
   const selectAll = async () => {
     setBusy(true);
     try {
-      setSelected(new Set(await listBankIds(query)));
+      const asked = query;
+      const ids = await listBankIds(asked);
+      // the filter changed meanwhile: these ids are not what is on the screen
+      if (queryNow.current === asked) setSelected(new Set(ids));
     } catch (e) {
       say('Could not mark', e instanceof Error ? e.message : 'Try again.');
     } finally {
@@ -262,7 +272,7 @@ export default function LeadBankScreen() {
         </View>
         <View style={styles.flex}>
           <Button
-            title={busy ? 'Marking…' : `Mark all ${total}`}
+            title={busy ? 'Marking…' : `Mark all ${Math.min(total, 2000)}`}
             variant="secondary"
             onPress={selectAll}
             disabled={busy || total === 0}

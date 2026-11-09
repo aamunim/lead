@@ -97,7 +97,7 @@ function filtered<Q extends { eq: any; is: any; or: any; gt: any }>(query: Q, q:
   if (!q.resting && !q.dnc) query = query.or(`cooldown_until.is.null,cooldown_until.lte.${new Date().toISOString()}`);
   const s = (q.search ?? '').trim();
   if (s) {
-    const safe = s.replace(/[%,()*]/g, ' ');
+    const safe = s.replace(/[%,()*"\\:]/g, ' ');
     const digits = s.replace(/\D/g, '');
     const parts = [`name.ilike.%${safe}%`, `area.ilike.%${safe}%`];
     if (digits.length >= 3) parts.push(`phone.ilike.%${digits}%`, `whatsapp_number.ilike.%${digits}%`);
@@ -112,6 +112,8 @@ export async function listBank(q: BankQuery): Promise<{ rows: BankRow[]; total: 
   let query: any = filtered(supabase.from('lead_bank' as never).select(COLS, { count: 'exact' }) as any, q);
   query = query
     .order(q.tab === 'returned' ? 'returned_at' : 'created_at', { ascending: false })
+    // many share one time (one import, one "To bank"): the id keeps the pages apart
+    .order('id', { ascending: false })
     .range(page * BANK_PAGE, page * BANK_PAGE + BANK_PAGE - 1);
   const { data, error, count } = await query;
   if (error) throw toError(error);
@@ -205,7 +207,8 @@ export function parsePasted(text: string): BankInput[] {
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim();
     if (!t) continue;
-    const m = t.match(/(\+?88)?0?1[3-9][\d\s-]{8,12}/);
+    // exactly one number (the digits after it are not part of it)
+    const m = t.match(/(?:\+?88)?0?1[3-9](?:[\s-]?\d){8}(?!\d)/);
     if (!m) continue;
     const phone = m[0].replace(/[\s-]/g, '');
     const name = t

@@ -368,11 +368,13 @@ export function LeadDetailView({
         if (!live) return;
         if (!al) {
           // 🏦 a Lead Bank number (the caller card): admins go to it in the bank
-          if (!hasPermission('settings.manage')) return;
+          // (the bank row's own id, or a lead sent to the bank, e.g. from an old link)
+          if (!hasPermission('settings.manage') || !/^[0-9a-f-]{36}$/i.test(String(id))) return;
           const { data: b } = await supabase
             .from('lead_bank' as never)
             .select('phone, status')
-            .eq('id', id)
+            .or(`id.eq.${id},lead_id.eq.${id}`)
+            .limit(1)
             .maybeSingle();
           const row = b as { phone: string; status: string } | null;
           if (live && row) {
@@ -1555,7 +1557,9 @@ export function LeadDetailView({
           onDone={(msg) => {
             setBanking(false);
             Alert.alert('Done', msg);
-            router.back();
+            // the web Students panel closes; the phone goes back
+            if (onClosed) onClosed();
+            else router.back();
           }}
         />
       )}
