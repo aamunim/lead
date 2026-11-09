@@ -177,7 +177,7 @@ export const WHATS_NEW: WhatsNew[] = [
     items: [
       '❌ Team activity shows how many leads each person marked Lost, and the total',
       '📝 Tap a person in “Marked Lost” to see the leads, the reason and the note; tap a lead to open it',
-      '♻️ “Opened again” shows when a lost lead was brought back later',
+      '♻️ “Opened again” shows when a Not Now lead was brought back later',
     ],
   },
   {

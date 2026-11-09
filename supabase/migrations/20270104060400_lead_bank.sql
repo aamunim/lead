@@ -69,6 +69,9 @@ create index if not exists lead_bank_status_idx on public.lead_bank (status, cre
 create index if not exists lead_bank_list_idx on public.lead_bank (list_id, status);
 create index if not exists lead_bank_lead_idx on public.lead_bank (lead_id) where lead_id is not null;
 create index if not exists lead_bank_wa_idx on public.lead_bank (whatsapp_number) where whatsapp_number is not null;
+-- the caller card reads the newest waiting numbers
+create index if not exists lead_bank_dir_idx on public.lead_bank (updated_at desc)
+  where status <> 'in_leads' and not do_not_call;
 
 -- a lead sent to the bank: hidden like a deleted one (every list, count and report leaves it out)
 alter table public.leads add column if not exists banked_at timestamptz;
@@ -119,7 +122,10 @@ begin
   update public.lead_bank b
      set status = 'in_leads', lead_id = new.id, updated_at = now()
    where b.status <> 'in_leads'
-     and (b.phone in (new.phone, new.whatsapp_number) or b.whatsapp_number in (new.phone, new.whatsapp_number));
+     and (b.phone in (new.phone, new.whatsapp_number) or b.whatsapp_number in (new.phone, new.whatsapp_number))
+     -- a returned number keeps its own (hidden) lead and history
+     and not (b.lead_id is not null and b.lead_id <> new.id
+              and exists (select 1 from public.leads x where x.id = b.lead_id and x.banked_at is not null));
   return null;
 end;
 $$;
@@ -198,13 +204,14 @@ declare
   v_src     uuid;
   v_stage   uuid := p_stage;
   v_kind    text;
+  v_pc      uuid;
+  v_lstage  uuid;
   v_lead    uuid;
   v_who     uuid;
   v_n       int := 0;
   v_people  int := coalesce(array_length(p_assignees, 1), 0);
   v_created int := 0;
   v_back    int := 0;
-  v_skip    int := 0;
 begin
   if not public.bank_can() then raise exception 'Only an admin can do this.'; end if;
   if coalesce(array_length(p_ids, 1), 0) = 0 then raise exception 'Choose the numbers.'; end if;
@@ -232,12 +239,21 @@ begin
     returning id into v_src;
   end if;
 
+  -- the timeline shows "from the Lead Bank", not "deleted / restored"
+  perform set_config('app.bank', 'on', true);
   for b in select * from public.lead_bank
            where id = any (p_ids) and status <> 'in_leads' and not do_not_call
              and (cooldown_until is null or cooldown_until <= now())
            order by created_at
            for update
   loop
+    -- a live lead has this number already (added by hand meanwhile): leave it
+    if exists (select 1 from public.leads l
+               where l.deleted_at is null and l.id is distinct from b.lead_id
+                 and (b.phone in (l.phone, l.alt_phone, l.whatsapp_number)
+                      or (b.whatsapp_number is not null and b.whatsapp_number in (l.phone, l.alt_phone, l.whatsapp_number)))) then
+      continue;
+    end if;
     v_who := case when v_people > 0 then p_assignees[(v_n % v_people) + 1] end;
     v_n := v_n + 1;
     v_lead := null;
@@ -250,32 +266,39 @@ begin
          set deleted_at = null, banked_at = null,
              assigned_to = coalesce(v_who, assigned_to)
        where id = v_lead;
-      select s.kind into v_kind from public.leads l join public.pipeline_stages s on s.id = l.stage_id where l.id = v_lead;
-      if v_kind <> 'open' then
-        perform public.reopen_lead(v_lead, v_stage, 'From the Lead Bank');
-      else
-        update public.leads set stage_id = v_stage where id = v_lead and stage_id <> v_stage;
-      end if;
-      perform set_config('app.pipeline_action', '', true);
+      -- a course first (its pipeline follows), then the stage that fits that course
       if p_course is not null and not exists (select 1 from public.lead_courses where lead_id = v_lead) then
         insert into public.lead_courses (lead_id, course_id) values (v_lead, p_course) on conflict do nothing;
       end if;
+      select s.kind, l.pipeline_course_id into v_kind, v_pc
+        from public.leads l join public.pipeline_stages s on s.id = l.stage_id where l.id = v_lead;
+      v_lstage := case when public.stage_ok_for_course(v_stage, v_pc) then v_stage
+                       else coalesce(public.first_stage_for_course(v_pc), v_stage) end;
+      perform set_config('app.pipeline_action', 'on', true);
+      if v_kind <> 'open' then
+        perform public.reopen_lead(v_lead, v_lstage, 'From the Lead Bank');
+        perform set_config('app.stage_note', '', true);
+        perform set_config('app.pipeline_action', 'on', true);
+      else
+        update public.leads set stage_id = v_lstage where id = v_lead and stage_id <> v_lstage;
+      end if;
+      perform set_config('app.pipeline_action', '', true);
       insert into public.lead_activity (lead_id, user_id, action, details)
-      values (v_lead, auth.uid(), 'bank_pulled', jsonb_build_object('times', b.times_pulled + 1));
+      values (v_lead, auth.uid(), 'bank_pulled', jsonb_build_object(
+        'times', b.times_pulled + 1, 'back', true,
+        'list', (select name from public.lead_bank_lists where id = b.list_id)));
       v_back := v_back + 1;
     else
-      -- a live lead has this number already (added by hand meanwhile): leave it
-      if exists (select 1 from public.leads l where l.deleted_at is null
-                   and (b.phone in (l.phone, l.alt_phone, l.whatsapp_number)
-                        or (b.whatsapp_number is not null and b.whatsapp_number in (l.phone, l.alt_phone, l.whatsapp_number)))) then
-        v_skip := v_skip + 1;
-        continue;
-      end if;
       if p_course is null and exists (select 1 from public.courses where is_active) then
         raise exception 'Choose a course for the new leads.' using hint = 'course_required';
       end if;
-      insert into public.leads (name, phone, whatsapp_number, area, notes, source_id, stage_id, assigned_to, created_by)
-      values (coalesce(b.name, 'No name'), b.phone, b.whatsapp_number, b.area, b.note, v_src, v_stage, v_who, auth.uid())
+      -- the stage must be one used for this course
+      v_lstage := case when public.stage_ok_for_course(v_stage, p_course) then v_stage
+                       else coalesce(public.first_stage_for_course(p_course), v_stage) end;
+      insert into public.leads (name, phone, whatsapp_number, area, notes, source_id, stage_id, pipeline_course_id,
+                                assigned_to, created_by)
+      values (coalesce(b.name, 'No name'), b.phone, b.whatsapp_number, b.area, b.note, v_src, v_lstage, p_course,
+              v_who, auth.uid())
       returning id into v_lead;
       if p_course is not null then
         insert into public.lead_courses (lead_id, course_id) values (v_lead, p_course) on conflict do nothing;
@@ -291,6 +314,7 @@ begin
            last_pulled_at = now(), last_pulled_by = auth.uid()
      where id = b.id;
   end loop;
+  perform set_config('app.bank', '', true);
 
   return jsonb_build_object('created', v_created, 'back', v_back,
                             'skipped', coalesce(array_length(p_ids, 1), 0) - v_created - v_back);
@@ -312,6 +336,7 @@ as $$
 declare
   l        public.leads;
   v_key    text;
+  v_row    uuid;
   v_done   int := 0;
   v_skip   int := 0;
   v_reason text := nullif(left(trim(coalesce(p_reason, '')), 200), '');
@@ -331,23 +356,52 @@ begin
       continue;
     end if;
 
-    update public.lead_bank b
-       set status = 'returned', lead_id = l.id, name = coalesce(l.name, b.name),
-           returned_at = now(), returned_by = auth.uid(), return_reason = v_reason, cooldown_until = v_rest
-     where b.phone = v_key or b.lead_id = l.id;
-    if not found then
+    -- its bank row: the one tied to this lead, else a free one with this number
+    v_row := null;
+    select b.id into v_row from public.lead_bank b where b.lead_id = l.id
+     order by (b.phone = v_key) desc, b.updated_at desc limit 1;
+    if v_row is null then
+      select b.id into v_row from public.lead_bank b
+       where b.phone = v_key
+         -- never another live lead's number
+         and not (b.status = 'in_leads' and b.lead_id is not null
+                  and exists (select 1 from public.leads x where x.id = b.lead_id and x.deleted_at is null));
+    end if;
+
+    if v_row is not null then
+      -- the same number twice in the bank (e.g. imported again): keep one
+      delete from public.lead_bank b
+       where b.id <> v_row and b.status <> 'in_leads' and (b.lead_id is null or b.lead_id = l.id)
+         and (b.phone = v_key or b.lead_id = l.id);
+      update public.lead_bank b
+         set status = 'returned', lead_id = l.id, name = coalesce(l.name, b.name),
+             -- the lead's number now (unless another row has it)
+             phone = case when exists (select 1 from public.lead_bank x where x.phone = v_key and x.id <> b.id)
+                          then b.phone else v_key end,
+             returned_at = now(), returned_by = auth.uid(), return_reason = v_reason, cooldown_until = v_rest
+       where b.id = v_row;
+    else
       insert into public.lead_bank (name, phone, whatsapp_number, area, status, lead_id,
                                     returned_at, returned_by, return_reason, cooldown_until)
       values (l.name, v_key, l.whatsapp_number, l.area, 'returned', l.id, now(), auth.uid(), v_reason, v_rest)
-      on conflict (phone) do update
-        set status = 'returned', lead_id = excluded.lead_id, returned_at = excluded.returned_at,
-            returned_by = excluded.returned_by, return_reason = excluded.return_reason,
-            cooldown_until = excluded.cooldown_until;
+      on conflict (phone) do nothing;
+      if not found then
+        -- another live lead has this number in the bank: this one stays a lead
+        v_skip := v_skip + 1;
+        continue;
+      end if;
     end if;
 
     insert into public.lead_activity (lead_id, user_id, action, details)
-    values (l.id, auth.uid(), 'bank_returned', jsonb_build_object('reason', v_reason));
+    values (l.id, auth.uid(), 'bank_returned', jsonb_build_object('reason', v_reason, 'rest_days',
+            case when v_rest is null then 0 else least(p_rest_days, 365) end));
+    -- its waiting calls are not anyone's job now
+    update public.follow_ups
+       set status = 'cancelled', completed_at = now(), completed_by = auth.uid()
+     where lead_id = l.id and status = 'pending';
+    perform set_config('app.bank', 'on', true);
     update public.leads set deleted_at = now(), banked_at = now() where id = l.id;
+    perform set_config('app.bank', '', true);
     v_done := v_done + 1;
   end loop;
   return jsonb_build_object('returned', v_done, 'skipped', coalesce(array_length(p_lead_ids, 1), 0) - v_done);
@@ -392,6 +446,57 @@ end;
 $$;
 revoke all on function public.bank_summary() from public, anon;
 grant execute on function public.bank_summary() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 🗑 A returned number deleted from the bank: its hidden lead is deleted
+--   too (a normal deleted lead now, with "Lead deleted" on its timeline)
+-- ---------------------------------------------------------------------
+create or replace function public.lead_bank_after_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.lead_id is not null then
+    update public.leads set banked_at = null
+     where id = old.lead_id and banked_at is not null and deleted_at is not null;
+    if found then
+      insert into public.lead_activity (lead_id, user_id, action, details)
+      values (old.lead_id, auth.uid(), 'deleted', jsonb_build_object('from', 'lead_bank'));
+    end if;
+  end if;
+  return null;
+end;
+$$;
+drop trigger if exists lead_bank_after_delete on public.lead_bank;
+create trigger lead_bank_after_delete after delete on public.lead_bank
+  for each row execute function public.lead_bank_after_delete();
+
+-- The caller card's bank part: every active user's phone knows these numbers
+-- (only a name and the list, never the details: the bank stays admins-only)
+create or replace function public.bank_directory()
+returns table(hash text, id uuid, name text, stage text, note text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select bk.phone_hash, bk.id,
+         -- 🏦 in front: a WhatsApp contact name never matches a bank number
+         '🏦 ' || coalesce(bk.name, 'Lead Bank'),
+         '🏦 Lead Bank' || coalesce(' · ' || li.name, '') ||
+           case when bk.status = 'returned' then ' · returned' else '' end,
+         bk.return_reason
+  from (select b.phone_hash, b.id, b.name, b.list_id, b.status, b.return_reason
+        from public.lead_bank b
+        where b.status <> 'in_leads' and not b.do_not_call and b.phone_hash is not null
+        order by b.updated_at desc limit 5000) bk
+  left join public.lead_bank_lists li on li.id = bk.list_id
+  where public.is_active_user();
+$$;
+revoke all on function public.bank_directory() from public, anon;
+grant execute on function public.bank_directory() to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 📇 The phone's caller card: bank numbers too ("🏦 Lead Bank · list").
@@ -468,15 +573,8 @@ as $$
     where k.key is not null
     union all
     -- 🏦 the bank (waiting numbers only; the hash is kept on the row)
-    select 3, bk.id, coalesce(bk.name, 'Lead Bank'), null,
-           '🏦 Lead Bank' || coalesce(' · ' || li.name, '') ||
-             case when bk.status = 'returned' then ' · returned' else '' end,
-           null, bk.return_reason, null, null::numeric, null::timestamptz, null, bk.phone_hash
-    from (select * from public.lead_bank
-          where status <> 'in_leads' and not do_not_call
-          order by updated_at desc limit 5000) bk
-    left join public.lead_bank_lists li on li.id = bk.list_id
-    where public.is_active_user()
+    select 3, bd.id, bd.name, null, bd.stage, null, bd.note, null, null::numeric, null::timestamptz, null, bd.hash
+    from public.bank_directory() bd
   )
   select distinct on (k.h)
          k.h, k.id, k.name, k.rating, k.stage, k.course, left(k.last_note, 120),
@@ -502,7 +600,11 @@ declare
     ['public.guard_lead_pipeline()', 'Mark lost', 'Not Now'],
     ['public.guard_pipeline_stage()', 'Admitted, Lost or Cancelled', 'Admitted, Not Now or Cancelled'],
     ['public.notify_lead_updates()', 'r.first_name || '' lost''', 'r.first_name || '': Not Now'''],
-    ['public.notify_lead_updates()', 'r.n || '' leads lost''', 'r.n || '' leads: Not Now''']
+    ['public.notify_lead_updates()', 'r.n || '' leads lost''', 'r.n || '' leads: Not Now'''],
+    ['public.ai_chance_request(uuid)', 'Only open leads (not admitted or lost).', 'Only open leads (not admitted or Not Now).'],
+    -- to the bank and back: the timeline says so itself (bank_returned / bank_pulled)
+    ['public.leads_log_activity()', 'if new.deleted_at is distinct from old.deleted_at then',
+     'if new.deleted_at is distinct from old.deleted_at and coalesce(current_setting(''app.bank'', true), '''') <> ''on'' then']
   ];
   i   int;
   f   regprocedure;

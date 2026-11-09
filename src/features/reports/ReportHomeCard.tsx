@@ -69,7 +69,7 @@ export function ReportHomeCard() {
           <Stat value={String(s.new_leads)} label="new" />
           <Stat value={String(s.admitted)} label="admitted" />
           <Stat value={pct(s.cohort_admitted, s.new_leads)} label="conversion" />
-          <Stat value={String(s.lost)} label="lost" />
+          <Stat value={String(s.lost)} label="not now" />
         </View>
         {/* Where this month's new leads are now */}
         {s.new_leads > 0 && <PipelineBars steps={report.pipeline} mode="period" compact />}

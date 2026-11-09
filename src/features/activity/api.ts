@@ -323,7 +323,12 @@ export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; acti
     icon: '🗑',
     actions: ['call_deleted', 'call_note_deleted', 'note_deleted', 'entry_restored'],
   },
-  { kind: 'lead', label: 'Added / deleted', icon: '➕', actions: ['created', 're_enquiry', 'deleted', 'restored'] },
+  {
+    kind: 'lead',
+    label: 'Added / deleted',
+    icon: '➕',
+    actions: ['created', 're_enquiry', 'deleted', 'restored', 'bank_returned', 'bank_pulled'],
+  },
 ];
 
 export function kindOf(action: string) {
@@ -536,6 +541,18 @@ export function describeChange(
       return { text: 'Lead deleted', warn: true };
     case 'restored':
       return { text: 'Lead restored', warn: false };
+    case 'bank_returned':
+      return {
+        text: `🏦 Sent to the Lead Bank${d.reason ? ` · ${q(d.reason)}` : ''}${
+          Number(d.rest_days ?? 0) > 0 ? ` · rests ${q(d.rest_days)} days` : ''
+        }`,
+        warn: false,
+      };
+    case 'bank_pulled':
+      return {
+        text: `🏦 ${d.back ? 'Back' : 'Came'} from the Lead Bank${d.list ? ` (${q(d.list)})` : ''}`,
+        warn: false,
+      };
     case 'call_deleted': {
       const what = d.channel === 'whatsapp' ? (d.media === 'message' ? 'WhatsApp message' : 'WhatsApp call') : 'Call';
       return {

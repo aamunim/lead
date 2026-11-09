@@ -734,6 +734,14 @@ export function LeadDetailView({
         return 'Lead deleted';
       case 'restored':
         return 'Lead restored';
+      case 'bank_returned':
+        return `🏦 Sent to the Lead Bank${d.reason ? ` · ${String(d.reason)}` : ''}${
+          Number(d.rest_days ?? 0) > 0 ? ` · rests ${Number(d.rest_days)} days` : ''
+        }`;
+      case 'bank_pulled':
+        return d.back
+          ? `🏦 Back from the Lead Bank${d.list ? ` (${String(d.list)})` : ''}`
+          : `🏦 Came from the Lead Bank${d.list ? ` (${String(d.list)})` : ''}`;
       case 'bulk_placement':
         return `🔀 Moved: ${String(d.from ?? '—')} → ${String(d.to ?? '')} (with ${Number(d.count ?? 1)})`;
       case 'student_ref_renumbered':

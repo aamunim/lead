@@ -118,13 +118,21 @@ export async function listBank(q: BankQuery): Promise<{ rows: BankRow[]; total: 
   return { rows: (data ?? []) as BankRow[], total: count ?? 0 };
 }
 
-/** "Select all that match" (at most 2000: one batch into the leads) */
+/** "Select all that match" (at most 2000: one batch into the leads).
+ *  In pages of 1000: the server never sends more than that at once. */
 export async function listBankIds(q: BankQuery, limit = 2000): Promise<string[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const query: any = filtered(supabase.from('lead_bank' as never).select('id') as any, q);
-  const { data, error } = await query.order('created_at').limit(limit);
-  if (error) throw toError(error);
-  return ((data ?? []) as { id: string }[]).map((r) => r.id);
+  const out: string[] = [];
+  for (let from = 0; from < limit; from += 1000) {
+    const to = Math.min(limit, from + 1000) - 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const query: any = filtered(supabase.from('lead_bank' as never).select('id') as any, q);
+    const { data, error } = await query.order('created_at').order('id').range(from, to);
+    if (error) throw toError(error);
+    const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+    out.push(...ids);
+    if (ids.length < to - from + 1) break;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------

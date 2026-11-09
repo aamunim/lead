@@ -68,7 +68,8 @@ export default function LeadBankScreen() {
   const [tab, setTab] = useState<BankTab>(params.tab === 'returned' ? 'returned' : 'new');
   const [listId, setListId] = useState<string | null>(null);
   const [search, setSearch] = useState(typeof params.q === 'string' ? params.q : '');
-  const [resting, setResting] = useState(false);
+  // a number looked up from the caller card may be resting: show those too
+  const [resting, setResting] = useState(typeof params.q === 'string' && params.q !== '');
   const [dnc, setDnc] = useState(false);
   const [sum, setSum] = useState<BankSummary | null>(null);
   const [rows, setRows] = useState<BankRow[] | null>(null);
@@ -82,6 +83,16 @@ export default function LeadBankScreen() {
   const [sheet, setSheet] = useState<null | 'pull' | 'import' | 'more' | 'move' | 'list' | 'rename'>(null);
   const [listFor, setListFor] = useState<{ id: string; name: string } | null>(null);
   const reqId = useRef(0);
+
+  // opened again from another caller card while this screen is open
+  useEffect(() => {
+    if (typeof params.q !== 'string' || !params.q) return;
+    setSearch(params.q);
+    setResting(true);
+    setDnc(false);
+    setListId(null);
+    setTab(params.tab === 'returned' ? 'returned' : 'new');
+  }, [params.q, params.tab]);
 
   const query = useMemo<BankQuery>(() => ({ tab, listId, search, resting, dnc }), [tab, listId, search, resting, dnc]);
 
@@ -354,7 +365,15 @@ export default function LeadBankScreen() {
               danger: true,
               onPress: async () => {
                 setSheet(null);
-                if (await confirm(`Delete ${ids.length}?`, 'They leave the bank for good.', 'Delete'))
+                if (
+                  await confirm(
+                    `Delete ${ids.length}?`,
+                    tab === 'returned'
+                      ? 'They leave the bank for good, and their old leads (with the history) are deleted too.'
+                      : 'They leave the bank for good.',
+                    'Delete',
+                  )
+                )
                   run(() => deleteBankRows(ids), `${ids.length} deleted.`);
               },
             },

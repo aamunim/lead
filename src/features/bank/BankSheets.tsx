@@ -154,7 +154,16 @@ const norm = (h: string) => h.toLowerCase().replace(/[^a-z0-9ঀ-৿]/g, '');
 const PHONE_WORDS = ['phone', 'mobile', 'number', 'contact', 'cell', 'ফোন', 'মোবাইল', 'নম্বর'];
 const NAME_WORDS = ['name', 'নাম'];
 const AREA_WORDS = ['area', 'address', 'district', 'upazila', 'thana', 'এলাকা', 'ঠিকানা'];
-const WA_WORDS = ['whatsapp', 'wa'];
+/** "WhatsApp", "WhatsApp number", "WA" (not "Ward") */
+const isWa = (h: string) => h.includes('whatsapp') || h === 'wa' || h === 'wano' || h === 'wanumber';
+
+/** The column for these words: an exact header first, then one that has the word in it */
+function column(heads: string[], words: string[], skip: (h: string, i: number) => boolean = () => false) {
+  const ws = words.map(norm);
+  const exact = heads.findIndex((h, i) => !skip(h, i) && ws.includes(h));
+  if (exact >= 0) return exact;
+  return heads.findIndex((h, i) => !skip(h, i) && ws.some((w) => w.length > 2 && h.includes(w)));
+}
 
 export function ImportSheet({
   lists,
@@ -176,6 +185,8 @@ export function ImportSheet({
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // a new list made on a try that failed later: used again, not made twice
+  const [made, setMade] = useState<{ name: string; id: string } | null>(null);
 
   const pasted = useMemo(() => (mode === 'paste' ? parsePasted(text) : []), [mode, text]);
   const rows = mode === 'paste' ? pasted : (fileRows ?? []);
@@ -191,12 +202,13 @@ export function ImportSheet({
       if (!f) return;
       const sh = await readSpreadsheet(f.uri);
       const heads = sh.headers.map(norm);
-      const find = (words: string[]) => heads.findIndex((h) => words.some((w) => h.includes(norm(w))));
-      const iPhone = find(PHONE_WORDS);
+      // the phone column is not the WhatsApp one (unless that is all there is)
+      let iPhone = column(heads, PHONE_WORDS, (h) => isWa(h));
+      if (iPhone < 0) iPhone = heads.findIndex(isWa);
       if (iPhone < 0) throw new Error('No phone column found (a header like “Phone” or “Mobile”).');
-      const iName = find(NAME_WORDS);
-      const iArea = find(AREA_WORDS);
-      const iWa = find(WA_WORDS);
+      const iName = column(heads, NAME_WORDS, (_, i) => i === iPhone);
+      const iArea = column(heads, AREA_WORDS, (_, i) => i === iPhone || i === iName);
+      const iWa = heads.findIndex((h, i) => i !== iPhone && isWa(h));
       const out: BankInput[] = [];
       for (const r of sh.rows) {
         const phone = (r[iPhone] ?? '').trim();
@@ -205,7 +217,7 @@ export function ImportSheet({
           phone,
           name: iName >= 0 ? (r[iName] ?? '').trim() || undefined : undefined,
           area: iArea >= 0 ? (r[iArea] ?? '').trim() || undefined : undefined,
-          whatsapp_number: iWa >= 0 && iWa !== iPhone ? (r[iWa] ?? '').trim() || undefined : undefined,
+          whatsapp_number: iWa >= 0 ? (r[iWa] ?? '').trim() || undefined : undefined,
         });
       }
       setFileRows(out);
@@ -221,7 +233,11 @@ export function ImportSheet({
     setError(null);
     try {
       let target = listId;
-      if (newList.trim()) target = await createBankList(newList);
+      const name = newList.trim();
+      if (name) {
+        target = made?.name === name ? made.id : await createBankList(name);
+        setMade({ name, id: target });
+      }
       const r = await importToBank(target, rows, setStep);
       onDone(r);
     } catch (e) {
