@@ -220,18 +220,37 @@ export function parsePasted(text: string): BankInput[] {
   return out;
 }
 
-export async function pullFromBank(input: {
-  ids: string[];
-  courseId: string | null;
-  assignees: string[];
-  stageId?: string | null;
-}): Promise<{ created: number; back: number; skipped: number }> {
-  return rpc('bank_pull', {
-    p_ids: input.ids,
-    p_course: input.courseId,
-    p_assignees: input.assignees,
-    p_stage: input.stageId ?? null,
-  });
+/** 500 per request (each new lead runs every lead rule on the server); people take
+ *  turns across the parts as if it were one batch. onStep shows how far. */
+export async function pullFromBank(
+  input: {
+    ids: string[];
+    courseId: string | null;
+    assignees: string[];
+    stageId?: string | null;
+  },
+  onStep?: (done: number) => void,
+): Promise<{ created: number; back: number; skipped: number }> {
+  const total = { created: 0, back: 0, skipped: 0 };
+  const people = input.assignees;
+  let turn = 0;
+  for (let i = 0; i < input.ids.length; i += 500) {
+    const part = input.ids.slice(i, i + 500);
+    // the next person in line starts this part
+    const start = people.length ? turn % people.length : 0;
+    const r = await rpc<{ created: number; back: number; skipped: number }>('bank_pull', {
+      p_ids: part,
+      p_course: input.courseId,
+      p_assignees: [...people.slice(start), ...people.slice(0, start)],
+      p_stage: input.stageId ?? null,
+    });
+    total.created += r.created;
+    total.back += r.back;
+    total.skipped += r.skipped;
+    turn += r.created + r.back;
+    onStep?.(Math.min(input.ids.length, i + 500));
+  }
+  return total;
 }
 
 export const RETURN_REASONS = ['Not reachable', 'Not interested now', 'Next session', 'Wrong number', 'Other'];

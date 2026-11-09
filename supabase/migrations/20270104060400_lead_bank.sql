@@ -86,6 +86,18 @@ create policy "lead bank: admins" on public.lead_bank for all to authenticated
   using ((select public.bank_can())) with check ((select public.bank_can()));
 grant select, insert, update, delete on public.lead_bank_lists, public.lead_bank to authenticated;
 
+-- A WhatsApp number in the leads' own form, or null when it isn't a valid one
+-- (a bad one would stop a whole batch going into the leads)
+create or replace function public.bank_wa(p text)
+returns text
+language sql
+stable
+set search_path = public
+as $$
+  select case when w ~ '^01[3-9][0-9]{8}$' or w ~ '^\+[1-9][0-9]{7,14}$' then w end
+  from (select public.normalize_wa_number(nullif(trim(coalesce(p, '')), '')) as w) x;
+$$;
+
 -- numbers in one form, the caller card's hash
 create or replace function public.lead_bank_before_write()
 returns trigger
@@ -95,7 +107,7 @@ as $$
 begin
   new.name := nullif(trim(coalesce(new.name, '')), '');
   new.phone := nullif(public.normalize_bd_phone(nullif(trim(coalesce(new.phone, '')), '')), '');
-  new.whatsapp_number := nullif(public.normalize_bd_phone(nullif(trim(coalesce(new.whatsapp_number, '')), '')), '');
+  new.whatsapp_number := public.bank_wa(new.whatsapp_number);
   if new.phone is null then new.phone := new.whatsapp_number; end if;
   if new.phone is null then raise exception 'A number is needed.'; end if;
   if new.whatsapp_number = new.phone then new.whatsapp_number := null; end if;
@@ -160,7 +172,7 @@ begin
 
   for r in select * from jsonb_array_elements(p_rows) loop
     v_phone := nullif(public.normalize_bd_phone(nullif(trim(coalesce(r ->> 'phone', '')), '')), '');
-    v_wa := nullif(public.normalize_bd_phone(nullif(trim(coalesce(r ->> 'whatsapp_number', '')), '')), '');
+    v_wa := public.bank_wa(r ->> 'whatsapp_number');
     v_phone := coalesce(v_phone, v_wa);
     if v_phone is null or length(regexp_replace(v_phone, '\D', '', 'g')) < 10 then
       v_bad := v_bad + 1;
@@ -208,6 +220,10 @@ declare
   v_lstage  uuid;
   v_lead    uuid;
   v_who     uuid;
+  v_old     uuid;
+  v_to      uuid;
+  v_auto    boolean;
+  v_notify  jsonb := '[]'::jsonb;
   v_n       int := 0;
   v_people  int := coalesce(array_length(p_assignees, 1), 0);
   v_created int := 0;
@@ -215,7 +231,8 @@ declare
 begin
   if not public.bank_can() then raise exception 'Only an admin can do this.'; end if;
   if coalesce(array_length(p_ids, 1), 0) = 0 then raise exception 'Choose the numbers.'; end if;
-  if array_length(p_ids, 1) > 2000 then raise exception 'At most 2000 at a time.'; end if;
+  -- (each new lead runs every lead trigger: 500 keeps one call well inside the time limit)
+  if array_length(p_ids, 1) > 500 then raise exception 'At most 500 at a time.'; end if;
   if p_course is not null and not exists (select 1 from public.courses where id = p_course and is_active) then
     raise exception 'Choose a course that is open for leads.';
   end if;
@@ -261,11 +278,19 @@ begin
     -- 🔁 its own lead, back from the bank
     if b.lead_id is not null and exists (select 1 from public.leads where id = b.lead_id and banked_at is not null) then
       v_lead := b.lead_id;
+      select assigned_to into v_old from public.leads where id = v_lead;
+      -- nobody chosen: its old person, if still working here
+      v_to := coalesce(v_who, (select p.id from public.profiles p where p.id = v_old and p.is_active));
       perform set_config('app.pipeline_action', 'on', true);
       update public.leads
-         set deleted_at = null, banked_at = null,
-             assigned_to = coalesce(v_who, assigned_to)
+         set deleted_at = null, banked_at = null, assigned_to = v_to
        where id = v_lead;
+      -- calls made to the number while it was in the bank
+      perform public.claim_held_calls(v_lead);
+      if v_to is not null and v_to is distinct from v_old and v_to is distinct from auth.uid() then
+        v_notify := v_notify || jsonb_build_object('id', v_lead, 'name', b.name, 'phone', b.phone,
+                                                   'assigned_to', v_to, 'auto', false);
+      end if;
       -- a course first (its pipeline follows), then the stage that fits that course
       if p_course is not null and not exists (select 1 from public.lead_courses where lead_id = v_lead) then
         insert into public.lead_courses (lead_id, course_id) values (v_lead, p_course) on conflict do nothing;
@@ -299,7 +324,11 @@ begin
                                 assigned_to, created_by)
       values (coalesce(b.name, 'No name'), b.phone, b.whatsapp_number, b.area, b.note, v_src, v_lstage, p_course,
               v_who, auth.uid())
-      returning id into v_lead;
+      returning id, assigned_to, assignment_method = 'auto' into v_lead, v_to, v_auto;
+      if v_to is not null and v_to is distinct from auth.uid() then
+        v_notify := v_notify || jsonb_build_object('id', v_lead, 'name', coalesce(b.name, 'No name'), 'phone', b.phone,
+                                                   'assigned_to', v_to, 'auto', coalesce(v_auto, false));
+      end if;
       if p_course is not null then
         insert into public.lead_courses (lead_id, course_id) values (v_lead, p_course) on conflict do nothing;
       end if;
@@ -315,6 +344,8 @@ begin
      where id = b.id;
   end loop;
   perform set_config('app.bank', '', true);
+  -- one "👥 N leads for you" per person, not one per lead
+  perform public.notify_assigned(v_notify);
 
   return jsonb_build_object('created', v_created, 'back', v_back,
                             'skipped', coalesce(array_length(p_ids, 1), 0) - v_created - v_back);
@@ -347,7 +378,7 @@ begin
   if coalesce(array_length(p_lead_ids, 1), 0) = 0 then raise exception 'Choose the leads.'; end if;
   if array_length(p_lead_ids, 1) > 2000 then raise exception 'At most 2000 at a time.'; end if;
 
-  for l in select * from public.leads where id = any (p_lead_ids) and deleted_at is null for update
+  for l in select * from public.leads where id = any (p_lead_ids) and deleted_at is null order by id for update
   loop
     v_key := coalesce(nullif(public.normalize_bd_phone(l.phone), ''), nullif(public.normalize_bd_phone(l.whatsapp_number), ''));
     -- 🎓 admitted students stay; a lead with no number can't be kept in the bank
@@ -369,6 +400,16 @@ begin
     end if;
 
     if v_row is not null then
+      -- the row still belongs to an older hidden lead with this number (a new lead
+      -- was added meanwhile): that old one becomes a normal deleted lead
+      update public.leads x set banked_at = null
+        from public.lead_bank b
+       where b.id = v_row and x.id = b.lead_id and x.id <> l.id and x.banked_at is not null;
+      if found then
+        insert into public.lead_activity (lead_id, user_id, action, details)
+        select b.lead_id, auth.uid(), 'deleted', jsonb_build_object('from', 'lead_bank', 'replaced_by', l.id)
+          from public.lead_bank b where b.id = v_row;
+      end if;
       -- the same number twice in the bank (e.g. imported again): keep one
       delete from public.lead_bank b
        where b.id <> v_row and b.status <> 'in_leads' and (b.lead_id is null or b.lead_id = l.id)
@@ -603,6 +644,10 @@ declare
     ['public.notify_lead_updates()', 'r.n || '' leads lost''', 'r.n || '' leads: Not Now'''],
     ['public.ai_chance_request(uuid)', 'Only open leads (not admitted or lost).', 'Only open leads (not admitted or Not Now).'],
     -- to the bank and back: the timeline says so itself (bank_returned / bank_pulled)
+    ['public.notify_lead_inserts()', 'where n.assigned_to is not null and n.deleted_at is null',
+     'where n.assigned_to is not null and n.deleted_at is null and coalesce(current_setting(''app.bank'', true), '''') <> ''on'''],
+    ['public.notify_lead_updates()', 'where n.assigned_to is not null and n.deleted_at is null',
+     'where n.assigned_to is not null and n.deleted_at is null and coalesce(current_setting(''app.bank'', true), '''') <> ''on'''],
     ['public.leads_log_activity()', 'if new.deleted_at is distinct from old.deleted_at then',
      'if new.deleted_at is distinct from old.deleted_at and coalesce(current_setting(''app.bank'', true), '''') <> ''on'' then']
   ];
@@ -613,8 +658,8 @@ begin
   for i in 1 .. array_length(fixes, 1) loop
     f := fixes[i][1]::regprocedure;
     d := pg_get_functiondef(f);
-    if position(fixes[i][3] in d) > 0 and position(fixes[i][2] in d) = 0 then
-      continue;   -- done before
+    if position(fixes[i][3] in d) > 0 then
+      continue;   -- done before (a re-run changes nothing)
     end if;
     if position(fixes[i][2] in d) = 0 then
       raise exception 'Not Now rename: "%" not found in %, update this migration', fixes[i][2], f;

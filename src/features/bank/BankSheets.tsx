@@ -52,6 +52,7 @@ export function PullSheet({
   const [who, setWho] = useState<string[]>([]);
   const [stage, setStage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,8 +73,12 @@ export function PullSheet({
     if (needCourse && !course) return setError('Choose the course.');
     setBusy(true);
     setError(null);
+    let done = 0;
     try {
-      const r = await pullFromBank({ ids, courseId: course, assignees: who, stageId: stage });
+      const r = await pullFromBank({ ids, courseId: course, assignees: who, stageId: stage }, (n) => {
+        done = n;
+        setStep(n);
+      });
       const parts = [
         r.created ? `${r.created} new lead${r.created === 1 ? '' : 's'}` : null,
         r.back ? `${r.back} back with their history` : null,
@@ -82,7 +87,9 @@ export function PullSheet({
       say('Done', parts.join(' · ') || 'Nothing to put in.');
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not do it.');
+      const why = e instanceof Error ? e.message : 'Could not do it.';
+      // a long batch goes in parts: the parts before this one are in the leads already
+      setError(done > 0 ? `${why}\n(The first ${done} were done; try again for the rest.)` : why);
       setBusy(false);
     }
   };
@@ -134,6 +141,7 @@ export function PullSheet({
           </View>
         </>
       )}
+      {busy && ids.length > 500 && <Text style={ui.muted}>{`${step} / ${ids.length}…`}</Text>}
       {error && <Text style={ui.error}>{error}</Text>}
       <View style={styles.buttons}>
         <View style={styles.flex}>
