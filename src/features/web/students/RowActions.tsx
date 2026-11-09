@@ -136,7 +136,7 @@ export const LEAD_BULK: {
   { field: 'rating', label: '🔥 Rating' },
   { field: 'tags', label: '🏷 Tag' },
   { field: 'assign', label: '👤 Give to' },
-  { field: 'lost', label: '✕ Lost' },
+  { field: 'lost', label: '✕ Not Now' },
 ];
 
 export function LeadRowMenu({
@@ -163,7 +163,7 @@ export function LeadRowMenu({
     ...(open
       ? [
           { a: 'admit' as const, label: '🎓 Admit…', hint: 'on the lead page' },
-          { a: 'lost' as const, label: '✕ Mark as lost' },
+          { a: 'lost' as const, label: '✕ Not Now' },
         ]
       : []),
     { a: 'notes', label: '🕘 All calls & notes' },

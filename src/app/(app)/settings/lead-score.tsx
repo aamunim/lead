@@ -103,7 +103,7 @@ export default function LeadScoreSettingsScreen() {
             <Text style={styles.title}>🔥 Admission chance</Text>
             <Text style={styles.muted}>
               A number from 0 to 100 on every open lead, from its own calls, visits, fee talk, stage and rating. No AI,
-              no cost. Admitted = 100, Lost = 0.
+              no cost. Admitted = 100, Not Now = 0.
             </Text>
           </View>
           <Switch value={s.enabled} onValueChange={(v) => set({ ...s, enabled: v })} />

@@ -11,7 +11,6 @@ import type { WhoRule } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
-
 const ROLE_LABEL: Record<string, string> = {
   super_admin: 'Super Admin',
   admin: 'Admin',
@@ -104,7 +103,7 @@ export default function BoardSettingsScreen() {
 
       <Text style={styles.intro}>
         Leads → Board shows one column per pipeline stage. Press and hold a card to move the lead, mark it admitted or
-        lost, or set the next call.
+        Not Now, or set the next call.
       </Text>
 
       <View style={styles.card}>
@@ -121,10 +120,10 @@ export default function BoardSettingsScreen() {
           <Text style={styles.sectionLabel}>COLUMNS</Text>
           <View style={styles.card}>
             <SwitchRow
-              title="Admitted and Lost columns"
+              title="Admitted and Not Now columns"
               text={
                 settings.closed_columns
-                  ? '🎓 Admitted and ✕ Lost come after the open stages.'
+                  ? '🎓 Admitted and ✕ Not Now come after the open stages.'
                   : 'Only open stages. Closed leads are under the “Closed” chip.'
               }
               value={settings.closed_columns}
@@ -254,7 +253,13 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.background },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+  },
   pressed: { opacity: 0.7 },
   intro: { fontSize: fontSize.small, lineHeight: 20, color: colors.textMuted },
   sectionLabel: {

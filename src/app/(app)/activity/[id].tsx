@@ -235,7 +235,7 @@ export default function UserActivityScreen() {
             {name}
           </Text>
           <Text style={styles.role}>
-            {member ? ROLE[member.role_key] ?? member.role_key : ''}
+            {member ? (ROLE[member.role_key] ?? member.role_key) : ''}
             {member ? ' · ' : ''}
             <Text style={seen.online ? styles.online : undefined}>{seen.text}</Text>
           </Text>
@@ -243,7 +243,12 @@ export default function UserActivityScreen() {
       </View>
 
       {/* Period */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.noShrink} contentContainerStyle={styles.chips}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.noShrink}
+        contentContainerStyle={styles.chips}
+      >
         {ACTIVITY_PERIODS.map((p) => {
           const on = period === p.value;
           return (
@@ -283,7 +288,12 @@ export default function UserActivityScreen() {
         {member && (
           <>
             <View style={styles.tiles}>
-              <Tile label="In the app" value={formatDuration(member.app_sec)} now={member.app_sec} was={before?.app_sec} />
+              <Tile
+                label="In the app"
+                value={formatDuration(member.app_sec)}
+                now={member.app_sec}
+                was={before?.app_sec}
+              />
               <Tile label="Calls" value={String(member.calls)} now={member.calls} was={before?.calls} />
               <Tile
                 label="Answered"
@@ -291,7 +301,12 @@ export default function UserActivityScreen() {
                 now={member.calls ? member.connected / member.calls : 0}
                 was={before?.calls ? before.connected / before.calls : undefined}
               />
-              <Tile label="Talk time" value={formatDuration(member.talk_sec)} now={member.talk_sec} was={before?.talk_sec} />
+              <Tile
+                label="Talk time"
+                value={formatDuration(member.talk_sec)}
+                now={member.talk_sec}
+                was={before?.talk_sec}
+              />
               <Tile
                 label="WhatsApp"
                 value={String(member.wa_calls + member.wa_messages)}
@@ -302,9 +317,7 @@ export default function UserActivityScreen() {
               <Tile label="Admitted" value={String(member.admitted)} now={member.admitted} was={before?.admitted} />
               <Tile label="Sessions" value={String(member.sessions)} now={member.sessions} was={before?.sessions} />
             </View>
-            <Text style={styles.hint}>
-              ↑ / ↓ {vsText}. App time counts only while the app is open and being used.
-            </Text>
+            <Text style={styles.hint}>↑ / ↓ {vsText}. App time counts only while the app is open and being used.</Text>
           </>
         )}
       </Collapsible>
@@ -345,7 +358,8 @@ export default function UserActivityScreen() {
         {oneDay &&
           (detail?.gaps ?? []).map((g) => (
             <Text key={g.from} style={styles.gap}>
-              😴 {clock(g.from)} – {clock(g.to)} · nothing for {formatDuration(Math.round((Date.parse(g.to) - Date.parse(g.from)) / 1000))}
+              😴 {clock(g.from)} – {clock(g.to)} · nothing for{' '}
+              {formatDuration(Math.round((Date.parse(g.to) - Date.parse(g.from)) / 1000))}
             </Text>
           ))}
         {!oneDay && <Text style={styles.hint}>Choose Today or Yesterday to see quiet gaps.</Text>}
@@ -420,7 +434,11 @@ export default function UserActivityScreen() {
               <Tile label="SMS" value={String(tpl.totals.sms)} />
               <Tile label="Replied" value={pct(tpl.totals.replied, tpl.totals.leads)} />
               <Tile label="Moved on" value={pct(tpl.totals.moved, tpl.totals.leads)} />
-              <Tile label="Admitted" value={String(tpl.totals.admitted)} tone={tpl.totals.admitted > 0 ? 'good' : undefined} />
+              <Tile
+                label="Admitted"
+                value={String(tpl.totals.admitted)}
+                tone={tpl.totals.admitted > 0 ? 'good' : undefined}
+              />
             </View>
             {tpl.templates.length > 0 && <Text style={styles.subTitle}>Templates used</Text>}
             {tpl.templates.map((t) => (
@@ -432,7 +450,9 @@ export default function UserActivityScreen() {
                 <Text style={styles.dayMeta}>{t.leads} leads</Text>
               </View>
             ))}
-            <Text style={styles.hint}>Replied / moved on / admitted: what the leads did in the 7 days after a template.</Text>
+            <Text style={styles.hint}>
+              Replied / moved on / admitted: what the leads did in the 7 days after a template.
+            </Text>
           </>
         )}
       </Collapsible>
@@ -445,9 +465,7 @@ export default function UserActivityScreen() {
         open={open.has('followups')}
         onToggle={() => toggle('followups')}
         summary={
-          fu
-            ? `${fu.on_time}/${fu.due} on time${fu.overdue_now > 0 ? ` · ⚠ ${fu.overdue_now} overdue now` : ''}`
-            : '—'
+          fu ? `${fu.on_time}/${fu.due} on time${fu.overdue_now > 0 ? ` · ⚠ ${fu.overdue_now} overdue now` : ''}` : '—'
         }
       >
         {fu && (
@@ -499,7 +517,7 @@ export default function UserActivityScreen() {
         accent="#7C3AED"
         open={open.has('leads')}
         onToggle={() => toggle('leads')}
-        summary={ld ? `${ld.open_now} open · 🎓 ${ld.admitted} admitted · ✕ ${ld.lost} lost` : '—'}
+        summary={ld ? `${ld.open_now} open · 🎓 ${ld.admitted} admitted · ✕ ${ld.lost} Not Now` : '—'}
       >
         {ld && (
           <>
@@ -507,7 +525,7 @@ export default function UserActivityScreen() {
               <Tile label="Open now" value={String(ld.open_now)} />
               <Tile label="New given" value={String(ld.given)} />
               <Tile label="Admitted" value={String(ld.admitted)} tone="good" />
-              <Tile label="Lost" value={String(ld.lost)} tone={ld.lost > 0 ? 'warn' : undefined} />
+              <Tile label="Not Now" value={String(ld.lost)} tone={ld.lost > 0 ? 'warn' : undefined} />
             </View>
             {stageTotal > 0 && (
               <>
@@ -526,7 +544,7 @@ export default function UserActivityScreen() {
             )}
             {ld.lost_reasons.length > 0 && (
               <>
-                <Text style={styles.subTitle}>Why their leads were lost</Text>
+                <Text style={styles.subTitle}>Why their leads are Not Now</Text>
                 {ld.lost_reasons.map((r) => (
                   <Meter key={r.name} label={r.name} part={r.n} whole={ld.lost} />
                 ))}
@@ -556,7 +574,9 @@ export default function UserActivityScreen() {
             >
               <Text style={styles.dayLabel}>{shortDay(d.day)}</Text>
               <View style={styles.track}>
-                <View style={[styles.bar, { width: `${Math.max((d.app_sec / maxApp) * 100, d.app_sec > 0 ? 2 : 0)}%` }]} />
+                <View
+                  style={[styles.bar, { width: `${Math.max((d.app_sec / maxApp) * 100, d.app_sec > 0 ? 2 : 0)}%` }]}
+                />
               </View>
               <Text style={styles.dayValue}>{formatDuration(d.app_sec)}</Text>
               <Text style={styles.dayMeta}>
@@ -615,7 +635,11 @@ export default function UserActivityScreen() {
           {kindsHere.map((k) => {
             const on = kind === k.kind;
             return (
-              <Pressable key={k.kind} onPress={() => setKind(on ? null : k.kind)} style={[styles.chip, on && styles.chipOn]}>
+              <Pressable
+                key={k.kind}
+                onPress={() => setKind(on ? null : k.kind)}
+                style={[styles.chip, on && styles.chipOn]}
+              >
                 <Text style={[styles.chipText, on && styles.chipTextOn]}>
                   {k.icon} {k.label} {k.n}
                 </Text>
@@ -643,7 +667,12 @@ export default function UserActivityScreen() {
           title: name,
           // 📤 Calls, notes, changes… of this person as Excel / text / CSV
           headerRight: () => (
-            <Pressable onPress={() => setExporting(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Export work">
+            <Pressable
+              onPress={() => setExporting(true)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Export work"
+            >
               <Text style={styles.exportBtn}>⬇ Export</Text>
             </Pressable>
           ),
@@ -699,7 +728,8 @@ function Tile({
       delta = { text: `${p > 0 ? '↑' : '↓'} ${Math.abs(p)}%`, up: p > 0 };
     }
   }
-  const color = tone === 'good' ? colors.success : tone === 'warn' ? colors.warning : tone === 'bad' ? colors.danger : colors.text;
+  const color =
+    tone === 'good' ? colors.success : tone === 'warn' ? colors.warning : tone === 'bad' ? colors.danger : colors.text;
   return (
     <View style={styles.tile}>
       <Text style={[styles.tileValue, { color }]}>{value}</Text>
@@ -825,7 +855,13 @@ const styles = StyleSheet.create({
 
   hours: { flexDirection: 'row', alignItems: 'flex-end', height: 120, gap: 2 },
   hourCol: { flex: 1, alignItems: 'center', height: '100%' },
-  hourTrack: { flex: 1, width: '100%', justifyContent: 'flex-end', borderRadius: 3, backgroundColor: colors.background },
+  hourTrack: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'flex-end',
+    borderRadius: 3,
+    backgroundColor: colors.background,
+  },
   hourBarCalls: { width: '100%', backgroundColor: colors.primary, borderRadius: 2 },
   hourBarActions: { width: '100%', backgroundColor: '#A5B4FC', borderRadius: 2 },
   hourLabel: { fontSize: 9, color: colors.textMuted, marginTop: 2, height: 12 },
@@ -843,7 +879,13 @@ const styles = StyleSheet.create({
 
   dayRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dayLabel: { width: 48, fontSize: fontSize.caption, color: colors.textMuted },
-  dayValue: { width: 52, fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'right' },
+  dayValue: {
+    width: 52,
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    textAlign: 'right',
+  },
   dayMeta: { width: 74, fontSize: 11, color: colors.textMuted, textAlign: 'right' },
 
   sessionRow: {

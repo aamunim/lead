@@ -39,7 +39,7 @@ const AVATAR = [
 
 const CLOSED: Record<string, { label: string; color: string }> = {
   won: { label: 'Admitted', color: colors.success },
-  lost: { label: 'Lost', color: colors.danger },
+  lost: { label: 'Not Now', color: colors.danger },
   cancelled: { label: 'Cancelled', color: colors.textMuted },
 };
 

@@ -21,7 +21,7 @@ export const VOICE_CONTEXT: Record<string, string> = {
   visit: 'Campus visit',
   admission: 'Admission',
   papers: 'Papers',
-  lost: 'Lost',
+  lost: 'Not Now',
   reopen: 'Reopened',
   cancel: 'Admission cancelled',
   stage: 'Stage',

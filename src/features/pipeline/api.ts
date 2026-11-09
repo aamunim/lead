@@ -36,7 +36,7 @@ export type PipelineStage = {
 export const KIND_INFO: Record<StageKind, { label: string; icon: string; color: string }> = {
   open: { label: 'Open', icon: '●', color: colors.primary },
   won: { label: 'Admitted', icon: '🎓', color: colors.success },
-  lost: { label: 'Lost', icon: '✕', color: colors.danger },
+  lost: { label: 'Not Now', icon: '✕', color: colors.danger },
   cancelled: { label: 'Admission cancelled', icon: '↩', color: colors.textMuted },
 };
 
@@ -207,7 +207,10 @@ const toStage = (s: RawStage): PipelineStage => ({
 });
 
 /** Is this stage used for a course? (closed and system stages: always) */
-export function stageForCourse(s: { kind: string; isSystem?: boolean; courseIds?: string[] | null }, courseId: string | null) {
+export function stageForCourse(
+  s: { kind: string; isSystem?: boolean; courseIds?: string[] | null },
+  courseId: string | null,
+) {
   if (s.kind !== 'open' || s.isSystem || !s.courseIds) return true;
   return !!courseId && s.courseIds.includes(courseId);
 }
@@ -515,7 +518,12 @@ export async function getIdRulesData(): Promise<IdRulesData> {
       .eq('is_active', true)
       .order('start_date', { ascending: false, nullsFirst: false })
       .order('name'),
-    supabase.from('batch_sections').select('id, batch_id, name').eq('is_active', true).order('sort_order').order('name'),
+    supabase
+      .from('batch_sections')
+      .select('id, batch_id, name')
+      .eq('is_active', true)
+      .order('sort_order')
+      .order('name'),
   ]);
   if (r.error) throw toError(r.error);
   return {
@@ -531,7 +539,11 @@ export async function getIdRulesData(): Promise<IdRulesData> {
       used: x.used == null ? null : Number(x.used),
       label: x.label,
     })),
-    courses: (c.data ?? []).map((x) => ({ id: x.id, name: x.name, code: (x as { code?: string | null }).code ?? null })),
+    courses: (c.data ?? []).map((x) => ({
+      id: x.id,
+      name: x.name,
+      code: (x as { code?: string | null }).code ?? null,
+    })),
     batches: (b.data ?? []).map((x) => ({
       id: x.id,
       courseId: x.course_id,
@@ -683,7 +695,12 @@ export function reviveChoices(now = new Date()): ReviveChoice[] {
 }
 
 /** Reasons offered when cancelling an admission (any text is allowed) */
-export const CANCEL_REASONS = ['Refund requested', 'Joined another institution', 'Personal / family reason', 'Fee not paid'];
+export const CANCEL_REASONS = [
+  'Refund requested',
+  'Joined another institution',
+  'Personal / family reason',
+  'Fee not paid',
+];
 
 // =====================================================================
 // Stage history of one lead (newest first)

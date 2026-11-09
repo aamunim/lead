@@ -17,17 +17,17 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
-    KIND_INFO,
-    STAGE_COLORS,
-    createStage,
-    deleteStage,
-    listPipelineStages,
-    reorderOpenStages,
-    stageLeadCounts,
-    updateStage,
-    setStageCourses,
-    type PipelineStage,
-    type StageInput,
+  KIND_INFO,
+  STAGE_COLORS,
+  createStage,
+  deleteStage,
+  listPipelineStages,
+  reorderOpenStages,
+  stageLeadCounts,
+  updateStage,
+  setStageCourses,
+  type PipelineStage,
+  type StageInput,
 } from '@/features/pipeline/api';
 import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -150,7 +150,11 @@ export default function StagesScreen() {
                 </Pressable>
                 <View style={styles.arrows}>
                   <ArrowButton icon="chevron-up" disabled={index === 0} onPress={() => move(index, -1)} />
-                  <ArrowButton icon="chevron-down" disabled={index === open.length - 1} onPress={() => move(index, 1)} />
+                  <ArrowButton
+                    icon="chevron-down"
+                    disabled={index === open.length - 1}
+                    onPress={() => move(index, 1)}
+                  />
                 </View>
               </View>
             </View>
@@ -166,9 +170,7 @@ export default function StagesScreen() {
           </Pressable>
         </View>
 
-        {orderChanged && (
-          <Button title="Save order" onPress={saveOrder} loading={savingOrder} fullWidth />
-        )}
+        {orderChanged && <Button title="Save order" onPress={saveOrder} loading={savingOrder} fullWidth />}
 
         {/* Final stages */}
         <Text style={styles.sectionLabel}>FINAL STAGES</Text>
@@ -186,7 +188,7 @@ export default function StagesScreen() {
                 <View style={styles.flex}>
                   <Text style={styles.rowTitle}>{s.name}</Text>
                   <Text style={styles.rowText}>
-                    {counts.get(s.id) ?? 0} leads · set with “Mark admitted” / “Mark lost”
+                    {counts.get(s.id) ?? 0} leads · set with “Mark admitted” / “Not Now”
                   </Text>
                 </View>
                 <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
@@ -208,7 +210,7 @@ export default function StagesScreen() {
       {editing && (
         <StageSheet
           stage={editing === 'new' ? null : editing}
-          leadCount={editing === 'new' ? 0 : counts.get(editing.id) ?? 0}
+          leadCount={editing === 'new' ? 0 : (counts.get(editing.id) ?? 0)}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -419,7 +421,7 @@ function StageSheet({
 
             {isFinal ? (
               <Text style={styles.hint}>
-                This stage is used by “Mark admitted” / “Mark lost”. Only its name and colour can change.
+                This stage is used by “Mark admitted” / “Not Now”. Only its name and colour can change.
               </Text>
             ) : (
               <>
@@ -484,7 +486,11 @@ function StageSheet({
                     <Text style={styles.rowTitleSmall}>🎓 For which courses</Text>
                     <View style={styles.chipRow}>
                       <CourseChip text="Every course" on={courseIds === null} onPress={() => setCourseIds(null)} />
-                      <CourseChip text="Only some" on={courseIds !== null} onPress={() => setCourseIds(courseIds ?? [])} />
+                      <CourseChip
+                        text="Only some"
+                        on={courseIds !== null}
+                        onPress={() => setCourseIds(courseIds ?? [])}
+                      />
                     </View>
                     {courseIds !== null && (
                       <View style={styles.chipRow}>
@@ -503,7 +509,8 @@ function StageSheet({
                       </View>
                     )}
                     <Text style={styles.rowText}>
-                      A lead follows the stages of its pipeline course (its first course; it can be changed on the lead).
+                      A lead follows the stages of its pipeline course (its first course; it can be changed on the
+                      lead).
                     </Text>
                   </View>
                 )}
@@ -524,8 +531,8 @@ function StageSheet({
                 )}
 
                 <Text style={styles.hint}>
-                  These rules apply when a lead is moved on its lead page. Moving many leads at once from the list
-                  skips them.
+                  These rules apply when a lead is moved on its lead page. Moving many leads at once from the list skips
+                  them.
                 </Text>
               </>
             )}
@@ -552,7 +559,13 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.background },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+  },
   pressed: { opacity: 0.7 },
   off: { opacity: 0.5 },
   intro: { fontSize: fontSize.small, lineHeight: 20, color: colors.textMuted },
@@ -589,7 +602,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.background,
   },
-  addRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, marginTop: spacing.xs },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
   addText: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.primary },
   hint: { fontSize: fontSize.caption, lineHeight: 18, color: colors.textMuted },
   muted: { fontSize: fontSize.small, color: colors.textMuted },

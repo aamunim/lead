@@ -1,15 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -105,7 +96,15 @@ type Props = {
   students?: boolean;
 };
 
-export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilter, hiddenFields = [], students = false }: Props) {
+export function LeadFilterSheet({
+  visible,
+  value,
+  onClose,
+  onApply,
+  onSavedFilter,
+  hiddenFields = [],
+  students = false,
+}: Props) {
   const insets = useSafeAreaInsets();
   const { profile, hasPermission, assignmentOn, sharedMode } = useAuth();
   // Everyone they could filter by: all users (admins, or everyone-sees-all), else own team
@@ -151,9 +150,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
       getFilterConfig(),
       listItems('pipeline_stages', { includeInactive: true }),
       listItems('tags'),
-      showAssigned
-        ? listAssignableUsers(seesAllPeople ? {} : { teamLeadId: profile?.id })
-        : Promise.resolve([]),
+      showAssigned ? listAssignableUsers(seesAllPeople ? {} : { teamLeadId: profile?.id }) : Promise.resolve([]),
       listItems('lead_sources'),
       listItems('campaigns'),
       listCourses(),
@@ -169,7 +166,9 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
             .filter((k) => k !== 'assigned' || showAssigned)
             .filter((k) => !hiddenFields.includes(k))
             // Batch: always on the Students list, else only when switched on in Settings
-            .concat(students && !config.fields.some((f) => f.key === 'batch' && f.enabled) ? ['batch' as FilterKey] : []),
+            .concat(
+              students && !config.fields.some((f) => f.key === 'batch' && f.enabled) ? ['batch' as FilterKey] : [],
+            ),
         );
         setOptions({
           // Switched-off stages hold no leads (e.g. the old "Campus visit")
@@ -201,7 +200,9 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
     });
   };
 
-  const setSingle = <K extends 'followUp' | 'created' | 'lastContacted' | 'admitted' | 'papers' | 'visit' | 'contact' | 'fee'>(
+  const setSingle = <
+    K extends 'followUp' | 'created' | 'lastContacted' | 'admitted' | 'papers' | 'visit' | 'contact' | 'fee',
+  >(
     key: K,
     v: LeadFilters[K],
   ) => {
@@ -385,7 +386,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
         );
         break;
       case 'lost_reason':
-        body = listChips(options.lostReasons, 'lostReasonIds', 'No lost reasons yet.');
+        body = listChips(options.lostReasons, 'lostReasonIds', 'No Not Now reasons yet.');
         break;
       case 'papers':
         body = (
@@ -401,7 +402,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
                 />
               ))}
             </View>
-            <Text style={styles.hint}>Open leads and admitted students (lost and cancelled left out).</Text>
+            <Text style={styles.hint}>Open leads and admitted students (Not Now and cancelled left out).</Text>
           </>
         );
         break;
@@ -477,12 +478,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
             <Ionicons name="close" size={24} color={colors.text} />
           </Pressable>
           <Text style={styles.title}>Filter leads</Text>
-          <Pressable
-            onPress={() => setDraft({})}
-            disabled={active === 0}
-            hitSlop={10}
-            accessibilityRole="button"
-          >
+          <Pressable onPress={() => setDraft({})} disabled={active === 0} hitSlop={10} accessibilityRole="button">
             <Text style={[styles.clearAll, active === 0 && styles.disabledText]}>Clear all</Text>
           </Pressable>
         </View>
@@ -538,7 +534,11 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
                   style={styles.saveLink}
                   accessibilityRole="button"
                 >
-                  <Ionicons name="bookmark-outline" size={18} color={active === 0 ? colors.textMuted : colors.primary} />
+                  <Ionicons
+                    name="bookmark-outline"
+                    size={18}
+                    color={active === 0 ? colors.textMuted : colors.primary}
+                  />
                   <Text style={[styles.saveLinkText, active === 0 && styles.disabledText]}>
                     Save this filter for later
                   </Text>
@@ -575,17 +575,7 @@ export function LeadFilterSheet({ visible, value, onClose, onApply, onSavedFilte
 // =====================================================================
 // Chip
 // =====================================================================
-function Chip({
-  label,
-  on,
-  color,
-  onPress,
-}: {
-  label: string;
-  on: boolean;
-  color?: string;
-  onPress: () => void;
-}) {
+function Chip({ label, on, color, onPress }: { label: string; on: boolean; color?: string; onPress: () => void }) {
   const tint = color ?? colors.primary;
   return (
     <Pressable

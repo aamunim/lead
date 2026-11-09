@@ -1,22 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
-import {
-    bulkMarkLost,
-    listLostReasons,
-    markLost,
-    reviveChoices,
-    type Named,
-} from '@/features/pipeline/api';
+import { bulkMarkLost, listLostReasons, markLost, reviveChoices, type Named } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
@@ -63,7 +50,7 @@ export function LostSheet({ visible, leads, onClose, onSaved }: Props) {
     setLoading(true);
     listLostReasons()
       .then(setReasons)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Could not load lost reasons.'))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Could not load the reasons.'))
       .finally(() => setLoading(false));
   }, [visible]);
 
@@ -71,12 +58,12 @@ export function LostSheet({ visible, leads, onClose, onSaved }: Props) {
   const noteNeeded = !!reason && /^other/i.test(reason.name);
 
   const reviveAt: Date | null =
-    reviveKey === CUSTOM ? customDate : choices.find((c) => c.key === reviveKey)?.date ?? null;
+    reviveKey === CUSTOM ? customDate : (choices.find((c) => c.key === reviveKey)?.date ?? null);
 
   const save = async () => {
     setError(null);
     if (!reasonId) {
-      setError('Please choose why the lead was lost.');
+      setError('Please choose the reason (Not Now).');
       return;
     }
     if (noteNeeded && !note.trim()) {
@@ -98,12 +85,12 @@ export function LostSheet({ visible, leads, onClose, onSaved }: Props) {
         );
         onSaved(
           r.skipped > 0
-            ? `${r.done} marked lost · ${r.skipped} skipped (admitted, already lost or not yours)`
-            : `${r.done} ${r.done === 1 ? 'lead' : 'leads'} marked lost.`,
+            ? `${r.done} moved to Not Now · ${r.skipped} skipped (admitted, already Not Now or not yours)`
+            : `${r.done} ${r.done === 1 ? 'lead' : 'leads'} moved to Not Now.`,
         );
       } else {
         await markLost({ leadId: leads[0].id, reasonId, note, reviveAt });
-        onSaved(reviveAt ? `Marked lost. ♻️ Back in your calls on ${formatDay(reviveAt)}.` : 'Marked lost.');
+        onSaved(reviveAt ? `Moved to Not Now. ♻️ Back in your calls on ${formatDay(reviveAt)}.` : 'Moved to Not Now.');
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save.');
@@ -121,7 +108,7 @@ export function LostSheet({ visible, leads, onClose, onSaved }: Props) {
           <View style={styles.handle} />
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <View>
-              <Text style={styles.title}>✕ Mark lost</Text>
+              <Text style={styles.title}>✕ Not Now</Text>
               <Text style={styles.subtitle} numberOfLines={2}>
                 {bulk ? `${leads.length} leads` : leads[0]?.name}
               </Text>
@@ -135,7 +122,7 @@ export function LostSheet({ visible, leads, onClose, onSaved }: Props) {
                 <View style={styles.field}>
                   <Text style={styles.label}>Why? *</Text>
                   {reasons.length === 0 ? (
-                    <Text style={styles.warn}>No lost reasons yet. Add them in Settings → Lost reasons.</Text>
+                    <Text style={styles.warn}>No reasons yet. Add them in Settings → Not Now reasons.</Text>
                   ) : (
                     <View style={styles.chips}>
                       {reasons.map((r) => {
@@ -214,7 +201,7 @@ export function LostSheet({ visible, leads, onClose, onSaved }: Props) {
 
                 {bulk && (
                   <Text style={styles.hint}>
-                    Admitted leads, leads already lost, and leads you can’t edit are skipped.
+                    Admitted leads, leads already in Not Now, and leads you can’t edit are skipped.
                   </Text>
                 )}
               </>
@@ -227,7 +214,7 @@ export function LostSheet({ visible, leads, onClose, onSaved }: Props) {
             )}
 
             <Button
-              title={bulk ? `✕ Mark ${leads.length} leads lost` : '✕ Mark lost'}
+              title={bulk ? `✕ ${leads.length} leads to Not Now` : '✕ Move to Not Now'}
               variant="danger"
               onPress={save}
               loading={saving}

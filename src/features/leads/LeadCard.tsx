@@ -35,7 +35,7 @@ const WHATSAPP_GREEN = '#25D366';
 // Closed leads on the card
 const CLOSED_BADGE: Record<string, { label: string; color: string }> = {
   won: { label: '🎓 Admitted', color: colors.success },
-  lost: { label: '✕ Lost', color: colors.danger },
+  lost: { label: '✕ Not Now', color: colors.danger },
   cancelled: { label: '↩ Cancelled', color: colors.textMuted },
 };
 
@@ -100,7 +100,10 @@ export function LeadCard({
   onPay?: () => void;
 }) {
   const ratingColor = lead.rating ? RATING_COLOR[lead.rating] : null;
-  const courses = lead.lead_courses.map((c) => c.course?.name).filter(Boolean).join(', ');
+  const courses = lead.lead_courses
+    .map((c) => c.course?.name)
+    .filter(Boolean)
+    .join(', ');
   const followUp = followUpLabel(lead.next_follow_up_at);
 
   // Admitted / Lost / Cancelled
@@ -110,7 +113,13 @@ export function LeadCard({
 
   const admittedTo =
     kind === 'won' && lead.admitted_course
-      ? [lead.admitted_course.name, lead.admitted_batch?.name, lead.admitted_section ? `Sec ${lead.admitted_section.name}` : null].filter(Boolean).join(' · ')
+      ? [
+          lead.admitted_course.name,
+          lead.admitted_batch?.name,
+          lead.admitted_section ? `Sec ${lead.admitted_section.name}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')
       : null;
   const metaParts = (
     student
@@ -120,7 +129,11 @@ export function LeadCard({
           admittedTo ?? courses,
           lead.phone,
         ]
-      : [whatsAppOnly(lead) ? `💬 ${contactLabel(lead)}` : lead.phone, kind === 'won' ? lead.student_ref : null, admittedTo ?? courses]
+      : [
+          whatsAppOnly(lead) ? `💬 ${contactLabel(lead)}` : lead.phone,
+          kind === 'won' ? lead.student_ref : null,
+          admittedTo ?? courses,
+        ]
   ).filter(Boolean);
 
   const matchLine = search ? otherMatch(lead, search) : null;
@@ -129,8 +142,7 @@ export function LeadCard({
   const last = lead.last;
   const callText = detailed && last ? callLineText(last, nameOf) : null;
   const since = daysSince(lead.last_contacted_at);
-  const stale =
-    detailed && kind === 'open' && staleDays > 0 && (since === null ? !last?.call_at : since >= staleDays);
+  const stale = detailed && kind === 'open' && staleDays > 0 && (since === null ? !last?.call_at : since >= staleDays);
   const staleText = !stale ? null : since === null ? '🆕 Not called yet' : `⏳ No contact for ${since} days`;
   const noteVoice = last?.note_kind === 'voice' && !!last.note_voice_file;
   const noteText = detailed && last?.note_at ? (noteVoice ? null : last.note_text) : null;
@@ -148,7 +160,8 @@ export function LeadCard({
 
   // 💰 Negotiating / ⏳ Discount / 💰 −৳3,500
   const fee = kind === 'open' || kind === 'won' ? feeBadge(lead) : null;
-  const approval = student && kind === 'won' ? stageBadge(lead.submitted_at, lead.received_at, lead.admission_fee_ok) : null;
+  const approval =
+    student && kind === 'won' ? stageBadge(lead.submitted_at, lead.received_at, lead.admission_fee_ok) : null;
   const approvalColor =
     approval?.color === 'good' ? colors.success : approval?.color === 'bad' ? colors.danger : colors.warning;
 
@@ -201,7 +214,13 @@ export function LeadCard({
 
         {/* 📞 Last call (or ⏳ no contact for a while) */}
         {(!!callText || !!staleText) && (
-          <Pressable onPress={onPeek} hitSlop={4} style={styles.lastRow} accessibilityRole="button" accessibilityHint="Shows the last calls and notes">
+          <Pressable
+            onPress={onPeek}
+            hitSlop={4}
+            style={styles.lastRow}
+            accessibilityRole="button"
+            accessibilityHint="Shows the last calls and notes"
+          >
             {!!callText && <View style={[styles.lastDot, { backgroundColor: callDot(last?.call_outcome ?? null) }]} />}
             <Text style={[styles.lastText, !!staleText && styles.lastStale]} numberOfLines={1}>
               {[callText, staleText].filter(Boolean).join(' · ')}
@@ -225,9 +244,16 @@ export function LeadCard({
           </Pressable>
         )}
         {!!noteText && last && (
-          <Pressable onPress={onPeek} hitSlop={4} style={styles.lastRow} accessibilityRole="button" accessibilityHint="Shows the whole note">
+          <Pressable
+            onPress={onPeek}
+            hitSlop={4}
+            style={styles.lastRow}
+            accessibilityRole="button"
+            accessibilityHint="Shows the whole note"
+          >
             <Text style={styles.lastNote} numberOfLines={1}>
-              📝 “{noteText}{last.note_more ? '…' : ''}”
+              📝 “{noteText}
+              {last.note_more ? '…' : ''}”
               <Text style={styles.lastMuted}>{last.note_at ? ` · ${ago(last.note_at)}` : ''}</Text>
             </Text>
           </Pressable>

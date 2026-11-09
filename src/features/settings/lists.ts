@@ -25,19 +25,27 @@ export type FieldConfig =
 
 export type ListConfig = {
   table: ListTable;
-  title: string;        // shown on the settings hub and the screen header
-  singular: string;     // e.g. "source" → "Add source"
-  description: string;  // one line on the hub tile
-  icon: string;         // emoji for now; real icons later
+  title: string; // shown on the settings hub and the screen header
+  singular: string; // e.g. "source" → "Add source"
+  description: string; // one line on the hub tile
+  icon: string; // emoji for now; real icons later
   group: 'leads' | 'admissions';
   fields: FieldConfig[]; // extra fields besides name
-  systemKey?: boolean;  // rows have a fixed "key" and an is_system flag
+  systemKey?: boolean; // rows have a fixed "key" and an is_system flag
 };
 
 // Colours offered for tags and stages
 export const COLOR_CHOICES = [
-  '#3557D4', '#4B3FC4', '#6334B8', '#C2366B', '#B23A0B',
-  '#E0901C', '#8A5300', '#1F6B42', '#1D8BA6', '#5B6478',
+  '#3557D4',
+  '#4B3FC4',
+  '#6334B8',
+  '#C2366B',
+  '#B23A0B',
+  '#E0901C',
+  '#8A5300',
+  '#1F6B42',
+  '#1D8BA6',
+  '#5B6478',
 ];
 
 // ---------------------------------------------------------------------
@@ -79,7 +87,7 @@ export const LIST_CONFIGS: Record<ListTable, ListConfig> = {
   },
   lost_reasons: {
     table: 'lost_reasons',
-    title: 'Lost reasons',
+    title: 'Not Now reasons',
     singular: 'reason',
     description: 'Why leads do not join',
     icon: '📉',
