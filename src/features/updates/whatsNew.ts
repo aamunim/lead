@@ -8,6 +8,18 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-09-e',
+    date: '9 Nov 2026',
+    title: '🏦 Lead Bank, and “Lost” is now “Not Now”',
+    items: [
+      '🏦 Lead Bank (admins, More → Lead Bank): keep many numbers aside in lists, out of the lead list. Bring them in by pasting or from Excel; numbers already in the bank or already leads are left out',
+      '🆕 New / ↩️ Returned: two tabs. Mark numbers → “Into leads” with a course, people in turn and a stage',
+      '↩️ Send leads back to the bank from the lead page or the list (mark → To bank), with a reason and rest days. When put back, the same lead returns with all its calls and notes',
+      '📇 A call from a bank number shows “🏦 Lead Bank” on the caller card',
+      '✕ “Lost” is called “Not Now” everywhere: the door stays open for later',
+    ],
+  },
+  {
     key: '2026-11-09-d',
     date: '9 Nov 2026',
     title: '🎓 Alumni courses apart from lead courses',
@@ -165,7 +177,7 @@ export const WHATS_NEW: WhatsNew[] = [
     items: [
       '❌ Team activity shows how many leads each person marked Lost, and the total',
       '📝 Tap a person in “Marked Lost” to see the leads, the reason and the note; tap a lead to open it',
-      '♻️ “Opened again” shows when a lost lead was brought back later',
+      '♻️ “Opened again” shows when a Not Now lead was brought back later',
     ],
   },
   {

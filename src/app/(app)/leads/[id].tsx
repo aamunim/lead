@@ -89,6 +89,8 @@ import { isWeb } from '@/features/web/api';
 import { WebStudentLayout } from '@/features/web/student/WebStudentLayout';
 import { ChanceCard } from '@/features/aiChance/ChanceCard';
 import { getAlumnus } from '@/features/alumni/api';
+import { ReturnToBankSheet } from '@/features/bank/ReturnToBankSheet';
+import { supabase } from '@/shared/lib/supabase';
 import { AdmissionCreditCard } from '@/features/aiCredit/AdmissionCreditCard';
 import { ApprovalCard } from '@/features/approval/ApprovalCard';
 import { peekMemo, remember } from '@/shared/lib/memo';
@@ -228,6 +230,8 @@ export function LeadDetailView({
   const [undo, setUndo] = useState<{ activityId: string; label: string } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // 🏦 back to the Lead Bank (admins)
+  const [banking, setBanking] = useState(false);
   // 📱 Phone page: the top bar shows the name once the header has scrolled away; the note sheet
   const [compactBar, setCompactBar] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
@@ -360,8 +364,26 @@ export function LeadDetailView({
     if (loading || lead || !id || embedded) return;
     let live = true;
     getAlumnus(id)
-      .then((al) => {
-        if (!live || !al) return;
+      .then(async (al) => {
+        if (!live) return;
+        if (!al) {
+          // 🏦 a Lead Bank number (the caller card): admins go to it in the bank
+          // (the bank row's own id, or a lead sent to the bank, e.g. from an old link)
+          if (!hasPermission('settings.manage') || !/^[0-9a-f-]{36}$/i.test(String(id))) return;
+          const { data: b } = await supabase
+            .from('lead_bank' as never)
+            .select('phone, status')
+            .or(`id.eq.${id},lead_id.eq.${id}`)
+            .limit(1)
+            .maybeSingle();
+          const row = b as { phone: string; status: string } | null;
+          if (live && row) {
+            router.replace(
+              `/bank?q=${encodeURIComponent(row.phone)}&tab=${row.status === 'returned' ? 'returned' : 'new'}` as Href,
+            );
+          }
+          return;
+        }
         const q = callNote
           ? `?callNote=${encodeURIComponent(String(callNote))}`
           : waCall
@@ -714,6 +736,14 @@ export function LeadDetailView({
         return 'Lead deleted';
       case 'restored':
         return 'Lead restored';
+      case 'bank_returned':
+        return `🏦 Sent to the Lead Bank${d.reason ? ` · ${String(d.reason)}` : ''}${
+          Number(d.rest_days ?? 0) > 0 ? ` · rests ${Number(d.rest_days)} days` : ''
+        }`;
+      case 'bank_pulled':
+        return d.back
+          ? `🏦 Back from the Lead Bank${d.list ? ` (${String(d.list)})` : ''}`
+          : `🏦 Came from the Lead Bank${d.list ? ` (${String(d.list)})` : ''}`;
       case 'bulk_placement':
         return `🔀 Moved: ${String(d.from ?? '—')} → ${String(d.to ?? '')} (with ${Number(d.count ?? 1)})`;
       case 'student_ref_renumbered':
@@ -1516,6 +1546,23 @@ export function LeadDetailView({
   );
   const deleteEl = (
     <>
+      {/* 🏦 out of the lead list, kept in the Lead Bank with its history (admins; not admitted students) */}
+      {hasPermission('settings.manage') && !(lead.admitted_at && !lead.cancelled_at) && (
+        <Button title="🏦 Back to the Lead Bank" variant="secondary" onPress={() => setBanking(true)} fullWidth />
+      )}
+      {banking && (
+        <ReturnToBankSheet
+          leadIds={[lead.id]}
+          onClose={() => setBanking(false)}
+          onDone={(msg) => {
+            setBanking(false);
+            Alert.alert('Done', msg);
+            // the web Students panel closes; the phone goes back
+            if (onClosed) onClosed();
+            else router.back();
+          }}
+        />
+      )}
       {hasPermission('leads.delete') && (
         <Button title="Delete lead" variant="danger" onPress={confirmDelete} fullWidth />
       )}

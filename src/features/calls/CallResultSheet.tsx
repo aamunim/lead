@@ -1,13 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
@@ -250,16 +242,12 @@ export function CallResultSheet({
     else if (isCallLogAvailable && estimatedSec != null) {
       const sinceMs = Date.now() - (estimatedSec + 15) * 1000;
       setLookingUp(true);
-      Promise.all([
-        lead.phone ? findDeviceCall(lead.phone, sinceMs) : Promise.resolve(null),
-        getCallSyncSettings(),
-      ])
+      Promise.all([lead.phone ? findDeviceCall(lead.phone, sinceMs) : Promise.resolve(null), getCallSyncSettings()])
         .then(([call, settings]) => {
           if (!call) return;
           setDeviceCall(call);
           // The result comes from the real call
-          const result: CallOutcome =
-            call.durationSec >= settings.connected_min_sec ? 'connected' : 'no_answer';
+          const result: CallOutcome = call.durationSec >= settings.connected_min_sec ? 'connected' : 'no_answer';
           setOutcome(result);
           setFollowUpKey(null); // in auto mode no follow-up unless the user asks
         })
@@ -271,11 +259,11 @@ export function CallResultSheet({
 
   // Duration: the phone's real one, else our estimate (only for Connected)
   const realDuration = deviceCall?.durationSec ?? null;
-  const estimated = outcome === 'connected' ? estimatedSec ?? null : null;
+  const estimated = outcome === 'connected' ? (estimatedSec ?? null) : null;
 
   // The follow-up date that will be saved (null = none)
   const chosenDate: Date | null =
-    followUpKey === CUSTOM ? customDate : presets.find((p) => p.key === followUpKey)?.date ?? null;
+    followUpKey === CUSTOM ? customDate : (presets.find((p) => p.key === followUpKey)?.date ?? null);
 
   const chosenHoliday = chosenDate ? holidayName(holidays, chosenDate) : null;
 
@@ -287,7 +275,7 @@ export function CallResultSheet({
     }
     Alert.alert(
       'Reopen this lead?',
-      `${lead.name} was marked lost. You talked just now: move them back to Interested?`,
+      `${lead.name} is in Not Now. You talked just now: move them back to Interested?`,
       [
         { text: 'Not now', style: 'cancel', onPress: onSaved },
         {
@@ -396,7 +384,7 @@ export function CallResultSheet({
         leadId: lead.id,
         outcome: result,
         notes,
-        durationSec: result === 'connected' ? estimatedSec ?? null : null,
+        durationSec: result === 'connected' ? (estimatedSec ?? null) : null,
         direction: waDirection,
         channel: 'whatsapp',
         media: waMedia,
@@ -560,10 +548,7 @@ export function CallResultSheet({
   // --- render -------------------------------------------------------------
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.backdrop}
-        behavior="padding"
-      >
+      <KeyboardAvoidingView style={styles.backdrop} behavior="padding">
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
 
         <View style={styles.sheet}>
@@ -574,12 +559,12 @@ export function CallResultSheet({
                 {waEvent
                   ? 'Add a note'
                   : isWa
-                  ? 'What happened on WhatsApp?'
-                  : noteMode
-                    ? 'Add a note'
-                    : auto
-                      ? 'Call saved from your phone'
-                      : 'How did the call go?'}
+                    ? 'What happened on WhatsApp?'
+                    : noteMode
+                      ? 'Add a note'
+                      : auto
+                        ? 'Call saved from your phone'
+                        : 'How did the call go?'}
               </Text>
               <Text style={styles.subtitle}>
                 {lead.name}
@@ -588,7 +573,7 @@ export function CallResultSheet({
               {stageKind === 'won' && <Text style={styles.closedWon}>🎓 Admitted student</Text>}
               {stageKind === 'lost' && (
                 <Text style={styles.closedLost}>
-                  ✕ Lost lead · if they’re interested again, you can reopen it after saving
+                  ✕ Not Now lead · if they’re interested again, you can reopen it after saving
                 </Text>
               )}
               {stageKind === 'cancelled' && <Text style={styles.closedMuted}>↩ Admission was cancelled</Text>}
@@ -767,13 +752,7 @@ export function CallResultSheet({
 
             {!(noteMode && (notFound || !deviceCall)) || lookingUp ? (
               <>
-                <Button
-                  title="Save"
-                  onPress={handleSave}
-                  loading={saving}
-                  disabled={lookingUp}
-                  fullWidth
-                />
+                <Button title="Save" onPress={handleSave} loading={saving} disabled={lookingUp} fullWidth />
                 <Button title="Skip" variant="ghost" onPress={onClose} fullWidth />
               </>
             ) : (

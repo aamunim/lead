@@ -2,16 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { roleLabelOf, useRoleChoices } from '@/features/roles/api';
 import { Stack, router, type Href } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -30,7 +21,6 @@ import {
 } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
-
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: 'Super Admin',
@@ -214,7 +204,7 @@ export default function AdmissionSettingsScreen() {
     >
       <Stack.Screen options={{ title: 'Admission rules' }} />
 
-      <Text style={styles.intro}>Rules for marking leads Admitted or Lost, papers, and student IDs.</Text>
+      <Text style={styles.intro}>Rules for marking leads Admitted or Not Now, papers, and student IDs.</Text>
 
       {/* Who can admit */}
       <Text style={styles.sectionLabel}>WHO CAN MARK ADMITTED</Text>
@@ -379,7 +369,7 @@ export default function AdmissionSettingsScreen() {
       </View>
 
       {/* Closed leads */}
-      <Text style={styles.sectionLabel}>ADMITTED AND LOST LEADS IN THE LIST</Text>
+      <Text style={styles.sectionLabel}>ADMITTED AND NOT NOW LEADS IN THE LIST</Text>
       <View style={styles.card}>
         <RadioRow
           title="Hide them"
@@ -390,7 +380,7 @@ export default function AdmissionSettingsScreen() {
         <View style={styles.divider} />
         <RadioRow
           title="Show everything"
-          text="Admitted and lost leads stay in the list, with a 🎓 / ✕ badge."
+          text="Admitted and Not Now leads stay in the list, with a 🎓 / ✕ badge."
           on={settings.closed_in_list === 'show'}
           onPress={() => set('closed_in_list', 'show')}
         />
@@ -457,7 +447,12 @@ function WhoPicker({
       {rule.mode === 'roles' && (
         <View style={styles.subList}>
           {ROLES.map((r) => (
-            <CheckRow key={r.key} label={r.label} on={rule.roles.includes(r.key)} onPress={() => toggle('roles', r.key)} />
+            <CheckRow
+              key={r.key}
+              label={r.label}
+              on={rule.roles.includes(r.key)}
+              onPress={() => toggle('roles', r.key)}
+            />
           ))}
         </View>
       )}
@@ -548,7 +543,13 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.background },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+  },
   pressed: { opacity: 0.7 },
   intro: { fontSize: fontSize.small, lineHeight: 20, color: colors.textMuted },
   sectionLabel: {

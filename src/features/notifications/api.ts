@@ -30,12 +30,27 @@ export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; t
   { kind: 'follow_up', icon: '⏰', title: 'Next call', text: 'A few minutes before, and once more if it is late' },
   { kind: 'visit', icon: '🏫', title: 'Campus visits', text: 'Today’s visits in the morning, and 1 hour before' },
   { kind: 'auto_assigned', icon: '🆕', title: 'New lead for you', text: 'A new lead is given to you automatically' },
-  { kind: 'speed_to_lead', icon: '⚡', title: 'New lead not called', text: 'The person, then their Team Lead, then admins' },
-  { kind: 'outcome', icon: '🎓', title: 'Admitted / lost', text: 'To admins and the lead’s Team Lead' },
+  {
+    kind: 'speed_to_lead',
+    icon: '⚡',
+    title: 'New lead not called',
+    text: 'The person, then their Team Lead, then admins',
+  },
+  { kind: 'outcome', icon: '🎓', title: 'Admitted / Not Now', text: 'To admins and the lead’s Team Lead' },
   { kind: 'signup', icon: '🙋', title: 'New sign-up', text: 'To admins who approve users' },
   { kind: 'sync_nudge', icon: '📞', title: 'Turn on call sync', text: 'When an admin sends the reminder' },
-  { kind: 'missed_call', icon: '📵', title: 'Missed call from a lead', text: 'To the lead’s person, when another phone missed it' },
-  { kind: 'discount', icon: '💰', title: 'Discounts', text: 'Requests to approve, answers, and approved ones running out' },
+  {
+    kind: 'missed_call',
+    icon: '📵',
+    title: 'Missed call from a lead',
+    text: 'To the lead’s person, when another phone missed it',
+  },
+  {
+    kind: 'discount',
+    icon: '💰',
+    title: 'Discounts',
+    text: 'Requests to approve, answers, and approved ones running out',
+  },
   {
     kind: 'leaderboard',
     icon: '🏆',
@@ -43,9 +58,24 @@ export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; t
     text: 'Friday’s winner, “you are now #2”, “only 25 credits to #3”',
   },
   { kind: 'scorecard', icon: '🏁', title: 'Weekly scorecard', text: 'Sunday morning: last week’s totals, to admins' },
-  { kind: 'alumni', icon: '🎓', title: 'Alumni referrals', text: 'A new referral, a referral lead given to you, a referral admitted' },
-  { kind: 'feedback', icon: '💬', title: 'Contact developer', text: 'An answer to your message; new messages to the developer' },
-  { kind: 'payment', icon: '📅', title: 'Installments', text: 'Before and on the date; late ones to Team Lead and admins' },
+  {
+    kind: 'alumni',
+    icon: '🎓',
+    title: 'Alumni referrals',
+    text: 'A new referral, a referral lead given to you, a referral admitted',
+  },
+  {
+    kind: 'feedback',
+    icon: '💬',
+    title: 'Contact developer',
+    text: 'An answer to your message; new messages to the developer',
+  },
+  {
+    kind: 'payment',
+    icon: '📅',
+    title: 'Installments',
+    text: 'Before and on the date; late ones to Team Lead and admins',
+  },
 ];
 
 export type NotificationSettings = {
@@ -130,9 +160,7 @@ export async function getTimingSettings(): Promise<TimingSettings> {
 }
 
 export async function saveTimingSettings(s: TimingSettings): Promise<void> {
-  await Promise.all(
-    (Object.keys(s) as (keyof TimingSettings)[]).map((k) => updateSetting(k, s[k] as unknown as Json)),
-  );
+  await Promise.all((Object.keys(s) as (keyof TimingSettings)[]).map((k) => updateSetting(k, s[k] as unknown as Json)));
 }
 
 // --- The Super Admin's own muted kinds -------------------------------------

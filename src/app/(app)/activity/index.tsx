@@ -250,7 +250,7 @@ function TeamActivityScreen() {
           <Total value={String(totals.actions)} label="changes" />
           <Total value={String(totals.added)} label="leads added" />
           <Total value={String(totals.admitted)} label="admitted" />
-          {lost && <Total value={String(lost.total)} label="lost" />}
+          {lost && <Total value={String(lost.total)} label="not now" />}
         </View>
       )}
 
@@ -294,7 +294,7 @@ function TeamActivityScreen() {
                   <Stat value={`➕${m.leads_added ?? 0}`} label="leads" />
                 </Pressable>
                 <Stat value={String(m.admitted)} label="🎓" />
-                {lost && <Stat value={`❌${lostBy.get(m.user_id) ?? 0}`} label="lost" />}
+                {lost && <Stat value={`❌${lostBy.get(m.user_id) ?? 0}`} label="not now" />}
                 {credits.size > 0 && <Stat value={`⭐${Math.round(credits.get(m.user_id) ?? 0)}`} label="credits" />}
               </View>
 

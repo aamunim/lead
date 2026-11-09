@@ -1,13 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
@@ -37,7 +29,7 @@ import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 
 // =====================================================================
 // The pipeline part of the lead page:
-//   open lead   → step bar + "Mark admitted" / "Mark lost"
+//   open lead   → step bar + "Mark admitted" / "Not Now"
 //   closed lead → status card + Reopen / Cancel admission
 // =====================================================================
 
@@ -192,7 +184,9 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
                   accessibilityRole="radio"
                   accessibilityState={{ selected: c.id === pipelineCourse }}
                 >
-                  <Text style={[styles.courseChipText, c.id === pipelineCourse && styles.courseChipTextOn]}>{c.name}</Text>
+                  <Text style={[styles.courseChipText, c.id === pipelineCourse && styles.courseChipTextOn]}>
+                    {c.name}
+                  </Text>
                 </Pressable>
               ))}
             </View>
@@ -226,11 +220,7 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
                       <ActivityIndicator size="small" color={isCurrent ? colors.textOnPrimary : s.color} />
                     ) : (
                       <Text
-                        style={[
-                          styles.stepText,
-                          isPast && { color: s.color },
-                          isCurrent && styles.stepTextOn,
-                        ]}
+                        style={[styles.stepText, isPast && { color: s.color }, isCurrent && styles.stepTextOn]}
                         numberOfLines={1}
                       >
                         {isPast ? '✓ ' : ''}
@@ -256,7 +246,7 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
               </View>
             )}
             <View style={styles.flex}>
-              <Button title="✕ Mark lost" variant="secondary" onPress={() => setSheet('lost')} fullWidth />
+              <Button title="✕ Not Now" variant="secondary" onPress={() => setSheet('lost')} fullWidth />
             </View>
           </View>
         </>
@@ -283,7 +273,7 @@ export function PipelineCard({ lead, reviveAt, nameOf, onChanged }: Props) {
       ) : kind === 'lost' ? (
         /* ---------- Lost ---------- */
         <View style={[styles.status, styles.statusLost]}>
-          <Text style={[styles.statusTitle, { color: colors.danger }]}>✕ Lost</Text>
+          <Text style={[styles.statusTitle, { color: colors.danger }]}>✕ Not Now</Text>
           <Text style={styles.statusText}>
             {formatDay(lead.lost_at)}
             {lead.lost_reason?.name ? ` · ${lead.lost_reason.name}` : ''}
@@ -455,7 +445,7 @@ function ReopenSheet({
       </View>
       <TextField label="Note (optional)" value={note} onChangeText={setNote} multiline placeholder="Why reopen?" />
       <VoiceNoteButton leadId={leadId} context="reopen" />
-      <Text style={styles.hint}>The lost / cancelled details stay in the lead’s history.</Text>
+      <Text style={styles.hint}>The Not Now / cancelled details stay in the lead’s history.</Text>
       {error && <ErrorBox text={error} />}
       <Button title="Reopen" onPress={save} loading={saving} disabled={!stageId} fullWidth />
       <Button title="Cancel" variant="ghost" onPress={onClose} disabled={saving} fullWidth />
@@ -528,7 +518,13 @@ function CancelAdmissionSheet({
         })}
       </View>
       <TextField label="Reason *" value={reason} onChangeText={setReason} placeholder="Or type a reason" />
-      <TextField label="Note (optional)" value={note} onChangeText={setNote} multiline placeholder="e.g. Refund given" />
+      <TextField
+        label="Note (optional)"
+        value={note}
+        onChangeText={setNote}
+        multiline
+        placeholder="e.g. Refund given"
+      />
       <VoiceNoteButton leadId={leadId} context="cancel" />
       {error && <ErrorBox text={error} />}
       <Button title="Cancel admission" variant="danger" onPress={save} loading={saving} fullWidth />

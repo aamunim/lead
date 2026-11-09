@@ -86,6 +86,7 @@ function pageTitle(path: string): string {
   if (path.startsWith('/contribution')) return 'Admission Contribution';
   if (path.startsWith('/alumni/referrals')) return 'Referral inbox';
   if (path.startsWith('/alumni')) return 'Alumni';
+  if (path.startsWith('/bank')) return 'Lead Bank';
   if (path.startsWith('/feedback')) return 'Contact developer';
   if (path.startsWith('/settings/roles')) return 'Settings › Roles';
   if (path.startsWith('/speed')) return 'Speed check';
@@ -246,6 +247,10 @@ export function WebShell({ children }: { children: React.ReactNode }) {
       : []),
     ...(alumni.view
       ? [{ label: 'Alumni', icon: '🧑‍🎓', href: '/alumni', match: (p: string) => p.startsWith('/alumni') }]
+      : []),
+    // 🏦 Lead Bank: admins
+    ...(isAdmin
+      ? [{ label: 'Lead Bank', icon: '🏦', href: '/bank', match: (p: string) => p.startsWith('/bank') }]
       : []),
     ...(reportsOk
       ? [{ label: 'Reports', icon: '📊', href: '/reports', match: (p: string) => p.startsWith('/reports') }]

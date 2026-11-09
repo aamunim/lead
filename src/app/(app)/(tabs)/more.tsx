@@ -276,6 +276,19 @@ function PhoneMore() {
           ))}
         </View>
 
+        {/* 🏦 Lead Bank (admins) */}
+        {canManageSettings && (
+          <Section title="LEAD BANK">
+            <Row
+              icon="savings"
+              tone="blue"
+              title="Lead Bank"
+              subtitle="Numbers kept aside: put them into the leads, take them back"
+              onPress={go('/bank')}
+            />
+          </Section>
+        )}
+
         {/* 🎓 Alumni (Settings → Alumni decides who) */}
         {alumni.view && (
           <Section title="ALUMNI">

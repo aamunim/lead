@@ -115,7 +115,7 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
       },
       {
         title: 'Pipeline board',
-        description: 'Board view on or off, Admitted / Lost columns, who can use it',
+        description: 'Board view on or off, Admitted / Not Now columns, who can use it',
         icon: '📋',
         href: '/settings/board' as Href,
       },
@@ -281,11 +281,7 @@ export default function SettingsScreen() {
               <Pressable
                 key={tile.title}
                 onPress={() => router.push(tile.href)}
-                style={({ pressed }) => [
-                  styles.tile,
-                  index > 0 && styles.tileDivider,
-                  pressed && styles.tilePressed,
-                ]}
+                style={({ pressed }) => [styles.tile, index > 0 && styles.tileDivider, pressed && styles.tilePressed]}
                 accessibilityRole="button"
                 accessibilityLabel={`${tile.title}. ${tile.description}`}
               >

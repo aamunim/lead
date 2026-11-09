@@ -40,21 +40,21 @@ export type ContactFilter = 'phone' | 'whatsapp_only' | 'wa_number' | 'username'
 export type FeeFilter = 'talking' | 'waiting' | 'given' | 'final' | 'none' | 'due' | 'overdue' | 'paid';
 
 export type LeadFilters = {
-  ratings?: string[];        // 'hot' | 'warm' | 'cold' | 'none'
+  ratings?: string[]; // 'hot' | 'warm' | 'cold' | 'none'
   stageIds?: string[];
   tagIds?: string[];
-  assigned?: string[];       // user ids, or 'none' for unassigned
+  assigned?: string[]; // user ids, or 'none' for unassigned
   followUp?: FollowUpFilter;
   sourceIds?: string[];
   campaignIds?: string[];
   courseIds?: string[];
-  batchIds?: string[];       // the batch a student is admitted to
+  batchIds?: string[]; // the batch a student is admitted to
   leadTypeIds?: string[];
   created?: CreatedFilter;
   lastContacted?: LastContactedFilter;
   admitted?: AdmittedFilter; // admitted in this period (cancelled admissions left out)
   lostReasonIds?: string[];
-  papers?: PapersFilter;     // open and admitted leads (lost / cancelled left out)
+  papers?: PapersFilter; // open and admitted leads (lost / cancelled left out)
   visit?: VisitFilter;
   contact?: ContactFilter;
   fee?: FeeFilter;
@@ -102,7 +102,7 @@ export const FILTER_FIELDS: Record<FilterKey, { label: string; icon: string }> =
   created: { label: 'Added', icon: 'calendar' },
   last_contacted: { label: 'Last contacted', icon: 'call' },
   admitted: { label: 'Admitted', icon: 'ribbon' },
-  lost_reason: { label: 'Lost reason', icon: 'close-circle' },
+  lost_reason: { label: 'Not Now reason', icon: 'close-circle' },
   papers: { label: 'Papers', icon: 'document-text' },
   visit: { label: 'Campus visit', icon: 'business' },
   contact: { label: 'Contact by', icon: 'logo-whatsapp' },
@@ -415,7 +415,10 @@ export function applyLeadFilters<Q extends { [k: string]: any }>(query: Q, f: Le
       q = q.eq('visit_status', 'planned');
       break;
     case 'today':
-      q = q.eq('visit_status', 'planned').gte('visit_at', iso(today)).lt('visit_at', iso(addDays(today, 1)));
+      q = q
+        .eq('visit_status', 'planned')
+        .gte('visit_at', iso(today))
+        .lt('visit_at', iso(addDays(today, 1)));
       break;
     case 'overdue':
       q = q.eq('visit_status', 'planned').lt('visit_at', iso(now));

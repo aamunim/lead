@@ -587,7 +587,7 @@ export default function LeadFormScreen() {
       {!isNew && (
         <Field label="Stage">
           <Chips options={stages} selected={form.stageId ? [form.stageId] : []} onPress={(v) => set('stageId', v)} />
-          <Text style={styles.hint}>Admitted and Lost are set from the lead page.</Text>
+          <Text style={styles.hint}>Admitted and Not Now are set from the lead page.</Text>
         </Field>
       )}
       {canAssign ? (

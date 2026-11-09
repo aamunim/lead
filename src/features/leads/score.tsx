@@ -187,7 +187,7 @@ function WhySheet({ score, reasons, onClose }: { score: number; reasons: ScoreRe
             {special
               ? special.key === 'admitted'
                 ? 'Admitted.'
-                : 'Closed (lost or cancelled).'
+                : 'Closed (Not Now or cancelled).'
               : 'Worked out from this lead’s calls, visits, fee talk, stage and rating. It changes by itself.'}
           </Text>
           {plus.map((r) => (

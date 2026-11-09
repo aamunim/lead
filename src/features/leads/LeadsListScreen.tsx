@@ -111,6 +111,7 @@ import {
   type SavedFilter,
 } from '@/features/leads/filters';
 import { LostSheet } from '@/features/pipeline/LostSheet';
+import { ReturnToBankSheet } from '@/features/bank/ReturnToBankSheet';
 import { getAdmissionSettings } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { addRecentSearch, clearRecentSearches, loadRecentSearches, removeRecentSearch } from '@/features/leads/search';
@@ -143,7 +144,7 @@ import { MIcon, md } from '@/features/home/md';
 import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 
 // The floating buttons shown while leads are marked ("lost" opens the Lost sheet)
-type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received' | 'course' | 'ai';
+type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received' | 'course' | 'ai' | 'bank';
 
 const ACTIONS: {
   field: FloatAction;
@@ -157,7 +158,8 @@ const ACTIONS: {
   { field: 'assign', label: 'Assign', icon: 'person-add', color: '#0EA5E9' },
   { field: 'followup', label: 'Next call', icon: 'alarm', color: '#10B981' },
   { field: 'fee', label: 'Fee', icon: 'cash', color: '#D97706' },
-  { field: 'lost', label: 'Lost', icon: 'close-circle', color: '#EF4444' },
+  { field: 'lost', label: 'Not Now', icon: 'close-circle', color: '#EF4444' },
+  { field: 'bank', label: 'To bank', icon: 'archive', color: '#64748B' },
   { field: 'placement', label: 'Move', icon: 'swap-horizontal', color: '#0D9488' },
   { field: 'received', label: 'ITTC', icon: 'business', color: '#7C3AED' },
   { field: 'course', label: 'Course', icon: 'school', color: '#0891B2' },
@@ -271,7 +273,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       (!students || (a.field !== 'stage' && a.field !== 'lost')) &&
       (a.field !== 'placement' || (students && canMove)) &&
       (a.field !== 'received' || (students && canMove)) &&
-      (a.field !== 'course' || (!students && isAdmin)),
+      (a.field !== 'course' || (!students && isAdmin)) &&
+      // 🏦 back to the Lead Bank: admins, not on Students
+      (a.field !== 'bank' || (!students && hasPermission('settings.manage'))),
   );
   const showAssignee = assignmentOn && seesOthers;
 
@@ -441,6 +445,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   // Which quick-change sheet is open
   const [sheetField, setSheetField] = useState<QuickField | null>(null);
   const [lostVisible, setLostVisible] = useState(false);
+  const [bankOpen, setBankOpen] = useState(false);
 
   // Closed leads (Admitted / Lost / Cancelled) hidden or shown (Settings → Admission)
   const [closedMode, setClosedMode] = useState<ClosedMode>('hide');
@@ -1284,6 +1289,21 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
         />
       )}
 
+      {bankOpen && (
+        <ReturnToBankSheet
+          leadIds={markedLeads.map((l) => l.id)}
+          onClose={() => setBankOpen(false)}
+          onDone={(message) => {
+            const ids = markedLeads.map((l) => l.id);
+            setBankOpen(false);
+            setSelected(new Set());
+            setMatchingCache([]);
+            showToast(message);
+            afterChange(ids);
+          }}
+        />
+      )}
+
       <LostSheet
         visible={lostVisible}
         leads={markedLeads.map((l) => ({ id: l.id, name: l.name }))}
@@ -1562,7 +1582,8 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       { key: 'tags', field: 'tags', label: 'Tag', icon: 'sell' },
       { key: 'rating', field: 'rating', label: 'Rating', icon: 'local-fire-department' },
       { key: 'fee', field: 'fee', label: 'Fee', icon: 'payments' },
-      { key: 'lost', field: 'lost', label: 'Lost', icon: 'block', danger: true },
+      { key: 'lost', field: 'lost', label: 'Not Now', icon: 'block', danger: true },
+      { key: 'bank', field: 'bank', label: 'To bank', icon: 'savings' },
       { key: 'placement', field: 'placement', label: 'Move', icon: 'swap-horiz' },
       { key: 'received', field: 'received', label: 'ITTC', icon: 'account-balance' },
       { key: 'course', field: 'course', label: 'Course', icon: 'school' },
@@ -1606,6 +1627,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     const runAction = (field: FloatAction) => {
       if (field === 'ai') return runAiMany();
       if (field === 'lost') return setLostVisible(true);
+      if (field === 'bank') return setBankOpen(true);
       if (field === 'placement') return setMoveOpen(true);
       if (field === 'received') return setReceivedOpen(true);
       if (field === 'course') return setCourseOpen(true);
@@ -2563,6 +2585,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                   key={a.field}
                   onPress={() => {
                     if (a.field === 'lost') return setLostVisible(true);
+                    if (a.field === 'bank') return setBankOpen(true);
                     if (a.field === 'placement') return setMoveOpen(true);
                     if (a.field === 'received') return setReceivedOpen(true);
                     if (a.field === 'course') return setCourseOpen(true);

@@ -366,7 +366,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
               />
             ))}
             <Text style={styles.hint}>
-              Admitted and Lost are set from the lead page. Stages of only some courses show when every marked lead
+              Admitted and Not Now are set from the lead page. Stages of only some courses show when every marked lead
               follows that course.
             </Text>
           </View>

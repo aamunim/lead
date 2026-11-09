@@ -38,6 +38,7 @@ import { LeadBoard } from '@/features/board/LeadBoard';
 import { openWhatsApp } from '@/features/leads/contact';
 import { LeadQuickSheet, type QuickField } from '@/features/leads/LeadQuickSheet';
 import { LostSheet } from '@/features/pipeline/LostSheet';
+import { ReturnToBankSheet } from '@/features/bank/ReturnToBankSheet';
 import { canHandOver } from '@/features/settings/assignment';
 import { canTakePayments, getFeeSettings, type FeeSettings } from '@/features/fees/api';
 import { FeeChangeSheet } from '@/features/fees/FeeChangeSheet';
@@ -292,6 +293,7 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
   );
   const [boardKey, setBoardKey] = useState(0);
   const [bulk, setBulk] = useState<QuickField | 'lost' | null>(null);
+  const [bankOpen, setBankOpen] = useState(false);
   const [oneBulk, setOneBulk] = useState<{ field: QuickField | 'lost'; row: LeadListItem } | null>(null);
 
   const aiChanceOn = useCanSeeAiChance();
@@ -1029,6 +1031,11 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
                   </Pressable>
                 ))}
               {leadsMode && hasPermission('settings.manage') && (
+                <Pressable onPress={() => setBankOpen(true)} style={styles.bulkBtn} accessibilityRole="button">
+                  <Text style={styles.bulkBtnText}>🏦 To bank</Text>
+                </Pressable>
+              )}
+              {leadsMode && hasPermission('settings.manage') && (
                 <Pressable onPress={() => setCourseOpen(true)} style={styles.bulkBtn} accessibilityRole="button">
                   <Text style={styles.bulkBtnText}>📚 Course</Text>
                 </Pressable>
@@ -1249,6 +1256,19 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
             setBulk(null);
             setOneBulk(null);
             if (bulk) setTicked(new Set());
+            showToast(message);
+            load(true);
+            setBoardKey((n) => n + 1);
+          }}
+        />
+      )}
+      {bankOpen && (
+        <ReturnToBankSheet
+          leadIds={rows.filter((r) => ticked.has(r.id)).map((r) => r.id)}
+          onClose={() => setBankOpen(false)}
+          onDone={(message) => {
+            setBankOpen(false);
+            setTicked(new Set());
             showToast(message);
             load(true);
             setBoardKey((n) => n + 1);

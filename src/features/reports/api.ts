@@ -23,7 +23,7 @@ export type ReportSection =
   | 'heatmap';
 
 export const SECTION_LABELS: Record<ReportSection, { title: string; text: string }> = {
-  summary: { title: 'Summary', text: 'New leads, contacted, admitted, conversion, lost' },
+  summary: { title: 'Summary', text: 'New leads, contacted, admitted, conversion, Not Now' },
   funnel: { title: 'Pipeline now', text: 'How many leads are in each stage right now (same as the board)' },
   visits: { title: 'Campus visits', text: 'Visited / didn’t come, and admissions with or without a visit' },
   sources: { title: 'Sources & campaigns', text: 'Where leads and admissions come from' },
@@ -31,7 +31,7 @@ export const SECTION_LABELS: Record<ReportSection, { title: string; text: string
   whatsapp: { title: 'WhatsApp', text: 'WhatsApp calls and messages, apart from phone calls' },
   templates: { title: 'Message templates', text: 'Which templates are sent, by whom, and what happened after' },
   collection: { title: 'Collection', text: 'Money taken and returned, by method and person; due, late, discounts' },
-  lost: { title: 'Why leads are lost', text: 'Lost reasons, and the stage they left from' },
+  lost: { title: 'Why leads are Not Now', text: 'Not Now reasons, and the stage they left from' },
   heatmap: { title: 'Best time to call', text: 'Which days and hours calls get answered' },
 };
 
@@ -239,7 +239,9 @@ async function loadLeadReport(q: ReportQuery, withCalls: boolean): Promise<LeadR
   if (report.error) throw toError(report.error);
   if (calls.error) throw toError(calls.error);
 
-  const r = report.data as unknown as Omit<LeadReport, 'team'> & { team: Omit<TeamRow, 'calls' | 'connected' | 'talk_sec'>[] };
+  const r = report.data as unknown as Omit<LeadReport, 'team'> & {
+    team: Omit<TeamRow, 'calls' | 'connected' | 'talk_sec'>[];
+  };
 
   // Calls per person (call_report gives one row per person per day)
   const byUser = new Map<string, { name: string; calls: number; connected: number; talk_sec: number }>();
@@ -393,8 +395,7 @@ export async function getCallHeatmap(q: ReportQuery): Promise<HeatCell[]> {
 // =====================================================================
 // Text helpers
 // =====================================================================
-export const pct = (part: number, whole: number): string =>
-  whole > 0 ? `${Math.round((part / whole) * 100)}%` : '—';
+export const pct = (part: number, whole: number): string => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : '—');
 
 export function formatTalk(sec: number): string {
   if (sec < 60) return `${sec}s`;

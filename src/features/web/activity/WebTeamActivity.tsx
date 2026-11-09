@@ -241,11 +241,13 @@ export function WebTeamActivity() {
     },
     {
       key: 'lost',
-      label: 'Lost',
+      label: 'Not Now',
       width: 80,
       align: 'right',
       render: (r) => (
-        <CellText tone={(lostBy.get(r.user_id) ?? 0) > 0 ? undefined : 'muted'}>{`❌ ${lostBy.get(r.user_id) ?? 0}`}</CellText>
+        <CellText
+          tone={(lostBy.get(r.user_id) ?? 0) > 0 ? undefined : 'muted'}
+        >{`❌ ${lostBy.get(r.user_id) ?? 0}`}</CellText>
       ),
       sortValue: (r) => lostBy.get(r.user_id) ?? 0,
       text: (r) => lostBy.get(r.user_id) ?? 0,
@@ -295,7 +297,10 @@ export function WebTeamActivity() {
       {/* the website's top bar has the name */}
       <Stack.Screen options={{ headerShown: false }} />
       {exporting && (
-        <ExportWorkSheet people={rows.map((r) => ({ id: r.user_id, name: r.name ?? 'No name' }))} onClose={() => setExporting(false)} />
+        <ExportWorkSheet
+          people={rows.map((r) => ({ id: r.user_id, name: r.name ?? 'No name' }))}
+          onClose={() => setExporting(false)}
+        />
       )}
       <View style={webPage.body}>
         <View style={webPage.titleRow}>
@@ -322,7 +327,7 @@ export function WebTeamActivity() {
             { label: 'WhatsApp', value: String(totals.wa) },
             { label: 'Leads added', value: String(totals.added) },
             { label: 'Admitted', value: String(totals.admitted) },
-            ...(lost ? [{ label: 'Lost', value: String(lost.total) }] : []),
+            ...(lost ? [{ label: 'Not Now', value: String(lost.total) }] : []),
           ].map((t) => (
             <View
               key={t.label}

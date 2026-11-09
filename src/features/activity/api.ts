@@ -43,10 +43,7 @@ export async function saveActivitySettings(settings: ActivitySettings): Promise<
 }
 
 /** Show the activity screens to this person? */
-export function canOpenActivity(
-  settings: ActivitySettings,
-  hasPermission: (p: string) => boolean,
-): boolean {
+export function canOpenActivity(settings: ActivitySettings, hasPermission: (p: string) => boolean): boolean {
   if (hasPermission('settings.manage') || hasPermission('leads.view_all')) return true;
   return settings.team_leads && hasPermission('leads.view_team');
 }
@@ -162,7 +159,7 @@ export async function getTeamLost(from: string, to: string): Promise<TeamLost> {
 /** "Lost: Fee too high · they want a cheaper college" → reason + note */
 export function splitLostNote(note: string | null): { reason: string | null; note: string | null } {
   if (!note) return { reason: null, note: null };
-  const t = note.replace(/^Lost:\s*/i, '');
+  const t = note.replace(/^(Lost|Not Now):\s*/i, '');
   const i = t.indexOf(' · ');
   return i < 0 ? { reason: t || null, note: null } : { reason: t.slice(0, i) || null, note: t.slice(i + 3) || null };
 }
@@ -292,7 +289,16 @@ export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; acti
     kind: 'papers',
     label: 'Papers',
     icon: '📄',
-    actions: ['paper_received', 'paper_not_needed', 'paper_unticked', 'paper_returned', 'papers_moved', 'file_added', 'file_deleted', 'files_downloaded'],
+    actions: [
+      'paper_received',
+      'paper_not_needed',
+      'paper_unticked',
+      'paper_returned',
+      'papers_moved',
+      'file_added',
+      'file_deleted',
+      'files_downloaded',
+    ],
   },
   {
     kind: 'fee',
@@ -317,7 +323,12 @@ export const CHANGE_KINDS: { kind: ChangeKind; label: string; icon: string; acti
     icon: '🗑',
     actions: ['call_deleted', 'call_note_deleted', 'note_deleted', 'entry_restored'],
   },
-  { kind: 'lead', label: 'Added / deleted', icon: '➕', actions: ['created', 're_enquiry', 'deleted', 'restored'] },
+  {
+    kind: 'lead',
+    label: 'Added / deleted',
+    icon: '➕',
+    actions: ['created', 're_enquiry', 'deleted', 'restored', 'bank_returned', 'bank_pulled'],
+  },
 ];
 
 export function kindOf(action: string) {
@@ -375,7 +386,10 @@ export function describeChange(
           warn: false,
         };
       }
-      return { text: `${String(d.direction ?? '') === 'incoming' ? 'Incoming · ' : ''}${q(d.outcome).replace(/_/g, ' ')}`, warn: false };
+      return {
+        text: `${String(d.direction ?? '') === 'incoming' ? 'Incoming · ' : ''}${q(d.outcome).replace(/_/g, ' ')}`,
+        warn: false,
+      };
     case 'note_added':
       return { text: `“${q(d.note)}”`, warn: false };
     case 'note_edited':
@@ -394,7 +408,10 @@ export function describeChange(
     case 'web_form':
       return { text: d.again ? '🙋 Website form again' : '🙋 From the website form', warn: false };
     case 'alumni_referral':
-      return { text: `🎓 ${d.credit ? 'Credited to' : 'Referred by'} ${String(d.alumni_name ?? 'an alumnus')}`, warn: false };
+      return {
+        text: `🎓 ${d.credit ? 'Credited to' : 'Referred by'} ${String(d.alumni_name ?? 'an alumnus')}`,
+        warn: false,
+      };
     case 'details_changed':
       return {
         text: [
@@ -443,9 +460,12 @@ export function describeChange(
     case 'discount_approved':
     case 'discount_rejected':
     case 'discount_cancelled': {
-      const verb = { discount_requested: 'asked', discount_approved: 'approved', discount_rejected: 'not approved', discount_cancelled: 'taken back' }[
-        item.action
-      ];
+      const verb = {
+        discount_requested: 'asked',
+        discount_approved: 'approved',
+        discount_rejected: 'not approved',
+        discount_cancelled: 'taken back',
+      }[item.action];
       return {
         text: `💰 Discount ${verb}: ৳${Math.round(Number(d.amount ?? 0)).toLocaleString('en-IN')} off ${q(d.fee)}${d.reason ? ` · ${q(d.reason)}` : ''}`,
         warn: item.action === 'discount_rejected',
@@ -509,7 +529,10 @@ export function describeChange(
         warn: true,
       };
     case 'installments_set':
-      return { text: Number(d.count ?? 0) > 0 ? `📅 ${q(d.count)} installments set` : '📅 Installment plan removed', warn: false };
+      return {
+        text: Number(d.count ?? 0) > 0 ? `📅 ${q(d.count)} installments set` : '📅 Installment plan removed',
+        warn: false,
+      };
     case 'created':
       return { text: 'Lead added', warn: false };
     case 're_enquiry':
@@ -518,9 +541,20 @@ export function describeChange(
       return { text: 'Lead deleted', warn: true };
     case 'restored':
       return { text: 'Lead restored', warn: false };
+    case 'bank_returned':
+      return {
+        text: `🏦 Sent to the Lead Bank${d.reason ? ` · ${q(d.reason)}` : ''}${
+          Number(d.rest_days ?? 0) > 0 ? ` · rests ${q(d.rest_days)} days` : ''
+        }`,
+        warn: false,
+      };
+    case 'bank_pulled':
+      return {
+        text: `🏦 ${d.back ? 'Back' : 'Came'} from the Lead Bank${d.list ? ` (${q(d.list)})` : ''}`,
+        warn: false,
+      };
     case 'call_deleted': {
-      const what =
-        d.channel === 'whatsapp' ? (d.media === 'message' ? 'WhatsApp message' : 'WhatsApp call') : 'Call';
+      const what = d.channel === 'whatsapp' ? (d.media === 'message' ? 'WhatsApp message' : 'WhatsApp call') : 'Call';
       return {
         text: `🗑 ${what} deleted (${q(d.outcome).replace(/_/g, ' ')}, ${when(d.called_at)})${
           d.note ? ` “${q(d.note)}”` : ''
@@ -547,7 +581,10 @@ export function describeChange(
       };
     }
     case 'bulk_placement':
-      return { text: `🔀 Moved: ${String(d.from ?? '—')} → ${String(d.to ?? '')} (with ${Number(d.count ?? 1)})`, warn: false };
+      return {
+        text: `🔀 Moved: ${String(d.from ?? '—')} → ${String(d.to ?? '')} (with ${Number(d.count ?? 1)})`,
+        warn: false,
+      };
     case 'student_ref_renumbered':
       return { text: `🎓 Student ID changed: ${String(d.old ?? '—')} → ${String(d.new ?? '')}`, warn: false };
     case 'call_lock_override':
@@ -607,7 +644,15 @@ export type UserDetail = {
     short: number;
     with_note: number;
   };
-  wa: { calls: number; connected: number; missed: number; talk_sec: number; video: number; sent: number; received: number };
+  wa: {
+    calls: number;
+    connected: number;
+    missed: number;
+    talk_sec: number;
+    video: number;
+    sent: number;
+    received: number;
+  };
   follow_ups: { due: number; on_time: number; late: number; missed: number; avg_late_min: number; overdue_now: number };
   speed: {
     given: number;

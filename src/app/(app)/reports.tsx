@@ -1,15 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, router, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -92,32 +84,35 @@ export default function ReportsScreen() {
   const range = periodRange(period);
   const show = settings.sections;
 
-  const load = useCallback(async (fresh = false) => {
-    const q = { ...periodRange(period), userId: person?.id ?? null, courseId: course?.id ?? null };
-    try {
-      setError(null);
-      const [r, h, w, t, c, a] = await Promise.all([
-        getLeadReport(q, show.team, fresh),
-        show.heatmap ? getCallHeatmap(q) : Promise.resolve([]),
-        show.whatsapp ? getWhatsAppReport(q) : Promise.resolve(null),
-        // An older database without the report: just leave the card out
-        show.templates ? getTemplateReport(q).catch(() => null) : Promise.resolve(null),
-        show.collection ? getCollectionReport(q).catch(() => null) : Promise.resolve(null),
-        getLeadsAdded(q.from, q.to).catch(() => [] as LeadsAddedRow[]),
-      ]);
-      setMoney(c);
-      setAdded(person ? a.filter((x) => x.user_id === person.id) : a);
-      setReport(r);
-      setHeat(h);
-      setWa(w);
-      setTpl(t);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load the report.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [period, person, course, show.team, show.heatmap, show.whatsapp, show.templates, show.collection]);
+  const load = useCallback(
+    async (fresh = false) => {
+      const q = { ...periodRange(period), userId: person?.id ?? null, courseId: course?.id ?? null };
+      try {
+        setError(null);
+        const [r, h, w, t, c, a] = await Promise.all([
+          getLeadReport(q, show.team, fresh),
+          show.heatmap ? getCallHeatmap(q) : Promise.resolve([]),
+          show.whatsapp ? getWhatsAppReport(q) : Promise.resolve(null),
+          // An older database without the report: just leave the card out
+          show.templates ? getTemplateReport(q).catch(() => null) : Promise.resolve(null),
+          show.collection ? getCollectionReport(q).catch(() => null) : Promise.resolve(null),
+          getLeadsAdded(q.from, q.to).catch(() => [] as LeadsAddedRow[]),
+        ]);
+        setMoney(c);
+        setAdded(person ? a.filter((x) => x.user_id === person.id) : a);
+        setReport(r);
+        setHeat(h);
+        setWa(w);
+        setTpl(t);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not load the report.');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [period, person, course, show.team, show.heatmap, show.whatsapp, show.templates, show.collection],
+  );
 
   useEffect(() => {
     if (!ready) return;
@@ -188,7 +183,12 @@ export default function ReportsScreen() {
             onPress={() => setPicker('person')}
           />
         )}
-        <PickButton icon="school" label={course?.name ?? 'All courses'} on={!!course} onPress={() => setPicker('course')} />
+        <PickButton
+          icon="school"
+          label={course?.name ?? 'All courses'}
+          on={!!course}
+          onPress={() => setPicker('course')}
+        />
       </View>
 
       <ScrollView
@@ -223,14 +223,18 @@ export default function ReportsScreen() {
               <Card title="Summary" wide>
                 <View style={styles.tiles}>
                   <StatTile label="New leads" value={String(s.new_leads)} />
-                  <StatTile label="Contacted" value={pct(s.contacted, s.new_leads)} hint={`${s.contacted} of ${s.new_leads}`} />
+                  <StatTile
+                    label="Contacted"
+                    value={pct(s.contacted, s.new_leads)}
+                    hint={`${s.contacted} of ${s.new_leads}`}
+                  />
                   <StatTile label="Admitted" value={String(s.admitted)} hint="in this period" />
                   <StatTile
                     label="Conversion"
                     value={pct(s.cohort_admitted, s.new_leads)}
                     hint={`${s.cohort_admitted} of the new leads`}
                   />
-                  <StatTile label="Lost" value={String(s.lost)} hint="in this period" />
+                  <StatTile label="Not Now" value={String(s.lost)} hint="in this period" />
                   <StatTile
                     label="Days to admit"
                     value={s.avg_days_to_admit != null ? String(s.avg_days_to_admit) : '—'}
@@ -269,8 +273,8 @@ export default function ReportsScreen() {
                   <PipelineBars steps={report.pipeline} mode={pipeMode} onPressStep={openStage} />
                 )}
                 <Text style={styles.hint}>
-                  Each lead counts once, in the stage it is in now. “All leads” matches the board (without filters).
-                  Tap a stage to see its leads.
+                  Each lead counts once, in the stage it is in now. “All leads” matches the board (without filters). Tap
+                  a stage to see its leads.
                 </Text>
               </Card>
             )}
@@ -374,7 +378,12 @@ export default function ReportsScreen() {
                   onPress={() =>
                     router.push({
                       pathname: '/leads',
-                      params: { addedDay: 'custom', addedFrom: range.from, addedTo: range.to, ...(person ? { addedBy: person.id } : {}) },
+                      params: {
+                        addedDay: 'custom',
+                        addedFrom: range.from,
+                        addedTo: range.to,
+                        ...(person ? { addedBy: person.id } : {}),
+                      },
                     } as unknown as Href)
                   }
                   hitSlop={8}
@@ -387,7 +396,10 @@ export default function ReportsScreen() {
 
             {/* 💬 WhatsApp (apart from phone calls) */}
             {show.whatsapp && wa && (
-              <Card title="💬 WhatsApp" subtitle="WhatsApp calls and messages in this period (not in the phone call numbers)">
+              <Card
+                title="💬 WhatsApp"
+                subtitle="WhatsApp calls and messages in this period (not in the phone call numbers)"
+              >
                 {wa.totals.calls + wa.totals.messages_sent + wa.totals.messages_received === 0 ? (
                   <Text style={styles.empty}>No WhatsApp calls or messages saved in this period.</Text>
                 ) : (
@@ -447,7 +459,11 @@ export default function ReportsScreen() {
                   />
                   {money.totals.refunded > 0 && <StatTile label="Refunded" value={taka(money.totals.refunded)} />}
                   {money.totals.refunded > 0 && <StatTile label="Net" value={taka(money.totals.net)} />}
-                  <StatTile label="Due now" value={taka(money.due_now.due)} hint={`${money.due_now.with_due} students`} />
+                  <StatTile
+                    label="Due now"
+                    value={taka(money.due_now.due)}
+                    hint={`${money.due_now.with_due} students`}
+                  />
                   <StatTile
                     label="Late"
                     value={taka(money.due_now.late_amount)}
@@ -537,7 +553,11 @@ export default function ReportsScreen() {
                         value={String(tpl.totals.sent)}
                         hint={`${tpl.totals.whatsapp} WhatsApp · ${tpl.totals.sms} SMS`}
                       />
-                      <StatTile label="Leads" value={String(tpl.totals.leads)} hint={`${tpl.totals.edited} changed before sending`} />
+                      <StatTile
+                        label="Leads"
+                        value={String(tpl.totals.leads)}
+                        hint={`${tpl.totals.edited} changed before sending`}
+                      />
                       <StatTile
                         label="Replied"
                         value={pct(tpl.totals.replied, tpl.totals.leads)}
@@ -561,7 +581,7 @@ export default function ReportsScreen() {
                         <View style={styles.personTop}>
                           <Text style={styles.personName} numberOfLines={1}>
                             {t.name}
-                            {!t.is_shared && <Text style={styles.personLine}>  · personal</Text>}
+                            {!t.is_shared && <Text style={styles.personLine}> · personal</Text>}
                           </Text>
                           <Text style={styles.personAdmitted}>{t.sent}×</Text>
                         </View>
@@ -600,14 +620,14 @@ export default function ReportsScreen() {
 
             {/* ⑥ Lost */}
             {show.lost && (
-              <Card title="✕ Why leads are lost" subtitle="Lost in this period">
+              <Card title="✕ Why leads are Not Now" subtitle="Moved to Not Now in this period">
                 <BarList
-                  empty="No leads lost in this period. 🎉"
+                  empty="No leads moved to Not Now in this period. 🎉"
                   rows={report.lost_reasons.map((x) => ({ key: x.name, name: x.name, value: x.leads }))}
                 />
                 {report.lost_from.length > 0 && (
                   <>
-                    <Text style={styles.subTitle}>Lost from stage</Text>
+                    <Text style={styles.subTitle}>Not Now from stage</Text>
                     <BarList
                       empty=""
                       rows={report.lost_from.map((x) => ({ key: x.name, name: x.name, value: x.leads }))}
@@ -633,7 +653,7 @@ export default function ReportsScreen() {
         title={picker === 'person' ? 'Whose leads?' : 'Which course?'}
         allLabel={picker === 'person' ? 'Whole team' : 'All courses'}
         options={picker === 'person' ? people : courses}
-        value={picker === 'person' ? person?.id ?? null : course?.id ?? null}
+        value={picker === 'person' ? (person?.id ?? null) : (course?.id ?? null)}
         onClose={() => setPicker(null)}
         onPick={(o) => {
           if (picker === 'person') setPerson(o);
@@ -747,7 +767,13 @@ function PickerSheet({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.background },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+  },
   muted: { fontSize: fontSize.small, color: colors.textMuted, textAlign: 'center' },
   pressed: { opacity: 0.7 },
   loader: { paddingVertical: spacing.xxl, width: '100%' },
@@ -756,7 +782,13 @@ const styles = StyleSheet.create({
   hint: { fontSize: fontSize.caption, lineHeight: 18, color: colors.textMuted },
 
   chipsScroll: { flexGrow: 0, flexShrink: 0 },
-  chips: { flexDirection: 'row', gap: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.xl, paddingTop: spacing.md },
+  chips: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.xl,
+    paddingTop: spacing.md,
+  },
   chip: {
     minHeight: 34,
     justifyContent: 'center',
@@ -793,7 +825,14 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     // 🌐 Website: a dashboard (cards side by side)
     ...(isWeb
-      ? { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', maxWidth: 1500, width: '100%', alignSelf: 'center' }
+      ? {
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
+          maxWidth: 1500,
+          width: '100%',
+          alignSelf: 'center',
+        }
       : {}),
   },
   rangeText: { fontSize: fontSize.caption, color: colors.textMuted, width: '100%' },

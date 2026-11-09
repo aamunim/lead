@@ -20,13 +20,13 @@ export function LostSection({ lost, compact }: { lost: TeamLost | null; compact?
   return (
     <View style={styles.card}>
       <View style={styles.head}>
-        <Text style={styles.title}>❌ Marked Lost</Text>
+        <Text style={styles.title}>❌ Moved to Not Now</Text>
         <View style={styles.totalPill}>
           <Text style={styles.totalText}>{lost.total}</Text>
         </View>
       </View>
       {lost.people.length === 0 ? (
-        <Text style={styles.muted}>Nobody marked a lead Lost in this period.</Text>
+        <Text style={styles.muted}>Nobody moved a lead to Not Now in this period.</Text>
       ) : (
         lost.people.map((p) => {
           const isOpen = open === p.user_id;
@@ -39,7 +39,7 @@ export function LostSection({ lost, compact }: { lost: TeamLost | null; compact?
                 style={({ pressed }) => [styles.personRow, pressed && styles.pressed]}
                 accessibilityRole="button"
                 accessibilityState={{ expanded: isOpen }}
-                accessibilityLabel={`${p.name ?? 'No name'}: ${p.count} marked lost`}
+                accessibilityLabel={`${p.name ?? 'No name'}: ${p.count} moved to Not Now`}
               >
                 <Text style={styles.personName} numberOfLines={1}>
                   {p.name ?? 'No name'}
