@@ -23,7 +23,8 @@ export type NotificationKind =
   | 'feedback'
   | 'scorecard'
   | 'leaderboard'
-  | 'alumni';
+  | 'alumni'
+  | 'supervisor';
 
 export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; text: string }[] = [
   { kind: 'assigned', icon: '👥', title: 'Lead given to you', text: 'Someone hands you a lead (with their note)' },
@@ -71,6 +72,12 @@ export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; t
     text: 'An answer to your message; new messages to the developer',
   },
   {
+    kind: 'supervisor',
+    icon: '🧑‍💼',
+    title: 'Supervisor',
+    text: 'Morning: today’s calls and who first · evening: the day’s summary (Team Leads, admins)',
+  },
+  {
     kind: 'payment',
     icon: '📅',
     title: 'Installments',
@@ -101,6 +108,7 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
     scorecard: true,
     leaderboard: true,
     alumni: true,
+    supervisor: true,
   },
   assigned_in_quiet_hours: true,
 };

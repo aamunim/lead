@@ -87,6 +87,10 @@ function pageTitle(path: string): string {
   if (path.startsWith('/alumni/referrals')) return 'Referral inbox';
   if (path.startsWith('/alumni')) return 'Alumni';
   if (path.startsWith('/bank')) return 'Lead Bank';
+  if (path.startsWith('/supervisor')) return 'Supervisor';
+  if (path.startsWith('/settings/supervisor-targets')) return 'Settings › Admission targets';
+  if (path.startsWith('/settings/supervisor-playbook')) return 'Settings › Objection answers';
+  if (path.startsWith('/settings/supervisor')) return 'Settings › Supervisor';
   if (path.startsWith('/feedback')) return 'Contact developer';
   if (path.startsWith('/settings/roles')) return 'Settings › Roles';
   if (path.startsWith('/speed')) return 'Speed check';
@@ -248,6 +252,8 @@ export function WebShell({ children }: { children: React.ReactNode }) {
     ...(alumni.view
       ? [{ label: 'Alumni', icon: '🧑‍🎓', href: '/alumni', match: (p: string) => p.startsWith('/alumni') }]
       : []),
+    // 🧑‍💼 Supervisor: everyone
+    { label: 'Supervisor', icon: '🧑‍💼', href: '/supervisor', match: (p: string) => p.startsWith('/supervisor') },
     // 🏦 Lead Bank: admins
     ...(isAdmin
       ? [{ label: 'Lead Bank', icon: '🏦', href: '/bank', match: (p: string) => p.startsWith('/bank') }]
