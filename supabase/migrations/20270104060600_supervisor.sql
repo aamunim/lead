@@ -21,41 +21,98 @@ insert into public.app_settings (key, value)
 values ('supervisor', '{}'::jsonb)
 on conflict (key) do nothing;
 
+-- a yes/no from the saved setting, else the default
+create or replace function public.sup_b(p jsonb, p_key text, p_default boolean)
+returns boolean
+language sql
+immutable
+as $$
+  select case when jsonb_typeof(p -> p_key) = 'boolean' then (p ->> p_key)::boolean else p_default end;
+$$;
+
+-- a whole number from the saved setting (kept within min–max), else the default
+create or replace function public.sup_i(p jsonb, p_key text, p_default int, p_min int, p_max int)
+returns int
+language sql
+immutable
+as $$
+  select greatest(p_min, least(p_max,
+    case when jsonb_typeof(p -> p_key) = 'number' then round((p ->> p_key)::numeric)::int
+         when jsonb_typeof(p -> p_key) = 'string' and trim(p ->> p_key) ~ '^-?[0-9]{1,6}(\.[0-9]+)?$'
+           then round(trim(p ->> p_key)::numeric)::int
+         else p_default end));
+$$;
+
+-- The settings with every value checked: whatever was saved, the rules
+-- always get proper numbers (a bad save can never stop the supervisor)
 create or replace function public.supervisor_setting()
 returns jsonb
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
-  select jsonb_build_object(
-    'enabled', true,
-    'start_hour', 9,
-    'end_hour', 21,
+declare
+  raw   jsonb := (select value from public.app_settings where key = 'supervisor');
+  sv    jsonb;
+  srul  jsonb;
+  d     jsonb := jsonb_build_object(
+          'new_lead', '{"on":true,"minutes":60}'::jsonb, 'followup_late', '{"on":true,"hours":2}'::jsonb,
+          'hot_idle', '{"on":true,"days":3}'::jsonb, 'stuck', '{"on":true,"days":14}'::jsonb,
+          'no_note', '{"on":true,"min":3}'::jsonb, 'short_calls', '{"on":true,"sec":10,"min":5}'::jsonb,
+          'not_now_high', '{"on":true,"min":5}'::jsonb, 'no_calls', '{"on":true,"hour":12}'::jsonb,
+          'workload', '{"on":true,"ratio":1.8,"min":30}'::jsonb, 'unassigned', '{"on":true,"hours":2}'::jsonb,
+          'discount_wait', '{"on":true,"days":2}'::jsonb, 'fee_due', '{"on":true,"days":30}'::jsonb,
+          'bank_return', '{"on":true,"days":60}'::jsonb, 'bank_pull', '{"on":true,"min_open":15}'::jsonb);
+  r     record;
+  k     record;
+  one   jsonb;
+  mine  jsonb;
+  rules jsonb := '{}'::jsonb;
+  v_start int;
+  v_end   int;
+begin
+  sv := case when jsonb_typeof(raw) = 'object' then raw else '{}'::jsonb end;
+  srul := case when jsonb_typeof(sv -> 'rules') = 'object' then sv -> 'rules' else '{}'::jsonb end;
+  for r in select key, value from jsonb_each(d) loop
+    one := r.value;
+    mine := case when jsonb_typeof(srul -> r.key) = 'object' then srul -> r.key else '{}'::jsonb end;
+    for k in select key from jsonb_each(r.value) loop
+      if k.key = 'on' then
+        if jsonb_typeof(mine -> 'on') = 'boolean' then one := one || jsonb_build_object('on', mine -> 'on'); end if;
+      elsif jsonb_typeof(mine -> k.key) = 'number' and (mine ->> k.key)::numeric between 0 and 100000 then
+        one := one || jsonb_build_object(k.key, (mine ->> k.key)::numeric);
+      elsif jsonb_typeof(mine -> k.key) = 'string' and trim(mine ->> k.key) ~ '^[0-9]{1,5}(\.[0-9]+)?$' then
+        one := one || jsonb_build_object(k.key, trim(mine ->> k.key)::numeric);
+      end if;
+    end loop;
+    rules := rules || jsonb_build_object(r.key, one);
+  end loop;
+
+  v_start := public.sup_i(sv, 'start_hour', 9, 0, 22);
+  v_end := public.sup_i(sv, 'end_hour', 21, 1, 23);
+  if v_end <= v_start then v_end := least(23, v_start + 1); end if;
+
+  return jsonb_build_object(
+    'enabled', public.sup_b(sv, 'enabled', true),
+    'start_hour', v_start,
+    'end_hour', v_end,
     -- 0 = Sunday … 6 = Saturday (none: every day)
-    'off_days', '[]'::jsonb,
-    'brief', true,
-    'day_end', true,
-    'day_end_team_lead', true,
-    'day_end_admins', true,
+    'off_days', coalesce((
+       select jsonb_agg(distinct x::int)
+       from jsonb_array_elements_text(case when jsonb_typeof(sv -> 'off_days') = 'array' then sv -> 'off_days'
+                                           else '[]'::jsonb end) x
+       where x ~ '^[0-6]$'), '[]'::jsonb),
+    'brief', public.sup_b(sv, 'brief', true),
+    'day_end', public.sup_b(sv, 'day_end', true),
+    'day_end_team_lead', public.sup_b(sv, 'day_end_team_lead', true),
+    'day_end_admins', public.sup_b(sv, 'day_end_admins', true),
     -- a high-score lead: from this score
-    'golden_score', 60
-  )
-  -- the saved setting wins; its rules are merged one by one
-  || (coalesce((select value from public.app_settings where key = 'supervisor'), '{}'::jsonb) - 'rules')
-  || jsonb_build_object('rules',
-       (select coalesce(jsonb_object_agg(d.key, d.value || coalesce(s.value, '{}'::jsonb)), '{}'::jsonb)
-          from jsonb_each(jsonb_build_object(
-                 'new_lead', '{"on":true,"minutes":60}'::jsonb, 'followup_late', '{"on":true,"hours":2}'::jsonb,
-                 'hot_idle', '{"on":true,"days":3}'::jsonb, 'stuck', '{"on":true,"days":14}'::jsonb,
-                 'no_note', '{"on":true,"min":3}'::jsonb, 'short_calls', '{"on":true,"sec":10,"min":5}'::jsonb,
-                 'not_now_high', '{"on":true,"min":5}'::jsonb, 'no_calls', '{"on":true,"hour":12}'::jsonb,
-                 'workload', '{"on":true,"ratio":1.8,"min":30}'::jsonb, 'unassigned', '{"on":true,"hours":2}'::jsonb,
-                 'discount_wait', '{"on":true,"days":2}'::jsonb, 'fee_due', '{"on":true,"days":30}'::jsonb,
-                 'bank_return', '{"on":true,"days":60}'::jsonb, 'bank_pull', '{"on":true,"min_open":15}'::jsonb)) d
-          left join jsonb_each(coalesce((select value -> 'rules' from public.app_settings where key = 'supervisor'),
-                                        '{}'::jsonb)) s on s.key = d.key));
+    'golden_score', public.sup_i(sv, 'golden_score', 60, 1, 100),
+    'rules', rules);
+end;
 $$;
+revoke all on function public.supervisor_setting() from public, anon;
 grant execute on function public.supervisor_setting() to authenticated;
 
 -- a rule's number (or its default)
@@ -113,12 +170,14 @@ stable
 security definer
 set search_path = public
 as $$
-  select auth.uid() is not null and (
+  select auth.uid() is not null and public.is_active_user() and (
     p_user = auth.uid()
     or public.sup_is_admin()
     or (p_user is not null and public.has_permission('leads.view_team')
         and exists (select 1 from public.profiles p where p.id = p_user and p.team_lead_id = auth.uid())));
 $$;
+revoke all on function public.sup_is_admin() from public, anon;
+revoke all on function public.sup_can_see(uuid) from public, anon;
 grant execute on function public.sup_is_admin() to authenticated;
 grant execute on function public.sup_can_see(uuid) to authenticated;
 
@@ -141,7 +200,9 @@ create table if not exists public.supervisor_findings (
   detail        text,
   data          jsonb not null default '{}'::jsonb,
   -- open · snoozed (later) · done (marked) · wrong (marked: not right) · fixed (gone by itself)
-  status        text not null default 'open' check (status in ('open', 'snoozed', 'done', 'wrong', 'fixed')),
+  -- · expired (its day is over, or it is too old for the rule; not fixed)
+  status        text not null default 'open'
+                check (status in ('open', 'snoozed', 'done', 'wrong', 'fixed', 'expired')),
   snooze_until  timestamptz,
   resolved_at   timestamptz,
   resolved_by   uuid references public.profiles (id) on delete set null,
@@ -158,6 +219,8 @@ create index if not exists supervisor_findings_done_idx on public.supervisor_fin
 
 -- read and changed only through the functions below
 alter table public.supervisor_findings enable row level security;
+-- (the "today" rules read calls by time)
+create index if not exists call_logs_called_at_idx on public.call_logs (called_at desc);
 revoke all on public.supervisor_findings from anon, authenticated;
 
 -- small memory: when the brief / summary last went out
@@ -186,7 +249,7 @@ declare
   v_day0   timestamptz := public.sup_today_start();
   v_day    text := to_char(public.sup_local(), 'YYYY-MM-DD');
   v_week   text := to_char(public.sup_local(), 'IYYY-IW');
-  v_rules  text[] := array['new_lead', 'followup_late', 'hot_idle', 'no_note', 'no_calls'];
+  v_rules  text[] := array['new_lead', 'followup_late', 'hot_idle', 'no_note'];
   v_new    int;
   v_fixed  int;
   v_gold   int := coalesce((c ->> 'golden_score')::int, 60);
@@ -196,6 +259,8 @@ begin
   if not coalesce((c ->> 'enabled')::boolean, true) then
     return jsonb_build_object('enabled', false);
   end if;
+  -- one run at a time (the 15-minute check and "Check now")
+  perform pg_advisory_xact_lock(hashtext('supervisor_run'));
   if p_heavy then
     v_rules := v_rules || array['stuck', 'short_calls', 'not_now_high', 'workload', 'unassigned', 'discount_wait',
                                 'fee_due', 'bank_return', 'bank_pull'];
@@ -204,18 +269,22 @@ begin
   if to_regclass('pg_temp._sup') is null then
   create temp table _sup (
     rule text, dkey text, user_id uuid, lead_id uuid, severity text, for_managers boolean,
-    title text, detail text, data jsonb
+    title text, detail text, data jsonb,
+    -- false: still true, kept open, but not raised as new (beyond a person's first ones)
+    fresh boolean not null default true
   ) on commit drop;
   end if;
   truncate _sup;
 
   -- 🆕 a new lead not called yet (its alerts already go out: shown here only)
   if public.sup_on(c, 'new_lead') then
+    -- (the newest 20 per person are raised; the rest stay quiet but are not "fixed")
     insert into _sup
     select 'new_lead', 'new_lead:' || l.id, l.assigned_to, l.id, 'urgent', false,
            'নতুন lead-এ এখনো কল হয়নি',
            l.name || ' · ' || floor(extract(epoch from now() - l.created_at) / 60)::int || ' মিনিট আগে এসেছে',
-           jsonb_build_object('minutes', floor(extract(epoch from now() - l.created_at) / 60)::int)
+           jsonb_build_object('minutes', floor(extract(epoch from now() - l.created_at) / 60)::int),
+           row_number() over (partition by l.assigned_to order by l.created_at desc, l.id) <= 20
     from public.leads l
     join public.pipeline_stages s on s.id = l.stage_id and s.kind = 'open'
     where l.deleted_at is null and l.assigned_to is not null
@@ -232,7 +301,8 @@ begin
            'Follow-up বাকি',
            l.name || ' · কথা ছিল ' || to_char(f.due_at at time zone 'Asia/Dhaka', 'DD Mon, HH12:MI AM')
              || coalesce(' · ' || left(nullif(trim(f.note), ''), 80), ''),
-           jsonb_build_object('due_at', f.due_at)
+           jsonb_build_object('due_at', f.due_at),
+           row_number() over (partition by l.assigned_to order by f.due_at desc, f.id) <= 20
     from public.follow_ups f
     join public.leads l on l.id = f.lead_id and l.deleted_at is null and l.assigned_to is not null
     join public.pipeline_stages s on s.id = l.stage_id and s.kind = 'open'
@@ -245,7 +315,7 @@ begin
   if public.sup_on(c, 'hot_idle') then
     -- (the 10 best per person: a list to act on, not a flood)
     insert into _sup
-    select h.rule, h.dkey, h.user_id, h.lead_id, h.severity, h.for_managers, h.title, h.detail, h.data
+    select h.rule, h.dkey, h.user_id, h.lead_id, h.severity, h.for_managers, h.title, h.detail, h.data, h.rn <= 10
     from (
     select 'hot_idle' as rule, 'hot_idle:' || l.id as dkey, l.assigned_to as user_id, l.id as lead_id,
            'today' as severity, false as for_managers,
@@ -257,7 +327,7 @@ begin
            jsonb_build_object('score', l.score,
                               'days', floor(extract(epoch from now() - coalesce(l.last_contacted_at, l.created_at)) / 86400)::int) as data,
            row_number() over (partition by l.assigned_to
-                              order by coalesce(l.score, 0) desc, coalesce(l.last_contacted_at, l.created_at)) as rn
+                              order by coalesce(l.score, 0) desc, coalesce(l.last_contacted_at, l.created_at), l.id) as rn
     from public.leads l
     join public.pipeline_stages s on s.id = l.stage_id and s.kind = 'open'
     left join public.lead_chances lc on lc.lead_id = l.id
@@ -265,16 +335,14 @@ begin
       and (coalesce(l.score, 0) >= v_gold or l.rating = 'hot' or lc.level = 'hot')
       and coalesce(l.last_contacted_at, l.created_at)
           < now() - make_interval(days => public.sup_num(c, 'hot_idle', 'days', 3)::int)
-      -- a call planned for later: not forgotten
-      and not exists (select 1 from public.follow_ups f
-                      where f.lead_id = l.id and f.status = 'pending' and f.due_at > now())
-    ) h
-    where h.rn <= 10;
+      -- a call planned (or late: "follow-up late" covers it): not forgotten
+      and not exists (select 1 from public.follow_ups f where f.lead_id = l.id and f.status = 'pending')
+    ) h;
   end if;
 
   -- 📝 calls today with no note (from 3)
   if public.sup_on(c, 'no_note') then
-    insert into _sup
+    insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
     select 'no_note', 'no_note:' || x.user_id || ':' || v_day, x.user_id, null, 'improve', false,
            'Note ছাড়া কল',
            'আজ কথা হয়েছে এমন ' || x.n || 'টা কলে note নেই। পরের পদক্ষেপ লিখে রাখলে পরে কাজে লাগে।',
@@ -296,7 +364,8 @@ begin
   if public.sup_on(c, 'no_calls') and v_work
      and extract(hour from v_local) >= public.sup_num(c, 'no_calls', 'hour', 12)
      and extract(hour from v_local) < coalesce((c ->> 'end_hour')::int, 21) then
-    insert into _sup
+    v_rules := v_rules || array['no_calls'];
+    insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
     select 'no_calls', 'no_calls:' || p.id || ':' || v_day, p.id, null, 'today', true,
            'আজ এখনো কোনো কল নেই',
            p.full_name || ' · ' || x.open_leads || 'টা open lead আছে',
@@ -309,13 +378,14 @@ begin
     ) x on x.open_leads > 0
     where p.is_active and p.deleted_at is null
       and public.role_base(p.role_key) in ('caller', 'team_lead')
-      and not exists (select 1 from public.call_logs cl where cl.user_id = p.id and cl.called_at >= v_day0);
+      and not exists (select 1 from public.call_logs cl
+                      where cl.user_id = p.id and cl.called_at >= v_day0 and cl.deleted_at is null);
   end if;
 
   if p_heavy then
     -- 🧊 many leads at the same stage for long
     if public.sup_on(c, 'stuck') then
-      insert into _sup
+      insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
       select 'stuck', 'stuck:' || x.user_id, x.user_id, null, 'improve', false,
              'অনেক দিন একই stage-এ',
              x.n || 'টা lead ' || public.sup_num(c, 'stuck', 'days', 14)::int
@@ -336,7 +406,7 @@ begin
 
     -- ⏱ many very short "talked" calls today (to Team Leads / admins only)
     if public.sup_on(c, 'short_calls') then
-      insert into _sup
+      insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
       select 'short_calls', 'short_calls:' || x.user_id || ':' || v_day, x.user_id, null, 'improve', true,
              'খুব ছোট "কথা হয়েছে" কল',
              p.full_name || ' · আজ ' || x.n || 'টা কল ' || public.sup_num(c, 'short_calls', 'sec', 10)::int
@@ -357,7 +427,7 @@ begin
 
     -- ✕ many leads put to Not Now this week, twice the team's average (managers)
     if public.sup_on(c, 'not_now_high') then
-      insert into _sup
+      insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
       select 'not_now_high', 'not_now_high:' || x.user_id || ':' || v_week, x.user_id, null, 'improve', true,
              'বেশি Not Now',
              p.full_name || ' · গত ৭ দিনে ' || x.n || 'টা lead Not Now (টিমের গড় ' || round(x.avg_n, 1) || ')',
@@ -377,7 +447,7 @@ begin
 
     -- ⚖️ one person holds far more open leads than the others (managers)
     if public.sup_on(c, 'workload') then
-      insert into _sup
+      insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
       select 'workload', 'workload:' || x.user_id, x.user_id, null, 'improve', true,
              'কাজের ভার বেশি',
              x.name || '-এর হাতে ' || x.n || 'টা open lead (টিমের মাঝামাঝি ' || x.med::int || ')। কিছু lead অন্যকে দিন।',
@@ -399,7 +469,7 @@ begin
 
     -- 🙋 leads given to nobody (admins)
     if public.sup_on(c, 'unassigned') then
-      insert into _sup
+      insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
       select 'unassigned', 'unassigned', null, null, 'today', true,
              'কাউকে দেওয়া হয়নি এমন lead',
              x.n || 'টা open lead কারো নামে নেই। কাউকে দিন, নইলে কেউ কল করবে না।',
@@ -416,7 +486,7 @@ begin
 
     -- 💸 discount requests waiting long (admins)
     if public.sup_on(c, 'discount_wait') then
-      insert into _sup
+      insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
       select 'discount_wait', 'discount_wait', null, null, 'today', true,
              'Discount অনুরোধ অপেক্ষায়',
              x.n || 'টা discount অনুরোধ ' || public.sup_num(c, 'discount_wait', 'days', 2)::int
@@ -433,7 +503,7 @@ begin
 
     -- 💰 admitted students with fee due and no payment for long
     if public.sup_on(c, 'fee_due') then
-      insert into _sup
+      insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
       select 'fee_due', 'fee_due:' || x.user_id, x.user_id, null, 'improve', false,
              'ভর্তি হয়েছে, fee বাকি',
              x.n || ' জন ছাত্রের মোট ৳' || to_char(x.due, 'FM99,99,99,999') || ' বাকি, '
@@ -454,7 +524,7 @@ begin
 
     -- 🏦 old leads with no progress: the Lead Bank is the better place (admins)
     if public.sup_on(c, 'bank_return') and to_regclass('public.lead_bank') is not null then
-      insert into _sup
+      insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
       select 'bank_return', 'bank_return:' || x.user_id, x.user_id, null, 'improve', true,
              'Lead Bank-এ ফেরত পাঠানোর মতো',
              x.name || '-এর ' || x.n || 'টা lead-এ ' || public.sup_num(c, 'bank_return', 'days', 60)::int
@@ -480,7 +550,7 @@ begin
 
     -- 🏦 someone has little to do while the bank has new numbers (admins)
     if public.sup_on(c, 'bank_pull') and to_regclass('public.lead_bank') is not null then
-      insert into _sup
+      insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
       select 'bank_pull', 'bank_pull:' || p.id || ':' || v_day, p.id, null, 'today', true,
              'হাতে কাজ কম',
              p.full_name || '-এর হাতে মাত্র ' || x.n || 'টা open lead। Lead Bank-এ ' || b.n
@@ -505,13 +575,14 @@ begin
   insert into public.supervisor_findings (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
   select s.rule, s.dkey, s.user_id, s.lead_id, s.severity, s.for_managers, s.title, s.detail, s.data
   from (select distinct on (dkey) * from _sup order by dkey) s
-  where not exists (
+  where s.fresh and not exists (
     select 1 from public.supervisor_findings f
     where f.dkey = s.dkey
       and (f.status in ('open', 'snoozed')
            -- marked "not right": quiet for 30 days · marked done: for the rest of the day
            or (f.status = 'wrong' and f.resolved_at > now() - interval '30 days')
-           or (f.status = 'done' and f.resolved_at > now() - interval '20 hours')));
+           or (f.status = 'done' and f.resolved_at > now() - interval '20 hours')))
+  on conflict (dkey) where status in ('open', 'snoozed') do nothing;
   get diagnostics v_new = row_count;
 
   update public.supervisor_findings f
@@ -525,9 +596,28 @@ begin
      set status = 'open', snooze_until = null, updated_at = now()
    where status = 'snoozed' and snooze_until <= now();
 
+  -- a day's (or week's) finding whose day is over: expired, not fixed
+  update public.supervisor_findings f
+     set status = 'expired', resolved_at = now(), updated_at = now()
+   where f.status in ('open', 'snoozed')
+     and f.rule in ('no_note', 'no_calls', 'short_calls', 'bank_pull', 'not_now_high')
+     and f.dkey not like '%:' || v_day and f.dkey not like '%:' || v_week;
+
   -- the problem is gone (only for the rules looked at now)
   update public.supervisor_findings f
-     set status = 'fixed', resolved_at = now(), updated_at = now()
+     set status = case
+           -- too old for the rule, but still not done: expired
+           when f.rule = 'new_lead' and exists (
+                  select 1 from public.leads l where l.id = f.lead_id and l.deleted_at is null
+                    and l.assigned_to = f.user_id and l.last_contacted_at is null
+                    and not exists (select 1 from public.call_logs cl where cl.lead_id = l.id and cl.deleted_at is null))
+             then 'expired'
+           when f.rule = 'followup_late' and exists (
+                  select 1 from public.follow_ups fu
+                  where fu.id::text = split_part(f.dkey, ':', 2) and fu.status = 'pending')
+             then 'expired'
+           else 'fixed' end,
+         resolved_at = now(), updated_at = now()
    where f.status in ('open', 'snoozed') and f.rule = any (v_rules)
      and not exists (select 1 from _sup s where s.dkey = f.dkey);
   get diagnostics v_fixed = row_count;
@@ -535,10 +625,11 @@ begin
   -- old closed ones go after 60 days
   if p_heavy then
     delete from public.supervisor_findings
-     where status in ('done', 'wrong', 'fixed') and resolved_at < now() - interval '60 days';
+     where status in ('done', 'wrong', 'fixed', 'expired') and resolved_at < now() - interval '60 days';
   end if;
 
-  return jsonb_build_object('new', v_new, 'fixed', v_fixed, 'open', (select count(*) from _sup));
+  return jsonb_build_object('new', v_new, 'fixed', v_fixed,
+                            'open', (select count(*) from public.supervisor_findings where status = 'open'));
 end;
 $$;
 revoke all on function public.supervisor_run(boolean) from public, anon, authenticated;
@@ -546,7 +637,7 @@ revoke all on function public.supervisor_run(boolean) from public, anon, authent
 -- ---------------------------------------------------------------------
 -- 📋 Today's list for one person: who to call first, and why
 -- ---------------------------------------------------------------------
-create or replace function public.supervisor_tasks(p_user uuid default null, p_limit int default 15)
+create or replace function public.sup_tasks_for(p_user uuid, p_limit int default 15)
 returns table(lead_id uuid, name text, phone text, kind text, reason text, priority int,
               due_at timestamptz, score int, best_hour int)
 language plpgsql
@@ -556,13 +647,11 @@ set search_path = public
 set jit = off
 as $$
 declare
-  v_user uuid := coalesce(p_user, auth.uid());
+  v_user uuid := p_user;
   v_gold int := coalesce((public.supervisor_setting() ->> 'golden_score')::int, 60);
   v_end  timestamptz := public.sup_today_start() + interval '1 day';
 begin
-  if v_user is null or (auth.uid() is not null and not public.sup_can_see(v_user)) then
-    raise exception 'You can''t see this.';
-  end if;
+  if v_user is null then return; end if;
   return query
   with mine as (
     select l.id, l.name, coalesce(l.phone, l.whatsapp_number) as phone, l.score, l.created_at,
@@ -610,7 +699,7 @@ begin
   top as (
     select b.*, m.name, m.phone, m.score from best b join mine m on m.id = b.id
     order by b.priority desc, m.score desc nulls last
-    limit greatest(1, least(p_limit, 50))
+    limit greatest(1, least(p_limit, 500))
   )
   select t.id, t.name, t.phone, t.kind, t.reason, t.priority, t.due_at, t.score,
          -- 🕐 the hour this lead usually answers (from 2 talks)
@@ -623,6 +712,28 @@ begin
   order by t.priority desc, t.score desc nulls last;
 end;
 $$;
+-- only for the server's own jobs (the brief, the Home card)
+revoke all on function public.sup_tasks_for(uuid, int) from public, anon, authenticated;
+
+-- 📋 the app's list: mine, or (Team Leads / admins) someone I look after
+create or replace function public.supervisor_tasks(p_user uuid default null, p_limit int default 15)
+returns table(lead_id uuid, name text, phone text, kind text, reason text, priority int,
+              due_at timestamptz, score int, best_hour int)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := coalesce(p_user, auth.uid());
+begin
+  if auth.uid() is null or v_user is null or not public.sup_can_see(v_user) then
+    raise exception 'You can''t see this.';
+  end if;
+  return query select * from public.sup_tasks_for(v_user, least(greatest(coalesce(p_limit, 15), 1), 50));
+end;
+$$;
+revoke all on function public.supervisor_tasks(uuid, int) from public, anon;
 grant execute on function public.supervisor_tasks(uuid, int) to authenticated;
 
 -- ---------------------------------------------------------------------
@@ -660,7 +771,7 @@ begin
               where f.user_id = v_me and f.status = 'open' and not f.for_managers
               order by case f.severity when 'urgent' then 0 when 'today' then 1 else 2 end, f.created_at desc
               limit 3) x), '[]'::jsonb),
-    'tasks', coalesce((select jsonb_agg(t) from public.supervisor_tasks(v_me, 5) t), '[]'::jsonb),
+    'tasks', coalesce((select jsonb_agg(t) from public.sup_tasks_for(v_me, 5) t), '[]'::jsonb),
     'team', case when v_admin or v_tl then (
               select jsonb_build_object(
                 'urgent', count(*) filter (where f.severity = 'urgent'),
@@ -674,6 +785,7 @@ begin
   );
 end;
 $$;
+revoke all on function public.supervisor_home() from public, anon;
 grant execute on function public.supervisor_home() to authenticated;
 
 -- ---------------------------------------------------------------------
@@ -725,6 +837,7 @@ begin
   limit greatest(1, least(p_limit, 200)) offset greatest(0, p_offset);
 end;
 $$;
+revoke all on function public.supervisor_list(text, text, uuid, text, int, int) from public, anon;
 grant execute on function public.supervisor_list(text, text, uuid, text, int, int) to authenticated;
 
 -- ✅ done · ❌ not right · ⏳ later (1–7 days) · ↩ open again
@@ -750,7 +863,11 @@ begin
          resolved_by = case when p_status in ('done', 'wrong') then v_me end,
          updated_at = now()
    where f.id = any (p_ids)
-     and f.status <> 'fixed'
+     and f.status not in ('fixed', 'expired')
+     -- "open again": not when the same thing is already open (a newer finding)
+     and not (p_status = 'open' and exists (
+           select 1 from public.supervisor_findings o
+           where o.dkey = f.dkey and o.id <> f.id and o.status in ('open', 'snoozed')))
      and (
        (f.user_id = v_me and not f.for_managers)
        or v_admin
@@ -760,6 +877,7 @@ begin
   return v_n;
 end;
 $$;
+revoke all on function public.supervisor_mark(uuid[], text, int) from public, anon;
 grant execute on function public.supervisor_mark(uuid[], text, int) to authenticated;
 
 -- ---------------------------------------------------------------------
@@ -825,10 +943,12 @@ begin
     from public.supervisor_findings f
     -- the same as the person's list (later ones too)
     where f.user_id = pe.id and f.status in ('open', 'snoozed')
+      and not (pe.id = v_me and f.for_managers and not v_admin)
   ) fs on true
   order by coalesce(fs.urgent, 0) desc, coalesce(fs.today, 0) desc, pe.full_name;
 end;
 $$;
+revoke all on function public.supervisor_team() from public, anon;
 grant execute on function public.supervisor_team() to authenticated;
 
 -- ---------------------------------------------------------------------
@@ -863,7 +983,7 @@ begin
            string_agg(t.name, ', ' order by t.priority desc) filter (where t.rn <= 3)
       into v_fu, v_new, v_gd, v_top
       from (select x.*, row_number() over (order by x.priority desc) as rn
-              from public.supervisor_tasks(r.id, 50) x) t;
+              from public.sup_tasks_for(r.id, 500) x) t;
     if coalesce(v_fu, 0) + coalesce(v_new, 0) + coalesce(v_gd, 0) = 0 then continue; end if;
     perform public.notify(
       r.id, 'supervisor', '🌅 আজকের কাজ',
@@ -918,7 +1038,10 @@ begin
                where l.admitted_by = p.id and l.admitted_at >= v_d0 and l.deleted_at is null)::int as admitted,
              (select count(*) from public.follow_ups f
                join public.leads l on l.id = f.lead_id and l.deleted_at is null and l.assigned_to = p.id
-               where f.status = 'pending' and f.due_at < now() and f.due_at >= v_d0 - interval '1 day')::int as missed
+               join public.pipeline_stages s on s.id = l.stage_id and s.kind = 'open'
+               where f.status = 'pending' and f.due_at < now() and f.due_at >= v_d0)::int as missed,
+             exists (select 1 from public.leads l join public.pipeline_stages s on s.id = l.stage_id and s.kind = 'open'
+                      where l.assigned_to = p.id and l.deleted_at is null) as has_leads
       from public.profiles p
       where p.is_active and p.deleted_at is null and public.role_base(p.role_key) in ('caller', 'team_lead')
     )
@@ -926,7 +1049,7 @@ begin
            sum(pr.calls)::int as calls, sum(pr.admitted)::int as admitted, sum(pr.missed)::int as missed,
            string_agg(pr.full_name || ' ' || pr.missed, ', ' order by pr.missed desc)
              filter (where pr.missed > 0) as who_missed,
-           string_agg(pr.full_name, ', ') filter (where pr.calls = 0) as no_calls
+           string_agg(pr.full_name, ', ') filter (where pr.calls = 0 and pr.has_leads) as no_calls
     from readers rd
     join per pr on rd.admin or pr.team_lead_id = rd.reader
     where rd.reader is not null
@@ -1016,7 +1139,14 @@ begin
   return public.supervisor_run(true);
 end;
 $$;
+revoke all on function public.supervisor_check_now() from public, anon;
 grant execute on function public.supervisor_check_now() to authenticated;
+
+-- the first brief / summary: from tomorrow (not the moment this is deployed)
+insert into public.supervisor_state (key, value)
+values ('brief_day', to_char(now() at time zone 'Asia/Dhaka', 'YYYY-MM-DD')),
+       ('day_end_day', to_char(now() at time zone 'Asia/Dhaka', 'YYYY-MM-DD'))
+on conflict (key) do nothing;
 
 do $$
 begin

@@ -22,7 +22,7 @@ const rpc = async <T>(name: string, args: Record<string, unknown> = {}): Promise
 };
 
 export type Severity = 'urgent' | 'today' | 'improve';
-export type FindingStatus = 'open' | 'snoozed' | 'done' | 'wrong' | 'fixed';
+export type FindingStatus = 'open' | 'snoozed' | 'done' | 'wrong' | 'fixed' | 'expired';
 
 export type Finding = {
   id: string;

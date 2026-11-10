@@ -100,7 +100,7 @@ export default function SupervisorSettingsScreen() {
     setChecking(true);
     try {
       const r = await checkNow();
-      say('দেখা হয়েছে', `${r.open}টা খোলা · ${r.new}টা নতুন · ${r.fixed}টা নিজে থেকে মিটে গেছে`);
+      say('দেখা হয়েছে', `${r.open}টা খোলা · ${r.new}টা নতুন · ${r.fixed}টা বন্ধ হয়েছে (মিটে গেছে বা মেয়াদ শেষ)`);
     } catch (e) {
       say('করা যায়নি', e instanceof Error ? e.message : 'আবার চেষ্টা করুন।');
     } finally {
