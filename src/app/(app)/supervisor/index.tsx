@@ -63,6 +63,7 @@ export default function SupervisorScreen() {
   const params = useLocalSearchParams<{ tab?: string }>();
   const [home, setHome] = useState<SupervisorHome | null>(null);
   const manager = !!home && home.enabled && home.manager;
+  const admin = !!home && home.enabled && home.admin;
   const [tab, setTab] = useState<TabKey>(TABS.includes(params.tab as TabKey) ? (params.tab as TabKey) : 'tasks');
   const [scope, setScope] = useState<'me' | 'team'>(params.tab === 'team' ? 'team' : 'me');
   const [severity, setSeverity] = useState<Severity | null>(null);
@@ -266,7 +267,6 @@ export default function SupervisorScreen() {
   const me = home && home.enabled ? home.me : null;
   const t = home && home.enabled ? home.team : null;
   const ai = home && home.enabled ? home.ai : null;
-  const admin = !!home && home.enabled && home.admin;
   const tabs = (
     [
       ['tasks', '📋 আজ'],
@@ -432,8 +432,8 @@ export default function SupervisorScreen() {
               // (the person's own planned calls: only they set them)
               onPromise={item.user_id === profile?.id ? setPromise : undefined}
               canBank={canBank}
-              // (the server keeps a person's own finding when they say "wrong": Team Leads / admins judge it)
-              canWrong={manager || item.user_id !== profile?.id}
+              // (only an admin can call their own finding wrong: for anyone else the server counts it as done)
+              canWrong={admin || item.user_id !== profile?.id}
             />
           )}
         />

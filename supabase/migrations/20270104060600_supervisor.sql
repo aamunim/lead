@@ -783,6 +783,10 @@ declare
   v_user uuid := p_user;
   v_gold int := coalesce((public.supervisor_setting() ->> 'golden_score')::int, 60);
   v_end  timestamptz := public.sup_today_start() + interval '1 day';
+  -- the reader's course access (as on the leads list); the 15-minute job is free of it
+  v_me      uuid := auth.uid();
+  v_free    boolean := public.course_free();
+  v_courses uuid[] := public.my_course_ids();
 begin
   if v_user is null then return; end if;
   return query
@@ -792,6 +796,7 @@ begin
     from public.leads l
     join public.pipeline_stages s on s.id = l.stage_id and s.kind = 'open'
     where l.assigned_to = v_user and l.deleted_at is null
+      and (v_free or case when cardinality(l.course_ids) = 0 then l.created_by = v_me else v_courses is null or l.course_ids && v_courses end)
   ),
   c as (
     -- ⏰ follow-ups due today or late
@@ -886,6 +891,9 @@ declare
   v_me    uuid := auth.uid();
   v_admin boolean := public.sup_is_admin();
   v_tl    boolean := public.has_permission('leads.view_team');
+  -- a finding about a lead outside my courses is not shown (as on the leads list)
+  v_free    boolean := public.course_free();
+  v_courses uuid[] := public.my_course_ids();
 begin
   if v_me is null or not public.is_active_user() then return null; end if;
   if not coalesce((c ->> 'enabled')::boolean, true) then return jsonb_build_object('enabled', false); end if;
@@ -898,15 +906,19 @@ begin
     'ai_ready', to_regproc('public.ai_feature_plan') is not null
                 and jsonb_array_length(coalesce(public.ai_feature_plan('chance') -> 'providers', '[]'::jsonb)) > 0,
     'me', (select jsonb_build_object(
-              'urgent', count(*) filter (where severity = 'urgent'),
-              'today', count(*) filter (where severity = 'today'),
-              'improve', count(*) filter (where severity = 'improve'))
-           from public.supervisor_findings
-           where user_id = v_me and status = 'open' and not for_managers),
+              'urgent', count(*) filter (where f.severity = 'urgent'),
+              'today', count(*) filter (where f.severity = 'today'),
+              'improve', count(*) filter (where f.severity = 'improve'))
+           from public.supervisor_findings f
+           left join public.leads l on l.id = f.lead_id
+           where f.user_id = v_me and f.status = 'open' and not f.for_managers
+             and (l.id is null or (v_free or case when cardinality(l.course_ids) = 0 then l.created_by = v_me else v_courses is null or l.course_ids && v_courses end))),
     'top', coalesce((select jsonb_agg(x) from (
               select f.id, f.rule, f.severity, f.title, f.detail, f.lead_id
               from public.supervisor_findings f
+              left join public.leads l on l.id = f.lead_id
               where f.user_id = v_me and f.status = 'open' and not f.for_managers
+                and (l.id is null or (v_free or case when cardinality(l.course_ids) = 0 then l.created_by = v_me else v_courses is null or l.course_ids && v_courses end))
               order by case f.severity when 'urgent' then 0 when 'today' then 1 else 2 end, f.created_at desc
               limit 3) x), '[]'::jsonb),
     'tasks', coalesce((select jsonb_agg(t) from public.sup_tasks_for(v_me, 5) t), '[]'::jsonb),
@@ -918,8 +930,10 @@ begin
                 'people', count(distinct f.user_id))
               from public.supervisor_findings f
               left join public.profiles p on p.id = f.user_id
+              left join public.leads l on l.id = f.lead_id
               where f.status = 'open' and (f.user_id is distinct from v_me or f.for_managers)
-                and (v_admin or p.team_lead_id = v_me)) end
+                and (v_admin or p.team_lead_id = v_me)
+                and (l.id is null or (v_free or case when cardinality(l.course_ids) = 0 then l.created_by = v_me else v_courses is null or l.course_ids && v_courses end))) end
   );
 end;
 $$;
@@ -952,6 +966,8 @@ declare
   v_me    uuid := auth.uid();
   v_admin boolean := public.sup_is_admin();
   v_tl    boolean := public.has_permission('leads.view_team');
+  v_free    boolean := public.course_free();
+  v_courses uuid[] := public.my_course_ids();
 begin
   if v_me is null or not public.is_active_user() then raise exception 'Please sign in.'; end if;
   return query
@@ -963,6 +979,8 @@ begin
   where (p_status = 'all' or (p_status = 'open' and f.status in ('open', 'snoozed')) or f.status = p_status)
     and (p_severity is null or f.severity = p_severity)
     and (p_user is null or f.user_id = p_user)
+    -- a lead outside my courses: not shown (as on the leads list)
+    and (l.id is null or (v_free or case when cardinality(l.course_ids) = 0 then l.created_by = v_me else v_courses is null or l.course_ids && v_courses end))
     and case
           when p_scope = 'team' then
             (v_admin or (v_tl and p.team_lead_id = v_me))
@@ -1007,6 +1025,8 @@ begin
          updated_at = now()
    where f.id = any (p_ids)
      and f.status not in ('fixed', 'expired')
+     -- "later" only for what is still open (not an old done one, which may share its key with a newer open one)
+     and (p_status <> 'snoozed' or f.status in ('open', 'snoozed'))
      -- "open again": not when the same thing is already open (a newer finding), and only the newest of a key
      and not (p_status = 'open' and exists (
            select 1 from public.supervisor_findings o
@@ -1171,6 +1191,9 @@ begin
       where coalesce((c ->> 'day_end_admins')::boolean, true)
       union all
       select distinct p.team_lead_id, false from public.profiles p
+      -- still an active Team Lead (not someone the team still points at after a role change)
+      join public.profiles tl on tl.id = p.team_lead_id and tl.is_active and tl.deleted_at is null
+      join public.roles tr on tr.key = tl.role_key and 'leads.view_team' = any (tr.permissions)
       where p.team_lead_id is not null and p.is_active and coalesce((c ->> 'day_end_team_lead')::boolean, true)
     ),
     -- an admin who also leads a team: once, with everyone

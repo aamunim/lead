@@ -187,7 +187,14 @@ async function readNotes(cfg: AiConfig) {
     if (batch.length === 0) return;
     const r = await askNotes(cfg, batch);
     if (r.shown) {
-      await saveReading(batch, r.shown.value.items, r.shown.provider);
+      try {
+        await saveReading(batch, r.shown.value.items, r.shown.provider);
+      } catch (e) {
+        // paid for, but not kept (a bad answer the database refuses): counted, so it is not paid for again and again
+        console.error('ai-supervisor save', e);
+        await admin.rpc('sup_notes_failed', { p_rows: batch.map((n) => ({ source: n.source, id: n.id })) });
+        return;
+      }
       continue;
     }
     // the AI is out (off, key, credit, busy, quota): stop, try on the next run
@@ -201,8 +208,15 @@ async function readNotes(cfg: AiConfig) {
     for (const n of batch) {
       if (Date.now() - started > 40_000) return;
       const one = await askNotes(cfg, [n]);
-      if (one.shown) await saveReading([n], one.shown.value.items, one.shown.provider);
-      else if (one.errors.length > 0 && one.errors.every((e) => e.kind === 'refusal')) {
+      if (one.shown) {
+        try {
+          await saveReading([n], one.shown.value.items, one.shown.provider);
+        } catch (e) {
+          console.error('ai-supervisor save', e);
+          await admin.rpc('sup_notes_failed', { p_rows: [{ source: n.source, id: n.id }] });
+          return;
+        }
+      } else if (one.errors.length > 0 && one.errors.every((e) => e.kind === 'refusal')) {
         await saveReading([n], [], null); // read: nothing to keep
       } else {
         if (one.errors.length > 0 && !one.errors.some((e) => PAUSE.has(e.kind))) {

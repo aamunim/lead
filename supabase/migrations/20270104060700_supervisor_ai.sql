@@ -70,7 +70,11 @@ begin
     select jsonb_agg(jsonb_build_object(
              'source', x.source, 'id', x.id, 'lead_id', x.lead_id, 'user_id', x.user_id, 'written_at', x.written_at,
              -- 📵 phone numbers never go to the AI
-             'text', regexp_replace(x.text, '(\+?(88|৮৮)[ .-]?)?[0০][ .-]?[1১][3-9৩-৯]([ .-]?[0-9০-৯]){8}', '[নম্বর]', 'g'),
+             'text', regexp_replace(regexp_replace(x.text,
+                     '(?<![0-9০-৯])(\+?(88|৮৮)[ .–-]{0,2})?([0০][ .–-]{0,2})?[1১][3-9৩-৯]([ .–-]{0,2}[0-9০-৯]){8}(?![0-9০-৯])',
+                     '[নম্বর]', 'g'),
+                     -- any other long number (10+ digits)
+                     '[0-9০-৯]{10,}', '[নম্বর]', 'g'),
              'call_result', x.call_result) order by x.written_at desc)
     from (select * from live where user_id is not distinct from (select user_id from who)
           order by written_at desc limit v_n) x), '[]'::jsonb);
@@ -234,7 +238,7 @@ begin
                              then round(greatest(per.target - per.admitted, 0)::numeric / (v_days - v_past), 1) end,
         'hot_open', per.hot_open, 'ai_expected', per.ai_expected) order by per.name), '[]'::jsonb),
       'total', jsonb_build_object(
-        'target', sum(per.target), 'admitted', sum(per.admitted),
+        'target', sum(per.target), 'admitted', coalesce(sum(per.admitted), 0),
         'pace', case when v_past > 0 then round(sum(per.admitted)::numeric / v_past * v_days) end,
         'hot_open', sum(per.hot_open), 'ai_expected', sum(per.ai_expected)))
     from per);
