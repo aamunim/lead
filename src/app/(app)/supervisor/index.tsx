@@ -432,6 +432,8 @@ export default function SupervisorScreen() {
               // (the person's own planned calls: only they set them)
               onPromise={item.user_id === profile?.id ? setPromise : undefined}
               canBank={canBank}
+              // (the server keeps a person's own finding when they say "wrong": Team Leads / admins judge it)
+              canWrong={manager || item.user_id !== profile?.id}
             />
           )}
         />
@@ -603,6 +605,7 @@ const IssueRow = memo(function IssueRow({
   onMark,
   onPromise,
   canBank,
+  canWrong,
 }: {
   f: Finding;
   showWho: boolean;
@@ -610,6 +613,7 @@ const IssueRow = memo(function IssueRow({
   onMark: (f: Finding, status: 'done' | 'wrong' | 'snoozed' | 'open', days?: number) => void;
   onPromise?: (f: Finding) => void;
   canBank: boolean;
+  canWrong: boolean;
 }) {
   const sev = SEVERITY[f.severity];
   const canOpen = !!f.lead_id || (!!f.data?.route && routeOk(f.data.route, canBank)) || !!f.data?.lead_ids?.length;
@@ -652,7 +656,7 @@ const IssueRow = memo(function IssueRow({
             )}
             <Action label="✅ হয়ে গেছে" onPress={() => onMark(f, 'done')} />
             <Action label="⏳ কাল" onPress={() => onMark(f, 'snoozed', 1)} />
-            <Action label="❌ ভুল" onPress={() => onMark(f, 'wrong')} />
+            {canWrong && <Action label="❌ ভুল" onPress={() => onMark(f, 'wrong')} />}
           </>
         )}
       </View>

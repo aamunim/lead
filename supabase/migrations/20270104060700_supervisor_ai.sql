@@ -20,34 +20,7 @@
 -- ---------------------------------------------------------------------
 -- 3. What the AI read in a note
 -- ---------------------------------------------------------------------
-create table if not exists public.note_insights (
-  id           uuid primary key default gen_random_uuid(),
-  -- call: a call's note · note: a note on the lead
-  source       text not null check (source in ('call', 'note')),
-  source_id    uuid not null,
-  lead_id      uuid not null references public.leads (id) on delete cascade,
-  user_id      uuid references public.profiles (id) on delete set null,
-  written_at   timestamptz not null,
-  -- 🤝 a promise in the note, and when (Dhaka)
-  promise_kind text check (promise_kind in ('call', 'visit', 'admit', 'pay', 'papers', 'decide', 'other')),
-  promise_text text,
-  promise_at   timestamptz,
-  objections   text[] not null default '{}',
-  -- -1 cooling · 0 the same · 1 warming
-  interest     smallint check (interest between -1 and 1),
-  -- good: says what happened and what next · thin: "ok", "called" · skip: not about the lead
-  quality      text check (quality in ('good', 'thin', 'skip')),
-  tip          text,
-  provider     text,
-  created_at   timestamptz not null default now(),
-  unique (source, source_id)
-);
-create index if not exists note_insights_lead_idx on public.note_insights (lead_id, written_at desc);
-create index if not exists note_insights_user_idx on public.note_insights (user_id, written_at desc);
-create index if not exists note_insights_promise_idx on public.note_insights (promise_at) where promise_at is not null;
-create index if not exists note_insights_day_idx on public.note_insights (created_at desc);
-alter table public.note_insights enable row level security;
-revoke all on public.note_insights from anon, authenticated;
+-- (the table itself is made in the supervisor migration before this one)
 
 -- notes not read yet (newest first), within today's limit — for the AI job only
 create or replace function public.sup_notes_todo(p_limit int default 20)
@@ -97,7 +70,7 @@ begin
     select jsonb_agg(jsonb_build_object(
              'source', x.source, 'id', x.id, 'lead_id', x.lead_id, 'user_id', x.user_id, 'written_at', x.written_at,
              -- 📵 phone numbers never go to the AI
-             'text', regexp_replace(x.text, '\+?[0-9][0-9 -]{5,}[0-9]', '[নম্বর]', 'g'),
+             'text', regexp_replace(x.text, '(\+?(88|৮৮)[ .-]?)?[0০][ .-]?[1১][3-9৩-৯]([ .-]?[0-9০-৯]){8}', '[নম্বর]', 'g'),
              'call_result', x.call_result) order by x.written_at desc)
     from (select * from live where user_id is not distinct from (select user_id from who)
           order by written_at desc limit v_n) x), '[]'::jsonb);
@@ -343,6 +316,7 @@ revoke all on public.supervisor_reports from anon, authenticated;
 
 -- the numbers for a report / a one-to-one page / a tip (the AI gets these, no phone numbers)
 --   p_reader null: everyone · a Team Lead: their team · p_subject: one person
+drop function if exists public.sup_report_input(uuid, uuid, int);
 create or replace function public.sup_report_input(p_reader uuid, p_subject uuid, p_days int,
                                                    p_hide_managers_of uuid default null)
 returns jsonb
@@ -441,8 +415,13 @@ set search_path = public
 as $$
   select jsonb_build_array(null::uuid) || coalesce((
     select jsonb_agg(distinct p.team_lead_id) from public.profiles p
-    join public.profiles t on t.id = p.team_lead_id and t.is_active
-    where p.team_lead_id is not null and p.is_active), '[]'::jsonb);
+    join public.profiles t on t.id = p.team_lead_id and t.is_active and t.deleted_at is null
+    join public.roles r on r.key = t.role_key
+    where p.team_lead_id is not null and p.is_active
+      -- a Team Lead (admins read the everyone report)
+      and 'leads.view_team' = any (r.permissions)
+      and not ('*' = any (r.permissions) or 'leads.view_all' = any (r.permissions)
+               or 'settings.manage' = any (r.permissions))), '[]'::jsonb);
 $$;
 revoke all on function public.sup_report_readers() from public, anon, authenticated;
 
@@ -705,20 +684,65 @@ grant execute on function public.supervisor_rule_stats(int) to authenticated;
 -- Waking the AI job (Edge Function ai-supervisor) from the 15-minute tick
 -- ---------------------------------------------------------------------
 -- the AI job says the day's reports are made (the tick stops asking)
-create or replace function public.sup_reports_done()
+drop function if exists public.sup_reports_done();
+create or replace function public.sup_reports_done(p_day text default null)
 returns void
 language sql
 security definer
 set search_path = public
 as $$
   insert into public.supervisor_state (key, value)
-  values ('ai_report_done', to_char(now() at time zone 'Asia/Dhaka', 'YYYY-MM-DD'))
+  values ('ai_report_done', coalesce(p_day, to_char(now() at time zone 'Asia/Dhaka', 'YYYY-MM-DD')))
   on conflict (key) do update set value = excluded.value, updated_at = now();
 $$;
-revoke all on function public.sup_reports_done() from public, anon, authenticated;
+revoke all on function public.sup_reports_done(text) from public, anon, authenticated;
+
+-- 7. a batch the AI failed on (not a refusal): its notes are tried at most 3 times
+create table if not exists public.note_insight_tries (
+  source    text not null,
+  source_id uuid not null,
+  n         integer not null default 0,
+  primary key (source, source_id)
+);
+alter table public.note_insight_tries enable row level security;
+revoke all on public.note_insight_tries from anon, authenticated;
+
+create or replace function public.sup_notes_failed(p_rows jsonb)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r   jsonb;
+  v_n int := 0;
+  v_t int;
+begin
+  if jsonb_typeof(p_rows) <> 'array' then return 0; end if;
+  for r in select * from jsonb_array_elements(p_rows) loop
+    if coalesce(r ->> 'source', '') not in ('call', 'note') or coalesce(r ->> 'id', '') !~ '^[0-9a-f-]{36}$' then
+      continue;
+    end if;
+    insert into public.note_insight_tries (source, source_id, n) values (r ->> 'source', (r ->> 'id')::uuid, 1)
+    on conflict (source, source_id) do update set n = note_insight_tries.n + 1
+    returning n into v_t;
+    -- the third failure: read, nothing kept (it is not paid for again and again)
+    if v_t >= 3 then
+      perform public.sup_notes_save(jsonb_build_array(jsonb_build_object('source', r ->> 'source', 'id', r ->> 'id')), null);
+      v_n := v_n + 1;
+    end if;
+  end loop;
+  delete from public.note_insight_tries t
+   where exists (select 1 from public.note_insights i where i.source = t.source and i.source_id = t.source_id);
+  return v_n;
+end;
+$$;
+revoke all on function public.sup_notes_failed(jsonb) from public, anon, authenticated;
 
 drop function if exists public.sup_ai_kick(text, boolean);
-create or replace function public.sup_ai_kick(p_job text, p_weekly boolean default false, p_daily boolean default true)
+drop function if exists public.sup_ai_kick(text, boolean, boolean);
+create or replace function public.sup_ai_kick(p_job text, p_weekly boolean default false, p_daily boolean default true,
+                                              p_day text default null)
 returns boolean
 language plpgsql
 security definer
@@ -741,12 +765,12 @@ begin
   end if;
   perform net.http_post(
     url := v_url || '/ai-supervisor',
-    body := jsonb_build_object('job', p_job, 'weekly', p_weekly, 'daily', p_daily),
+    body := jsonb_build_object('job', p_job, 'weekly', p_weekly, 'daily', p_daily, 'day', p_day),
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', v_secret),
     timeout_milliseconds := 5000);
   return true;
 end;
 $$;
-revoke all on function public.sup_ai_kick(text, boolean, boolean) from public, anon, authenticated;
+revoke all on function public.sup_ai_kick(text, boolean, boolean, text) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';

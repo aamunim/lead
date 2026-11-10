@@ -48,6 +48,9 @@ const dhaka = (iso: string) => {
   return `${g('year')}-${g('month')}-${g('day')} ${g('weekday')} ${g('hour')}:${g('minute')}`;
 };
 const todayText = () => dhaka(new Date().toISOString()).slice(0, 14);
+const dhakaDay = () => dhaka(new Date().toISOString()).slice(0, 10);
+/** the AI is out for now (no key, no credit, busy, over the limit): wait for the next run */
+const PAUSE = new Set(['key', 'credit', 'busy', 'quota']);
 
 /** One answer is enough here: in "compare" the free one is asked first, then the other */
 function single(cfg: AiConfig): AiConfig {
@@ -187,8 +190,13 @@ async function readNotes(cfg: AiConfig) {
       await saveReading(batch, r.shown.value.items, r.shown.provider);
       continue;
     }
-    // anything but a refusal (off, out, busy, a broken answer, a server error): stop, try on the next run
-    if (r.errors.length === 0 || !r.errors.every((e) => e.kind === 'refusal')) return;
+    // the AI is out (off, key, credit, busy, quota): stop, try on the next run
+    if (r.errors.length === 0 || r.errors.some((e) => PAUSE.has(e.kind))) return;
+    if (!r.errors.every((e) => e.kind === 'refusal')) {
+      // a broken answer / a server error: counted, so a bad batch is not paid for again and again
+      await admin.rpc('sup_notes_failed', { p_rows: batch.map((n) => ({ source: n.source, id: n.id })) });
+      return;
+    }
     // the AI declined this batch: one by one, so only the note it declines is put aside
     for (const n of batch) {
       if (Date.now() - started > 40_000) return;
@@ -196,7 +204,12 @@ async function readNotes(cfg: AiConfig) {
       if (one.shown) await saveReading([n], one.shown.value.items, one.shown.provider);
       else if (one.errors.length > 0 && one.errors.every((e) => e.kind === 'refusal')) {
         await saveReading([n], [], null); // read: nothing to keep
-      } else return;
+      } else {
+        if (one.errors.length > 0 && !one.errors.some((e) => PAUSE.has(e.kind))) {
+          await admin.rpc('sup_notes_failed', { p_rows: [{ source: n.source, id: n.id }] });
+        }
+        return;
+      }
     }
   }
 }
@@ -256,7 +269,8 @@ async function makeReport(
     p_subject: subject,
     p_days: days,
     // a tip is read by the person it is about: not the Team Lead / admin-only findings
-    p_hide_managers_of: kind === 'tip' ? subject : null,
+    // a Team Lead's own daily / weekly report: not the admin-only findings about that Team Lead
+    p_hide_managers_of: kind === 'tip' ? subject : kind === 'daily' || kind === 'weekly' ? reader : null,
   });
   if (error) throw new Error(error.message);
   if (subject && !((data as { people?: unknown[] } | null)?.people ?? []).length) {
@@ -264,7 +278,12 @@ async function makeReport(
   }
   const system = kind === 'coach' ? COACH_SYSTEM : kind === 'tip' ? TIP_SYSTEM : REPORT_SYSTEM;
   const r = await ask<Report>(cfg, system, { today: todayText(), kind, period_days: days, data }, REPORT_SCHEMA, 3000);
-  if (!r.shown) return { ok: false as const, why: r.errors.map((e) => e.message).join(' · ') };
+  if (!r.shown)
+    return {
+      ok: false as const,
+      why: r.errors.map((e) => e.message).join(' · '),
+      pause: r.errors.length === 0 || r.errors.some((e) => PAUSE.has(e.kind)),
+    };
   const v = r.shown.value;
   const clean = (a: unknown, n: number) =>
     (Array.isArray(a) ? a : [])
@@ -290,21 +309,35 @@ async function makeReport(
   return { ok: true as const, body, provider: r.shown.provider };
 }
 
-async function reports(cfg: AiConfig, weekly: boolean, daily: boolean) {
+async function reports(cfg: AiConfig, weekly: boolean, daily: boolean, day?: string) {
+  const started = Date.now();
+  const today = day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : dhakaDay();
   const { data, error } = await admin.rpc('sup_report_readers');
   if (error) throw new Error(error.message);
+  // made on an earlier run today: not paid for again
+  const { data: made, error: madeErr } = await admin
+    .from('supervisor_reports')
+    .select('kind, reader')
+    .eq('day', today)
+    .in('kind', ['daily', 'weekly']);
+  if (madeErr) throw new Error(madeErr.message);
+  const have = new Set(((made ?? []) as { kind: string; reader: string | null }[]).map((m) => `${m.kind}:${m.reader}`));
+  const kinds = [...(daily ? (['daily'] as const) : []), ...(weekly ? (['weekly'] as const) : [])];
+  let all = true;
   for (const reader of (data ?? []) as (string | null)[]) {
-    if (daily) {
-      const day = await makeReport(cfg, 'daily', reader, null);
-      if (!day.ok) return; // the AI is out for now: the tick asks again in an hour
-    }
-    if (weekly) {
-      const week = await makeReport(cfg, 'weekly', reader, null);
-      if (!week.ok) return;
+    for (const kind of kinds) {
+      if (have.has(`${kind}:${reader}`)) continue;
+      // (a new report only while there is time for it to finish inside the server's limit)
+      if (Date.now() - started > 100_000) return;
+      const r = await makeReport(cfg, kind, reader, null);
+      if (r.ok) continue;
+      all = false;
+      // the AI is out for now: the tick asks again in an hour
+      if ('pause' in r && r.pause) return;
     }
   }
   // all made: no more asking today
-  await admin.rpc('sup_reports_done');
+  if (all) await admin.rpc('sup_reports_done', { p_day: today });
 }
 
 // ---------------------------------------------------------------------
@@ -331,6 +364,7 @@ Deno.serve(async (req) => {
       job?: string;
       weekly?: boolean;
       daily?: boolean;
+      day?: string;
       mode?: string;
       user_id?: string;
       question?: string;
@@ -350,7 +384,7 @@ Deno.serve(async (req) => {
         body.job === 'reports'
           ? ai.reports === false
             ? Promise.resolve()
-            : reports(cfg, !!body.weekly, body.daily !== false)
+            : reports(cfg, !!body.weekly, body.daily !== false, body.day)
           : readNotes(cfg);
       const done = work.catch((e) => console.error('ai-supervisor', e));
       if (typeof EdgeRuntime !== 'undefined') {

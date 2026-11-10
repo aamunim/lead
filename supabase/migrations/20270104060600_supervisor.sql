@@ -37,7 +37,8 @@ language sql
 immutable
 as $$
   select greatest(p_min, least(p_max,
-    case when jsonb_typeof(p -> p_key) = 'number' then round((p ->> p_key)::numeric)::int
+    case when jsonb_typeof(p -> p_key) = 'number'
+           then round(greatest(-1000000, least(1000000, (p ->> p_key)::numeric)))::int
          when jsonb_typeof(p -> p_key) = 'string' and trim(p ->> p_key) ~ '^-?[0-9]{1,6}(\.[0-9]+)?$'
            then round(trim(p ->> p_key)::numeric)::int
          else p_default end));
@@ -230,6 +231,41 @@ create index if not exists supervisor_findings_lead_idx on public.supervisor_fin
 create index if not exists supervisor_findings_done_idx on public.supervisor_findings (dkey, resolved_at)
   where status in ('done', 'wrong');
 
+-- (a database that ran an older copy of this file: the status list as it is now)
+alter table public.supervisor_findings drop constraint if exists supervisor_findings_status_check;
+alter table public.supervisor_findings add constraint supervisor_findings_status_check
+  check (status in ('open', 'snoozed', 'done', 'wrong', 'fixed', 'expired'));
+
+-- 🤖 what the AI read in a note (filled by the next migration's AI job; the rules read it)
+create table if not exists public.note_insights (
+  id           uuid primary key default gen_random_uuid(),
+  -- call: a call's note · note: a note on the lead
+  source       text not null check (source in ('call', 'note')),
+  source_id    uuid not null,
+  lead_id      uuid not null references public.leads (id) on delete cascade,
+  user_id      uuid references public.profiles (id) on delete set null,
+  written_at   timestamptz not null,
+  -- 🤝 a promise in the note, and when (Dhaka)
+  promise_kind text check (promise_kind in ('call', 'visit', 'admit', 'pay', 'papers', 'decide', 'other')),
+  promise_text text,
+  promise_at   timestamptz,
+  objections   text[] not null default '{}',
+  -- -1 cooling · 0 the same · 1 warming
+  interest     smallint check (interest between -1 and 1),
+  -- good: says what happened and what next · thin: "ok", "called" · skip: not about the lead
+  quality      text check (quality in ('good', 'thin', 'skip')),
+  tip          text,
+  provider     text,
+  created_at   timestamptz not null default now(),
+  unique (source, source_id)
+);
+create index if not exists note_insights_lead_idx on public.note_insights (lead_id, written_at desc);
+create index if not exists note_insights_user_idx on public.note_insights (user_id, written_at desc);
+create index if not exists note_insights_promise_idx on public.note_insights (promise_at) where promise_at is not null;
+create index if not exists note_insights_day_idx on public.note_insights (created_at desc);
+alter table public.note_insights enable row level security;
+revoke all on public.note_insights from anon, authenticated;
+
 -- read and changed only through the functions below
 alter table public.supervisor_findings enable row level security;
 -- (the "today" rules read calls by time)
@@ -406,13 +442,17 @@ begin
            jsonb_build_object('action', 'followup', 'at', x.promise_at, 'note', x.promise_text),
            row_number() over (partition by x.assigned_to order by x.promise_at, x.id) <= 20
     from (
-      -- the lead's latest note the AI read (a later note, e.g. "joined another college", replaces the promise)
+      -- the lead's latest note with a promise, or saying "not now" (that one replaces the promise);
+      -- a "did not pick up" note in between changes nothing
       select distinct on (i.lead_id) i.id, i.lead_id, i.promise_at, i.promise_text, i.written_at, l.assigned_to, l.name
       from public.note_insights i
       join public.leads l on l.id = i.lead_id and l.deleted_at is null and l.assigned_to is not null
       join public.pipeline_stages s on s.id = l.stage_id and s.kind = 'open'
       where i.written_at > now() - make_interval(days => public.sup_num(c, 'promise', 'days', 14)::int)
         and coalesce(i.quality, 'good') <> 'skip'
+        and (i.promise_at is not null or i.interest = -1)
+        and not (i.source = 'call' and exists (select 1 from public.call_logs dc
+                                                where dc.id = i.source_id and dc.deleted_at is not null))
       order by i.lead_id, i.written_at desc
     ) x
     where x.promise_at is not null
@@ -954,7 +994,12 @@ begin
   if p_status not in ('done', 'wrong', 'snoozed', 'open') then raise exception 'Unknown status.'; end if;
   if coalesce(array_length(p_ids, 1), 0) = 0 then return 0; end if;
   update public.supervisor_findings f
-     set status = p_status,
+     set status = case
+                    -- a person can't hide their own finding from their Team Lead for a month
+                    when p_status = 'wrong' and f.user_id = v_me and not v_admin
+                         and not (public.has_permission('leads.view_team') and f.for_managers)
+                      then 'done'
+                    else p_status end,
          snooze_until = case when p_status = 'snoozed'
                              then now() + make_interval(days => greatest(1, least(coalesce(p_days, 1), 7))) end,
          resolved_at = case when p_status in ('done', 'wrong') then now() end,
@@ -962,10 +1007,12 @@ begin
          updated_at = now()
    where f.id = any (p_ids)
      and f.status not in ('fixed', 'expired')
-     -- "open again": not when the same thing is already open (a newer finding)
+     -- "open again": not when the same thing is already open (a newer finding), and only the newest of a key
      and not (p_status = 'open' and exists (
            select 1 from public.supervisor_findings o
-           where o.dkey = f.dkey and o.id <> f.id and o.status in ('open', 'snoozed')))
+           where o.dkey = f.dkey and o.id <> f.id
+             and (o.status in ('open', 'snoozed') or o.created_at > f.created_at
+                  or (o.created_at = f.created_at and o.id > f.id))))
      and (
        (f.user_id = v_me and not f.for_managers)
        or v_admin
@@ -1233,14 +1280,16 @@ begin
     insert into public.supervisor_state (key, value) values ('ai_report_kick_at', now()::text)
     on conflict (key) do update set value = excluded.value, updated_at = now();
     v_res := v_res || jsonb_build_object('ai_reports', public.sup_ai_kick('reports',
-               extract(dow from v_local)::int = coalesce((c -> 'ai' ->> 'weekly_day')::int, 6), v_work));
+               extract(dow from v_local)::int = coalesce((c -> 'ai' ->> 'weekly_day')::int, 6), v_work, v_day));
   end if;
 
   -- 🤖 new notes for the AI to read (in working hours; it stops at the day's limit)
   if coalesce((c -> 'ai' ->> 'enabled')::boolean, true) and to_regproc('public.sup_notes_todo') is not null
-     and v_hour >= coalesce((c ->> 'start_hour')::int, 9) - 1 and v_hour <= coalesce((c ->> 'end_hour')::int, 21)
-     and jsonb_array_length(public.sup_notes_todo(1)) > 0 then
-    v_res := v_res || jsonb_build_object('ai_notes', public.sup_ai_kick('notes'));
+     and v_hour >= coalesce((c ->> 'start_hour')::int, 9) - 1 and v_hour <= coalesce((c ->> 'end_hour')::int, 21) then
+    -- (a statement of its own: it is only read once the AI migration is there)
+    if jsonb_array_length(public.sup_notes_todo(1)) > 0 then
+      v_res := v_res || jsonb_build_object('ai_notes', public.sup_ai_kick('notes'));
+    end if;
   end if;
   return v_res;
 end;
