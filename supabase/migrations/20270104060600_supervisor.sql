@@ -63,7 +63,10 @@ declare
           'not_now_high', '{"on":true,"min":5}'::jsonb, 'no_calls', '{"on":true,"hour":12}'::jsonb,
           'workload', '{"on":true,"ratio":1.8,"min":30}'::jsonb, 'unassigned', '{"on":true,"hours":2}'::jsonb,
           'discount_wait', '{"on":true,"days":2}'::jsonb, 'fee_due', '{"on":true,"days":30}'::jsonb,
-          'bank_return', '{"on":true,"days":60}'::jsonb, 'bank_pull', '{"on":true,"min_open":15}'::jsonb);
+          'bank_return', '{"on":true,"days":60}'::jsonb, 'bank_pull', '{"on":true,"min_open":15}'::jsonb,
+          -- from the notes the AI read (steps 3–5)
+          'promise', '{"on":true,"days":14}'::jsonb, 'interest_down', '{"on":true,"min":2}'::jsonb,
+          'thin_notes', '{"on":true,"min":5}'::jsonb);
   r     record;
   k     record;
   one   jsonb;
@@ -71,8 +74,10 @@ declare
   rules jsonb := '{}'::jsonb;
   v_start int;
   v_end   int;
+  sai     jsonb;
 begin
   sv := case when jsonb_typeof(raw) = 'object' then raw else '{}'::jsonb end;
+  sai := case when jsonb_typeof(sv -> 'ai') = 'object' then sv -> 'ai' else '{}'::jsonb end;
   srul := case when jsonb_typeof(sv -> 'rules') = 'object' then sv -> 'rules' else '{}'::jsonb end;
   for r in select key, value from jsonb_each(d) loop
     one := r.value;
@@ -109,7 +114,15 @@ begin
     'day_end_admins', public.sup_b(sv, 'day_end_admins', true),
     -- a high-score lead: from this score
     'golden_score', public.sup_i(sv, 'golden_score', 60, 1, 100),
-    'rules', rules);
+    'rules', rules,
+    -- 🤖 the AI part (the AIs and budget of Settings → AI)
+    'ai', jsonb_build_object(
+      'enabled', public.sup_b(sai, 'enabled', true),
+      'notes_daily', public.sup_i(sai, 'notes_daily', 200, 0, 2000),
+      'reports', public.sup_b(sai, 'reports', true),
+      'weekly_day', public.sup_i(sai, 'weekly_day', 6, 0, 6),
+      'coach', public.sup_b(sai, 'coach', true),
+      'ask', public.sup_b(sai, 'ask', true)));
 end;
 $$;
 revoke all on function public.supervisor_setting() from public, anon;
@@ -249,7 +262,7 @@ declare
   v_day0   timestamptz := public.sup_today_start();
   v_day    text := to_char(public.sup_local(), 'YYYY-MM-DD');
   v_week   text := to_char(public.sup_local(), 'IYYY-IW');
-  v_rules  text[] := array['new_lead', 'followup_late', 'hot_idle', 'no_note'];
+  v_rules  text[] := array['new_lead', 'followup_late', 'hot_idle', 'no_note', 'promise', 'interest_down', 'thin_notes'];
   v_new    int;
   v_fixed  int;
   v_gold   int := coalesce((c ->> 'golden_score')::int, 60);
@@ -380,6 +393,76 @@ begin
       and public.role_base(p.role_key) in ('caller', 'team_lead')
       and not exists (select 1 from public.call_logs cl
                       where cl.user_id = p.id and cl.called_at >= v_day0 and cl.deleted_at is null);
+  end if;
+
+  -- 🤝 a promise in a note ("will come Friday") with nothing planned for it (AI read the note)
+  if public.sup_on(c, 'promise') and to_regclass('public.note_insights') is not null then
+    insert into _sup
+    select 'promise', 'promise:' || x.id, x.assigned_to, x.lead_id,
+           case when x.promise_at <= now() + interval '1 day' then 'today' else 'improve' end, false,
+           '🤝 কথা দেওয়া আছে, কিছু ঠিক করা নেই',
+           x.name || ' · ' || coalesce(x.promise_text, 'কথা দিয়েছিলেন') || ' · '
+             || to_char(x.promise_at at time zone 'Asia/Dhaka', 'DD Mon'),
+           jsonb_build_object('action', 'followup', 'at', x.promise_at, 'note', x.promise_text),
+           row_number() over (partition by x.assigned_to order by x.promise_at, x.id) <= 20
+    from (
+      select distinct on (i.lead_id) i.id, i.lead_id, i.promise_at, i.promise_text, l.assigned_to, l.name
+      from public.note_insights i
+      join public.leads l on l.id = i.lead_id and l.deleted_at is null and l.assigned_to is not null
+      join public.pipeline_stages s on s.id = l.stage_id and s.kind = 'open'
+      where i.promise_at is not null and i.written_at > now() - make_interval(days => public.sup_num(c, 'promise', 'days', 14)::int)
+      order by i.lead_id, i.written_at desc
+    ) x
+    where x.promise_at > now() - interval '3 days' and x.promise_at < now() + interval '14 days'
+      -- nothing planned for it: no next call around then, no visit, no talk since the day passed
+      and not exists (select 1 from public.follow_ups f where f.lead_id = x.lead_id and f.status = 'pending'
+                       and f.due_at >= x.promise_at - interval '1 day')
+      and not exists (select 1 from public.leads l2 where l2.id = x.lead_id and l2.visit_status = 'planned'
+                       and l2.visit_at >= x.promise_at - interval '1 day')
+      and not exists (select 1 from public.call_logs cl where cl.lead_id = x.lead_id and cl.deleted_at is null
+                       and cl.called_at >= greatest(x.promise_at - interval '1 day', now() - interval '3 days')
+                       and cl.called_at > (select max(i2.written_at) from public.note_insights i2 where i2.lead_id = x.lead_id));
+  end if;
+
+  -- 📉 interest falling in the last two notes the AI read (per person)
+  if public.sup_on(c, 'interest_down') and to_regclass('public.note_insights') is not null then
+    insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
+    select 'interest_down', 'interest_down:' || x.user_id || ':' || v_day, x.user_id, null, 'improve', false,
+           '📉 আগ্রহ কমছে',
+           x.n || ' জন lead-এর শেষ দুটো note-এ আগ্রহ কমতে দেখা যাচ্ছে। ফোন করে আপত্তিটা বুঝে নিন।',
+           jsonb_build_object('count', x.n, 'lead_ids', x.ids)
+    from (
+      select l.assigned_to as user_id, count(*)::int as n, (array_agg(l.id order by l.score desc nulls last))[1:50] as ids
+      from public.leads l
+      join public.pipeline_stages s on s.id = l.stage_id and s.kind = 'open'
+      join lateral (select array_agg(i.interest order by i.written_at desc) as last2
+                    from (select i.interest, i.written_at from public.note_insights i
+                          where i.lead_id = l.id and i.interest is not null
+                          order by i.written_at desc limit 2) i) t on true
+      where l.deleted_at is null and l.assigned_to is not null
+        and t.last2 = array[-1, -1]::smallint[]
+        and exists (select 1 from public.note_insights i3 where i3.lead_id = l.id and i3.written_at > now() - interval '14 days')
+      group by l.assigned_to
+    ) x
+    where x.n >= public.sup_num(c, 'interest_down', 'min', 2);
+  end if;
+
+  -- 📝 thin notes this week ("ok", "called"): a tip from the AI
+  if public.sup_on(c, 'thin_notes') and to_regclass('public.note_insights') is not null then
+    insert into _sup (rule, dkey, user_id, lead_id, severity, for_managers, title, detail, data)
+    select 'thin_notes', 'thin_notes:' || x.user_id || ':' || v_week, x.user_id, null, 'improve', false,
+           '📝 Note আরো কাজের করুন',
+           'এই সপ্তাহে ' || x.thin || 'টা note খুব ছোট (মোট ' || x.n || 'টার মধ্যে)।'
+             || coalesce(' 💡 ' || x.tip, ''),
+           jsonb_build_object('thin', x.thin, 'count', x.n)
+    from (
+      select i.user_id, count(*)::int as n, count(*) filter (where i.quality = 'thin')::int as thin,
+             (array_agg(i.tip order by i.written_at desc) filter (where i.tip is not null and i.quality = 'thin'))[1] as tip
+      from public.note_insights i
+      where i.written_at > now() - interval '7 days' and i.user_id is not null and i.quality in ('good', 'thin')
+      group by i.user_id
+    ) x
+    where x.thin >= public.sup_num(c, 'thin_notes', 'min', 5) and x.thin * 2 >= x.n;
   end if;
 
   if p_heavy then
@@ -600,7 +683,7 @@ begin
   update public.supervisor_findings f
      set status = 'expired', resolved_at = now(), updated_at = now()
    where f.status in ('open', 'snoozed')
-     and f.rule in ('no_note', 'no_calls', 'short_calls', 'bank_pull', 'not_now_high')
+     and f.rule in ('no_note', 'no_calls', 'short_calls', 'bank_pull', 'not_now_high', 'interest_down', 'thin_notes')
      and f.dkey not like '%:' || v_day and f.dkey not like '%:' || v_week;
 
   -- the problem is gone (only for the rules looked at now)
@@ -759,6 +842,9 @@ begin
   return jsonb_build_object(
     'enabled', true,
     'manager', v_admin or v_tl,
+    'admin', v_admin,
+    -- the AI parts the app may offer (Settings → Supervisor)
+    'ai', c -> 'ai',
     'me', (select jsonb_build_object(
               'urgent', count(*) filter (where severity = 'urgent'),
               'today', count(*) filter (where severity = 'today'),
@@ -1060,7 +1146,7 @@ begin
       r.calls || ' কল · ' || r.admitted || ' ভর্তি'
         || case when r.missed > 0 then ' · ' || r.missed || 'টা follow-up মিস (' || left(r.who_missed, 120) || ')' else '' end
         || case when r.no_calls is not null then E'\nআজ কল নেই: ' || left(r.no_calls, 120) else '' end,
-      jsonb_build_object('route', '/supervisor?tab=team'),
+      jsonb_build_object('route', '/supervisor?tab=reports'),
       'sup-dayend:' || v_day,
       true);
     v_n := v_n + 1;
@@ -1121,6 +1207,19 @@ begin
     insert into public.supervisor_state (key, value) values ('day_end_day', v_day)
     on conflict (key) do update set value = excluded.value, updated_at = now();
     v_res := v_res || jsonb_build_object('summaries', public.supervisor_send_day_end());
+    -- 🤖 the day's report (and on the week's day, the week's) by the AI
+    if coalesce((c -> 'ai' ->> 'enabled')::boolean, true) and coalesce((c -> 'ai' ->> 'reports')::boolean, true)
+       and to_regproc('public.sup_ai_kick') is not null then
+      v_res := v_res || jsonb_build_object('ai_reports', public.sup_ai_kick('reports',
+                 extract(dow from v_local)::int = coalesce((c -> 'ai' ->> 'weekly_day')::int, 6)));
+    end if;
+  end if;
+
+  -- 🤖 new notes for the AI to read (in working hours; it stops at the day's limit)
+  if coalesce((c -> 'ai' ->> 'enabled')::boolean, true) and to_regproc('public.sup_notes_todo') is not null
+     and v_hour >= coalesce((c ->> 'start_hour')::int, 9) - 1 and v_hour <= coalesce((c ->> 'end_hour')::int, 21)
+     and jsonb_array_length(public.sup_notes_todo(1)) > 0 then
+    v_res := v_res || jsonb_build_object('ai_notes', public.sup_ai_kick('notes'));
   end if;
   return v_res;
 end;

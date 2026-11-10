@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { router, Stack, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -176,6 +176,75 @@ export default function SupervisorSettingsScreen() {
           </Text>
         </View>
 
+        <Text style={ui.label}>🤖 AI (Settings → AI-এর AI ও budget)</Text>
+        <View style={styles.card}>
+          <Row
+            title="AI চালু"
+            text="Note পড়ে প্রতিশ্রুতি, আপত্তি, আগ্রহ ধরা; দিনের ও সপ্তাহের রিপোর্ট; পরামর্শ; প্রশ্নোত্তর। কিছু বদলায় না।"
+            value={s.ai.enabled}
+            onChange={(v) => set({ ai: { ...s.ai, enabled: v } })}
+          />
+          {s.ai.enabled && (
+            <>
+              <View style={styles.hours}>
+                <Num
+                  label="টা note দিনে (সর্বোচ্চ)"
+                  value={s.ai.notes_daily}
+                  min={0}
+                  max={2000}
+                  onChange={(v) => set({ ai: { ...s.ai, notes_daily: v } })}
+                />
+              </View>
+              <Text style={ui.muted}>একবারে ২০টা note পড়ে, তাই খরচ কম। ০ দিলে note পড়া বন্ধ।</Text>
+              <Row
+                title="📊 দিনের রিপোর্ট (আর সপ্তাহের)"
+                text="কাজ শেষের পর admin (সবার) ও Team Lead (নিজের টিমের) জন্য"
+                value={s.ai.reports}
+                onChange={(v) => set({ ai: { ...s.ai, reports: v } })}
+              />
+              {s.ai.reports && (
+                <>
+                  <Text style={ui.muted}>সপ্তাহের রিপোর্টের দিন</Text>
+                  <View style={ui.chips}>
+                    {DAYS.map((d, i) => (
+                      <Chip
+                        key={d}
+                        text={d}
+                        on={s.ai.weekly_day === i}
+                        onPress={() => set({ ai: { ...s.ai, weekly_day: i } })}
+                      />
+                    ))}
+                  </View>
+                </>
+              )}
+              <Row
+                title="🧑‍🏫 আলোচনার পাতা"
+                text="টিমে কারো পাশে “আলোচনা”: one-to-one কথার জন্য AI-এর প্রস্তুতি"
+                value={s.ai.coach}
+                onChange={(v) => set({ ai: { ...s.ai, coach: v } })}
+              />
+              <Row
+                title="💬 প্রশ্নোত্তর"
+                text="সুপারভাইজারকে প্রশ্ন (দিনে প্রতিজন ২০টা)"
+                value={s.ai.ask}
+                onChange={(v) => set({ ai: { ...s.ai, ask: v } })}
+              />
+            </>
+          )}
+          <View style={styles.links}>
+            <Button
+              title="🎯 মাসিক ভর্তির লক্ষ্য"
+              variant="secondary"
+              onPress={() => router.push('/settings/supervisor-targets' as Href)}
+            />
+            <Button
+              title="📚 আপত্তির উত্তর"
+              variant="secondary"
+              onPress={() => router.push('/settings/supervisor-playbook' as Href)}
+            />
+          </View>
+        </View>
+
         <Text style={ui.label}>সম্ভাবনাময় lead</Text>
         <View style={styles.card}>
           <View style={styles.hours}>
@@ -320,6 +389,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   title: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
   hours: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.md },
+  links: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   num: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   numInput: {
     width: 64,

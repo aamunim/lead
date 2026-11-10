@@ -88,6 +88,8 @@ function pageTitle(path: string): string {
   if (path.startsWith('/alumni')) return 'Alumni';
   if (path.startsWith('/bank')) return 'Lead Bank';
   if (path.startsWith('/supervisor')) return 'Supervisor';
+  if (path.startsWith('/settings/supervisor-targets')) return 'Settings › Admission targets';
+  if (path.startsWith('/settings/supervisor-playbook')) return 'Settings › Objection answers';
   if (path.startsWith('/settings/supervisor')) return 'Settings › Supervisor';
   if (path.startsWith('/feedback')) return 'Contact developer';
   if (path.startsWith('/settings/roles')) return 'Settings › Roles';

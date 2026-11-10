@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -15,7 +16,9 @@ import {
 import { Sheet } from '@/features/alumni/sheets';
 import { Chip, s as ui } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { scheduleFollowUp } from '@/features/follow-ups/api';
 import { Avatar, MIcon, md, Tap } from '@/features/home/md';
+import { AskTab, CoachSheet, promiseTime, ReportsTab, TipCard } from '@/features/supervisor/AiParts';
 import {
   hourText,
   listFindings,
@@ -40,7 +43,8 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 //   👥 Team (Team Leads / admins): each person today
 // =====================================================================
 
-type TabKey = 'tasks' | 'issues' | 'team';
+type TabKey = 'tasks' | 'issues' | 'team' | 'reports' | 'ask';
+const TABS: TabKey[] = ['tasks', 'issues', 'team', 'reports', 'ask'];
 
 function say(text: string) {
   if (Platform.OS === 'web') window.alert(text);
@@ -54,7 +58,7 @@ export default function SupervisorScreen() {
   const params = useLocalSearchParams<{ tab?: string }>();
   const [home, setHome] = useState<SupervisorHome | null>(null);
   const manager = !!home && home.enabled && home.manager;
-  const [tab, setTab] = useState<TabKey>(params.tab === 'team' ? 'team' : params.tab === 'issues' ? 'issues' : 'tasks');
+  const [tab, setTab] = useState<TabKey>(TABS.includes(params.tab as TabKey) ? (params.tab as TabKey) : 'tasks');
   const [scope, setScope] = useState<'me' | 'team'>(params.tab === 'team' ? 'team' : 'me');
   const [severity, setSeverity] = useState<Severity | null>(null);
   // a person chosen from the team (their list and their issues)
@@ -68,12 +72,15 @@ export default function SupervisorScreen() {
   const [gone, setGone] = useState<Set<string>>(new Set());
   // "N leads": their names in a small sheet
   const [leadsOf, setLeadsOf] = useState<Finding | null>(null);
+  // 🧑‍🏫 a one-to-one page about this person
+  const [coachFor, setCoachFor] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const req = useRef(0);
 
   useEffect(() => {
-    if (params.tab === 'team' || params.tab === 'issues' || params.tab === 'tasks') setTab(params.tab);
+    if (TABS.includes(params.tab as TabKey)) setTab(params.tab as TabKey);
   }, [params.tab]);
 
   // me as the chosen person: my own list ("team" leaves me out)
@@ -112,7 +119,7 @@ export default function SupervisorScreen() {
               more: rows.length === 50,
             }));
           }
-        } else {
+        } else if (tab === 'team') {
           const rows = await teamToday();
           if (id === req.current) setTeam({ key, rows, page: 0, more: false });
         }
@@ -129,6 +136,7 @@ export default function SupervisorScreen() {
 
   const refresh = async () => {
     setRefreshing(true);
+    setRefreshKey((k) => k + 1);
     loadHome();
     await loadList(0);
     setRefreshing(false);
@@ -164,6 +172,23 @@ export default function SupervisorScreen() {
     [loadList, loadHome],
   );
 
+  const setPromise = useCallback(
+    async (f: Finding) => {
+      if (!f.lead_id) return;
+      const at = promiseTime(typeof f.data?.at === 'string' ? f.data.at : undefined);
+      try {
+        await scheduleFollowUp(f.lead_id, at, typeof f.data?.note === 'string' ? `🤝 ${f.data.note}` : null);
+        say(
+          `⏰ Follow-up সেট হয়েছে: ${at.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`,
+        );
+        mark(f, 'done');
+      } catch (e) {
+        say(e instanceof Error ? e.message : 'সেট করা যায়নি।');
+      }
+    },
+    [mark],
+  );
+
   const open = useCallback((f: Finding) => {
     if (f.lead_id) router.push(`/leads/${f.lead_id}` as Href);
     else if (f.data?.route) router.push(f.data.route as Href);
@@ -191,6 +216,17 @@ export default function SupervisorScreen() {
 
   const me = home && home.enabled ? home.me : null;
   const t = home && home.enabled ? home.team : null;
+  const ai = home && home.enabled ? home.ai : null;
+  const admin = !!home && home.enabled && home.admin;
+  const tabs = (
+    [
+      ['tasks', '📋 আজ'],
+      ['issues', '⚠️ সমস্যা'],
+      manager ? ['team', '👥 টিম'] : null,
+      manager ? ['reports', '📊 রিপোর্ট'] : null,
+      ai?.enabled && ai.ask ? ['ask', '💬 প্রশ্ন'] : null,
+    ] as ([TabKey, string] | null)[]
+  ).filter((x): x is [TabKey, string] => !!x);
 
   const header = (
     <View style={styles.head}>
@@ -226,12 +262,7 @@ export default function SupervisorScreen() {
 
       {/* tabs */}
       <View style={styles.tabs}>
-        {(
-          [['tasks', '📋 আজকের তালিকা'], ['issues', '⚠️ সমস্যা'], ...(manager ? [['team', '👥 টিম']] : [])] as [
-            TabKey,
-            string,
-          ][]
-        ).map(([k, label]) => (
+        {tabs.map(([k, label]) => (
           <Tap key={k} onPress={() => setTab(k)} style={[styles.tab, tab === k && styles.tabOn]} label={label}>
             <Text style={[styles.tabText, tab === k && styles.tabTextOn]} numberOfLines={1}>
               {label}
@@ -265,6 +296,7 @@ export default function SupervisorScreen() {
           ))}
         </View>
       )}
+      {tab === 'tasks' && !who && ai?.enabled && <TipCard />}
       {tab === 'tasks' && (
         <Text style={ui.muted}>
           {who ? `${who.name}-এর আজকের তালিকা` : 'আগে যাদের কল করবেন, কেন সহ।'} নাম চাপলে lead খুলবে।
@@ -328,7 +360,7 @@ export default function SupervisorScreen() {
           contentContainerStyle={styles.content}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
           renderItem={({ item }) => (
-            <IssueRow f={item} showWho={scope === 'team' || !!who} onOpen={open} onMark={mark} />
+            <IssueRow f={item} showWho={scope === 'team' || !!who} onOpen={open} onMark={mark} onPromise={setPromise} />
           )}
         />
       )}
@@ -351,11 +383,27 @@ export default function SupervisorScreen() {
                 setWho({ id: item.user_id, name: item.name ?? 'No name' });
                 setTab('tasks');
               }}
+              onCoach={
+                ai?.enabled && ai.coach && item.user_id !== profile?.id
+                  ? () => setCoachFor({ id: item.user_id, name: item.name ?? 'No name' })
+                  : undefined
+              }
             />
           )}
         />
       )}
+      {(tab === 'reports' || tab === 'ask') && (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+        >
+          {header}
+          {tab === 'reports' ? <ReportsTab key={refreshKey} admin={admin} /> : <AskTab manager={manager} />}
+        </ScrollView>
+      )}
       {leadsOf && <LeadsSheet f={leadsOf} onClose={() => setLeadsOf(null)} />}
+      {coachFor && <CoachSheet person={coachFor} onClose={() => setCoachFor(null)} />}
     </View>
   );
 }
@@ -466,11 +514,13 @@ const IssueRow = memo(function IssueRow({
   showWho,
   onOpen,
   onMark,
+  onPromise,
 }: {
   f: Finding;
   showWho: boolean;
   onOpen: (f: Finding) => void;
   onMark: (f: Finding, status: 'done' | 'wrong' | 'snoozed' | 'open', days?: number) => void;
+  onPromise: (f: Finding) => void;
 }) {
   const sev = SEVERITY[f.severity];
   const canOpen = !!f.lead_id || !!f.data?.route || !!f.data?.lead_ids?.length;
@@ -508,6 +558,9 @@ const IssueRow = memo(function IssueRow({
           <Action label="↩ এখনই দেখান" onPress={() => onMark(f, 'open')} />
         ) : (
           <>
+            {f.data?.action === 'followup' && f.lead_id && (
+              <Action label="⏰ ঐ দিন follow-up" onPress={() => onPromise(f)} />
+            )}
             <Action label="✅ হয়ে গেছে" onPress={() => onMark(f, 'done')} />
             <Action label="⏳ কাল" onPress={() => onMark(f, 'snoozed', 1)} />
             <Action label="❌ ভুল" onPress={() => onMark(f, 'wrong')} />
@@ -530,10 +583,12 @@ const PersonRow = memo(function PersonRow({
   p,
   onIssues,
   onTasks,
+  onCoach,
 }: {
   p: TeamRow;
   onIssues: () => void;
   onTasks: () => void;
+  onCoach?: () => void;
 }) {
   const last = p.last_call
     ? new Date(p.last_call).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' })
@@ -562,6 +617,7 @@ const PersonRow = memo(function PersonRow({
       <View style={styles.actions}>
         <Action label="📋 তালিকা" onPress={onTasks} />
         <Action label={`⚠️ সমস্যা ${p.urgent + p.today + p.improve || ''}`.trim()} onPress={onIssues} />
+        {onCoach && <Action label="🧑‍🏫 আলোচনা" onPress={onCoach} />}
       </View>
     </View>
   );

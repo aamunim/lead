@@ -426,3 +426,7 @@ verify_jwt = false
 # ✨ AI message for an alumnus: the function checks the signed-in user itself
 [functions.ai-alumni]
 verify_jwt = false
+
+# 🧑‍💼🤖 Supervisor AI: the 15-minute job (x-cron-secret) or a signed-in user (checked inside)
+[functions.ai-supervisor]
+verify_jwt = false

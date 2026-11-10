@@ -62,11 +62,22 @@ export type SupervisorHome =
   | {
       enabled: true;
       manager: boolean;
+      admin: boolean;
+      ai: AiFlags;
       me: Counts;
       top: Pick<Finding, 'id' | 'rule' | 'severity' | 'title' | 'detail' | 'lead_id'>[];
       tasks: Task[];
       team: (Counts & { people: number }) | null;
     };
+
+export type AiFlags = {
+  enabled: boolean;
+  notes_daily: number;
+  reports: boolean;
+  weekly_day: number;
+  coach: boolean;
+  ask: boolean;
+};
 
 export type TeamRow = {
   user_id: string;
@@ -142,7 +153,10 @@ export type RuleKey =
   | 'discount_wait'
   | 'fee_due'
   | 'bank_return'
-  | 'bank_pull';
+  | 'bank_pull'
+  | 'promise'
+  | 'interest_down'
+  | 'thin_notes';
 
 export type SupervisorSettings = {
   enabled: boolean;
@@ -155,6 +169,7 @@ export type SupervisorSettings = {
   day_end_admins: boolean;
   golden_score: number;
   rules: Record<RuleKey, { on: boolean } & Record<string, number | boolean>>;
+  ai: AiFlags;
 };
 
 export async function getSupervisorSettings(): Promise<SupervisorSettings> {
@@ -217,6 +232,30 @@ export const RULES: {
     text: 'আজ কথা হওয়া কলে note নেই, এতটা বা বেশি',
     who: 'own',
     nums: [{ key: 'min', label: 'কল', min: 1, max: 50 }],
+  },
+  {
+    key: 'promise',
+    icon: '🤝',
+    title: 'কথা দেওয়া আছে, কিছু ঠিক করা নেই (AI)',
+    text: 'Note-এ “শুক্রবার আসবেন” ধরনের কথা, অথচ ঐ দিনের follow-up / visit নেই (এত দিনের note)',
+    who: 'own',
+    nums: [{ key: 'days', label: 'দিন', min: 3, max: 30 }],
+  },
+  {
+    key: 'interest_down',
+    icon: '📉',
+    title: 'আগ্রহ কমছে (AI)',
+    text: 'শেষ দুটো note-এ আগ্রহ কমছে, এমন lead এতজন বা বেশি',
+    who: 'own',
+    nums: [{ key: 'min', label: 'lead', min: 1, max: 50 }],
+  },
+  {
+    key: 'thin_notes',
+    icon: '📝',
+    title: 'অকাজের note (AI)',
+    text: 'সপ্তাহে এতটা বা বেশি খুব ছোট note (আর মোটের অর্ধেক বা বেশি)',
+    who: 'own',
+    nums: [{ key: 'min', label: 'note', min: 2, max: 100 }],
   },
   {
     key: 'fee_due',
@@ -311,3 +350,167 @@ export function hourText(h: number | null): string | null {
   const hr = h % 12 === 0 ? 12 : h % 12;
   return `${part} ${hr}টায় বেশি ধরেন`;
 }
+
+// ---------------------------------------------------------------------
+// 🤖 The AI parts (steps 3–5)
+// ---------------------------------------------------------------------
+export type ReportBody = { summary: string; wins: string[]; concerns: string[]; actions: string[] };
+export type Report = {
+  id: string;
+  kind: 'daily' | 'weekly' | 'coach' | 'tip';
+  day: string;
+  body: ReportBody;
+  provider: string | null;
+  created_at: string;
+};
+
+/** The Edge Function (the AI); its own error text is shown */
+async function callAi<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('ai-supervisor', { body });
+  if (error) {
+    let msg = error.message;
+    try {
+      const b = await (error as { context?: Response }).context?.json();
+      if (b?.error) msg = b.error;
+    } catch {
+      // keep the first message
+    }
+    if (/Failed to send|fetch/i.test(msg)) msg = 'ইন্টারনেট সংযোগ নেই, বা AI এখনো server-এ চালু হয়নি।';
+    throw new Error(msg);
+  }
+  if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
+  return data as T;
+}
+
+/** Today's tip (mine) or a one-to-one page (someone I look after), if made already */
+export async function getReport(kind: 'tip' | 'coach', subject?: string | null): Promise<Report | null> {
+  return rpc<Report | null>('supervisor_report_get', { p_kind: kind, p_subject: subject ?? null });
+}
+
+/** Ask the AI to make it now (once a day; refresh: make it again) */
+export async function makeReport(kind: 'tip' | 'coach', subject?: string | null, refresh = false): Promise<Report> {
+  const r = await callAi<{ report: Report | null }>({ mode: kind, user_id: subject ?? null, refresh });
+  if (!r.report) throw new Error('এখন তৈরি করা যায়নি। একটু পরে চেষ্টা করুন।');
+  return r.report;
+}
+
+export async function latestReports(): Promise<{ daily: Report | null; weekly: Report | null }> {
+  return rpc('supervisor_reports_latest');
+}
+
+export async function askSupervisor(question: string): Promise<{ answer: string; points: string[]; provider: string }> {
+  return callAi({ mode: 'ask', question });
+}
+
+export type ForecastCourse = {
+  course_id: string;
+  name: string;
+  target: number | null;
+  admitted: number;
+  pace: number | null;
+  need_per_day: number | null;
+  hot_open: number;
+  ai_expected: number;
+};
+export type Forecast = {
+  month: string;
+  days: number;
+  days_past: number;
+  courses: ForecastCourse[];
+  total: { target: number | null; admitted: number; pace: number | null; hot_open: number; ai_expected: number };
+};
+export async function getForecast(month?: string | null): Promise<Forecast> {
+  return rpc<Forecast>('supervisor_forecast', { p_month: month ?? null });
+}
+
+export async function getObjections(days = 30): Promise<{ days: number; kinds: { kind: string; leads: number }[] }> {
+  return rpc('supervisor_objections', { p_days: days });
+}
+
+export type ImpactNumbers = {
+  first_call_min: number | null;
+  followups_on_time_pct: number | null;
+  admitted_per_week: number | null;
+  calls_per_day: number | null;
+};
+export async function getImpact(): Promise<{
+  started_at: string;
+  days_after: number;
+  before: ImpactNumbers;
+  after: ImpactNumbers;
+}> {
+  return rpc('supervisor_impact');
+}
+
+export type RuleStat = {
+  rule: string;
+  raised: number;
+  done: number;
+  wrong: number;
+  fixed: number;
+  expired: number;
+  open: number;
+  wrong_pct: number | null;
+};
+export async function getRuleStats(days = 30): Promise<RuleStat[]> {
+  return rpc<RuleStat[]>('supervisor_rule_stats', { p_days: days });
+}
+
+// 📚 the playbook: the college's own answers to objections
+export type PlaybookItem = { kind: string; answer: string };
+export async function getPlaybook(): Promise<PlaybookItem[]> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'supervisor_playbook')
+    .maybeSingle();
+  if (error) throw toError(error);
+  const items = ((data as { value?: { items?: unknown } } | null)?.value?.items ?? []) as unknown[];
+  return items
+    .filter((x): x is PlaybookItem => !!x && typeof (x as PlaybookItem).kind === 'string')
+    .map((x) => ({ kind: x.kind, answer: String(x.answer ?? '') }));
+}
+export async function savePlaybook(items: PlaybookItem[]): Promise<void> {
+  const clean = items.map((x) => ({ kind: x.kind, answer: x.answer.trim().slice(0, 1500) })).filter((x) => x.answer);
+  const { error } = await supabase
+    .from('app_settings')
+    .update({ value: { items: clean } } as never)
+    .eq('key', 'supervisor_playbook');
+  if (error) throw toError(error);
+}
+
+// 🎯 monthly admission targets per course
+export async function getTargets(month: string): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from('admission_targets' as never)
+    .select('course_id, target')
+    .eq('month', month);
+  if (error) throw toError(error);
+  return Object.fromEntries(
+    ((data ?? []) as { course_id: string; target: number }[]).map((r) => [r.course_id, r.target]),
+  );
+}
+export async function saveTargets(month: string, targets: Record<string, number | null>): Promise<void> {
+  const keep = Object.entries(targets).filter(([, v]) => v != null && v >= 0);
+  const drop = Object.entries(targets)
+    .filter(([, v]) => v == null)
+    .map(([k]) => k);
+  if (keep.length) {
+    const { error } = await supabase
+      .from('admission_targets' as never)
+      .upsert(keep.map(([course_id, target]) => ({ course_id, month, target })) as never, {
+        onConflict: 'course_id,month',
+      });
+    if (error) throw toError(error);
+  }
+  if (drop.length) {
+    const { error } = await supabase
+      .from('admission_targets' as never)
+      .delete()
+      .eq('month', month)
+      .in('course_id', drop);
+    if (error) throw toError(error);
+  }
+}
+
+export const WEEK_DAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
