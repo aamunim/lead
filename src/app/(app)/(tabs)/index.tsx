@@ -284,8 +284,9 @@ function PhoneHome() {
         )}
 
         {/* ── Today: visits and calls ──────────────── */}
+        {/* (above the "calls" spot: the Calls tile scrolls to the calls, not here) */}
+        <SupervisorHomeCard />
         <View onLayout={(e) => (callsY.current = e.nativeEvent.layout.y - 8)}>
-          <SupervisorHomeCard />
           <TodayVisits />
           <TodayList />
           <ChanceHomeCard />

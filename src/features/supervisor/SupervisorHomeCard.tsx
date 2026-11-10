@@ -35,7 +35,8 @@ export function SupervisorHomeCard() {
   const summary = [
     me.urgent ? `${SEVERITY.urgent.icon} ${me.urgent}` : null,
     me.today ? `${SEVERITY.today.icon} ${me.today}` : null,
-    data.tasks.length ? `📋 ${data.tasks.length}` : null,
+    // (the card brings the first 5)
+    data.tasks.length ? `📋 ${data.tasks.length}${data.tasks.length >= 5 ? '+' : ''}` : null,
     team && teamOpen ? `👥 ${teamOpen}` : null,
   ]
     .filter(Boolean)

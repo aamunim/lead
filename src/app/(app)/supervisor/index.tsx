@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 
+import { Sheet } from '@/features/alumni/sheets';
 import { Chip, s as ui } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { Avatar, MIcon, md, Tap } from '@/features/home/md';
@@ -29,6 +30,7 @@ import {
   type Task,
   type TeamRow,
 } from '@/features/supervisor/api';
+import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -45,8 +47,10 @@ function say(text: string) {
   else Alert.alert('', text);
 }
 
+type Rows<T> = { key: string; rows: T[]; page: number; more: boolean };
+
 export default function SupervisorScreen() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, profile } = useAuth();
   const params = useLocalSearchParams<{ tab?: string }>();
   const [home, setHome] = useState<SupervisorHome | null>(null);
   const manager = !!home && home.enabled && home.manager;
@@ -56,9 +60,14 @@ export default function SupervisorScreen() {
   // a person chosen from the team (their list and their issues)
   const [who, setWho] = useState<{ id: string; name: string } | null>(null);
 
-  const [tasks, setTasks] = useState<Task[] | null>(null);
-  const [issues, setIssues] = useState<Finding[] | null>(null);
-  const [team, setTeam] = useState<TeamRow[] | null>(null);
+  // each list remembers what it was loaded for: a new filter never shows the old rows
+  const [tasks, setTasks] = useState<Rows<Task> | null>(null);
+  const [issues, setIssues] = useState<Rows<Finding> | null>(null);
+  const [team, setTeam] = useState<Rows<TeamRow> | null>(null);
+  // marked done / not right just now (hidden at once, whatever loads meanwhile)
+  const [gone, setGone] = useState<Set<string>>(new Set());
+  // "N leads": their names in a small sheet
+  const [leadsOf, setLeadsOf] = useState<Finding | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const req = useRef(0);
@@ -67,60 +76,103 @@ export default function SupervisorScreen() {
     if (params.tab === 'team' || params.tab === 'issues' || params.tab === 'tasks') setTab(params.tab);
   }, [params.tab]);
 
-  const load = useCallback(async () => {
-    const id = ++req.current;
-    setError(null);
-    try {
-      const h = await supervisorHome();
-      if (id !== req.current) return;
-      setHome(h);
-      if (tab === 'tasks') {
-        const t = await todayTasks(who?.id ?? null, 30);
-        if (id === req.current) setTasks(t);
-      } else if (tab === 'issues') {
-        const f = await listFindings({ scope: who ? 'team' : scope, severity, user: who?.id ?? null });
-        if (id === req.current) setIssues(f);
-      } else {
-        const t = await teamToday();
-        if (id === req.current) setTeam(t);
+  // me as the chosen person: my own list ("team" leaves me out)
+  const self = !!who && who.id === profile?.id;
+  const key = `${tab}|${scope}|${severity ?? ''}|${who?.id ?? ''}`;
+
+  const loadHome = useCallback(() => {
+    supervisorHome()
+      .then(setHome)
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    loadHome();
+  }, [loadHome]);
+
+  const loadList = useCallback(
+    async (page = 0) => {
+      const id = ++req.current;
+      setError(null);
+      try {
+        if (tab === 'tasks') {
+          const rows = await todayTasks(who?.id ?? null, 30);
+          if (id === req.current) setTasks({ key, rows, page: 0, more: false });
+        } else if (tab === 'issues') {
+          const rows = await listFindings({
+            scope: who && !self ? 'team' : who ? 'me' : scope,
+            severity,
+            user: who && !self ? who.id : null,
+            page,
+          });
+          if (id === req.current) {
+            setIssues((old) => ({
+              key,
+              rows: page > 0 && old?.key === key ? [...old.rows, ...rows] : rows,
+              page,
+              more: rows.length === 50,
+            }));
+          }
+        } else {
+          const rows = await teamToday();
+          if (id === req.current) setTeam({ key, rows, page: 0, more: false });
+        }
+      } catch (e) {
+        if (id === req.current) setError(e instanceof Error ? e.message : 'লোড করা যায়নি।');
       }
-    } catch (e) {
-      if (id === req.current) setError(e instanceof Error ? e.message : 'লোড করা যায়নি।');
-    }
-  }, [tab, scope, severity, who]);
+    },
+    [tab, scope, severity, who, self, key],
+  );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadList(0);
+  }, [loadList]);
 
   const refresh = async () => {
     setRefreshing(true);
-    await load();
+    loadHome();
+    await loadList(0);
     setRefreshing(false);
   };
 
   const mark = useCallback(
     async (f: Finding, status: 'done' | 'wrong' | 'snoozed' | 'open', days = 1) => {
-      // shown gone at once; back if the server says no
-      setIssues((list) => (list ? list.filter((x) => x.id !== f.id || status === 'open') : list));
+      // shown at once; put back if the server says no
+      if (status === 'done' || status === 'wrong') setGone((g) => new Set(g).add(f.id));
+      else {
+        const until = status === 'snoozed' ? new Date(Date.now() + days * 86400000).toISOString() : null;
+        setIssues((l) =>
+          l ? { ...l, rows: l.rows.map((x) => (x.id === f.id ? { ...x, status, snooze_until: until } : x)) } : l,
+        );
+      }
       try {
-        await markFindings([f.id], status, days);
-        if (status === 'open') load();
+        const n = await markFindings([f.id], status, days);
+        if (n === 0) {
+          say('এটা আর বদলানো যায় না (হয়তো নিজে থেকেই মিটে গেছে)।');
+          loadList(0);
+        }
+        loadHome();
       } catch (e) {
         say(e instanceof Error ? e.message : 'করা যায়নি।');
-        load();
+        setGone((g) => {
+          const next = new Set(g);
+          next.delete(f.id);
+          return next;
+        });
+        loadList(0);
       }
     },
-    [load],
+    [loadList, loadHome],
   );
 
   const open = useCallback((f: Finding) => {
     if (f.lead_id) router.push(`/leads/${f.lead_id}` as Href);
     else if (f.data?.route) router.push(f.data.route as Href);
-    else if (f.data?.lead_ids?.length) {
-      router.push({ pathname: '/leads', params: { ids: f.data.lead_ids.join(',') } } as unknown as Href);
-    }
+    else if (f.data?.lead_ids?.length) setLeadsOf(f);
   }, []);
+
+  const taskRows = tasks?.key === key ? tasks.rows : null;
+  const issueRows = issues?.key === key ? issues.rows.filter((x) => !gone.has(x.id)) : null;
+  const teamRows = team?.key === key ? team.rows : null;
 
   if (home && !home.enabled) {
     return (
@@ -226,7 +278,9 @@ export default function SupervisorScreen() {
   );
 
   const loading =
-    (tab === 'tasks' && tasks === null) || (tab === 'issues' && issues === null) || (tab === 'team' && team === null);
+    (tab === 'tasks' && taskRows === null) ||
+    (tab === 'issues' && issueRows === null) ||
+    (tab === 'team' && teamRows === null);
   const empty = (
     <View style={styles.empty}>
       {loading ? (
@@ -254,7 +308,7 @@ export default function SupervisorScreen() {
       <Stack.Screen options={{ title: 'সুপারভাইজার' }} />
       {tab === 'tasks' && (
         <FlatList
-          data={tasks ?? []}
+          data={taskRows ?? []}
           keyExtractor={(x) => x.lead_id}
           ListHeaderComponent={header}
           ListEmptyComponent={empty}
@@ -265,8 +319,10 @@ export default function SupervisorScreen() {
       )}
       {tab === 'issues' && (
         <FlatList
-          data={issues ?? []}
+          data={issueRows ?? []}
           keyExtractor={(x) => x.id}
+          onEndReachedThreshold={0.4}
+          onEndReached={() => issues?.key === key && issues.more && loadList(issues.page + 1)}
           ListHeaderComponent={header}
           ListEmptyComponent={empty}
           contentContainerStyle={styles.content}
@@ -278,7 +334,7 @@ export default function SupervisorScreen() {
       )}
       {tab === 'team' && (
         <FlatList
-          data={team ?? []}
+          data={teamRows ?? []}
           keyExtractor={(x) => x.user_id}
           ListHeaderComponent={header}
           ListEmptyComponent={empty}
@@ -299,7 +355,61 @@ export default function SupervisorScreen() {
           )}
         />
       )}
+      {leadsOf && <LeadsSheet f={leadsOf} onClose={() => setLeadsOf(null)} />}
     </View>
+  );
+}
+
+/** The leads behind a finding ("12 leads at the same stage"): tap one to open it */
+function LeadsSheet({ f, onClose }: { f: Finding; onClose: () => void }) {
+  const [rows, setRows] = useState<{ id: string; name: string; phone: string | null }[] | null>(null);
+  useEffect(() => {
+    const ids = (f.data?.lead_ids ?? []).slice(0, 50);
+    let live = true;
+    supabase
+      .from('leads')
+      .select('id, name, phone')
+      .in('id', ids)
+      .then(({ data }) => {
+        if (!live) return;
+        const byId = new Map(
+          ((data ?? []) as { id: string; name: string; phone: string | null }[]).map((r) => [r.id, r]),
+        );
+        // the supervisor's order (most important first)
+        setRows(ids.map((i) => byId.get(i)).filter((r): r is NonNullable<typeof r> => !!r));
+      });
+    return () => {
+      live = false;
+    };
+  }, [f]);
+  return (
+    <Sheet title={f.title} onClose={onClose}>
+      {rows === null ? (
+        <ActivityIndicator color={colors.primary} />
+      ) : rows.length === 0 ? (
+        <Text style={ui.muted}>এগুলোর কোনোটা আর দেখা যাচ্ছে না।</Text>
+      ) : (
+        rows.map((r) => (
+          <Pressable
+            key={r.id}
+            onPress={() => {
+              onClose();
+              router.push(`/leads/${r.id}` as Href);
+            }}
+            style={({ pressed }) => [styles.sheetRow, pressed && styles.pressed]}
+            accessibilityRole="button"
+          >
+            <View style={styles.flex}>
+              <Text style={styles.name} numberOfLines={1}>
+                {r.name}
+              </Text>
+              {!!r.phone && <Text style={ui.muted}>{r.phone}</Text>}
+            </View>
+            <MIcon name="chevron-right" color={colors.textMuted} />
+          </Pressable>
+        ))
+      )}
+    </Sheet>
   );
 }
 
@@ -530,4 +640,5 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   actionText: { fontSize: fontSize.small, fontWeight: fontWeight.medium, color: colors.text },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
 });

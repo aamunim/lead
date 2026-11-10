@@ -124,8 +124,8 @@ export default function SupervisorSettingsScreen() {
         <Text style={ui.label}>কাজের সময় (ঢাকা)</Text>
         <View style={styles.card}>
           <View style={styles.hours}>
-            <Num label="শুরু" value={s.start_hour} min={0} max={23} onChange={(v) => set({ start_hour: v })} />
-            <Num label="শেষ" value={s.end_hour} min={1} max={24} onChange={(v) => set({ end_hour: v })} />
+            <Num label="শুরু" value={s.start_hour} min={0} max={22} onChange={(v) => set({ start_hour: v })} />
+            <Num label="শেষ" value={s.end_hour} min={1} max={23} onChange={(v) => set({ end_hour: v })} />
             <Text style={[ui.muted, styles.flex]}>(২৪ ঘণ্টা, যেমন ৯ থেকে ২১)</Text>
           </View>
           <Text style={ui.muted}>ছুটির দিন (এদিন ব্রিফ, সারাংশ বা “আজ কল নেই” যাবে না)</Text>
@@ -275,8 +275,14 @@ function Num({
 }) {
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value]);
+  const typed = (t: string) => {
+    setText(t);
+    const n = decimal ? parseFloat(t.replace(',', '.')) : parseInt(t, 10);
+    // within the limits: it counts now (Save may be tapped without leaving the box)
+    if (Number.isFinite(n) && n >= min && n <= max && n !== value) onChange(n);
+  };
   const done = () => {
-    const n = decimal ? parseFloat(text) : parseInt(text, 10);
+    const n = decimal ? parseFloat(text.replace(',', '.')) : parseInt(text, 10);
     const v = Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : value;
     setText(String(v));
     if (v !== value) onChange(v);
@@ -285,7 +291,7 @@ function Num({
     <View style={styles.num}>
       <TextInput
         value={text}
-        onChangeText={setText}
+        onChangeText={typed}
         onBlur={done}
         onSubmitEditing={done}
         keyboardType={decimal ? 'decimal-pad' : 'number-pad'}

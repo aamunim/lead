@@ -420,8 +420,8 @@ begin
       select 'discount_wait', 'discount_wait', null, null, 'today', true,
              'Discount অনুরোধ অপেক্ষায়',
              x.n || 'টা discount অনুরোধ ' || public.sup_num(c, 'discount_wait', 'days', 2)::int
-               || ' দিনের বেশি ঝুলে আছে। Approvals-এ দেখুন।',
-             jsonb_build_object('count', x.n, 'lead_ids', x.ids, 'route', '/approvals')
+               || ' দিনের বেশি ঝুলে আছে। Discounts-এ দেখুন।',
+             jsonb_build_object('count', x.n, 'lead_ids', x.ids, 'route', '/discounts')
       from (
         select count(*)::int as n, (array_agg(distinct d.lead_id))[1:50] as ids
         from public.fee_discounts d
@@ -823,7 +823,8 @@ begin
            count(*) filter (where f.severity = 'today')::int as today,
            count(*) filter (where f.severity = 'improve')::int as improve
     from public.supervisor_findings f
-    where f.user_id = pe.id and f.status = 'open'
+    -- the same as the person's list (later ones too)
+    where f.user_id = pe.id and f.status in ('open', 'snoozed')
   ) fs on true
   order by coalesce(fs.urgent, 0) desc, coalesce(fs.today, 0) desc, pe.full_name;
 end;
