@@ -1,5 +1,5 @@
-import { router, type Href } from 'expo-router';
-import { useCallback } from 'react';
+import { router, useFocusEffect, type Href } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Fold, md } from '@/features/home/md';
@@ -7,7 +7,7 @@ import { useSavedState } from '@/shared/lib/saved';
 import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { colors, fontSize, fontWeight, spacing } from '@/shared/theme';
 
-import { SEVERITY, supervisorHome, type SupervisorHome } from './api';
+import { SEVERITY, supervisorHome, supervisorVersion, type SupervisorHome } from './api';
 
 // =====================================================================
 // 🧑‍💼 Home: the supervisor in one card — what needs me now, who to call
@@ -17,12 +17,21 @@ import { SEVERITY, supervisorHome, type SupervisorHome } from './api';
 export function SupervisorHomeCard() {
   const [data, setData] = useSavedState<SupervisorHome | null>('home:supervisor', null);
 
+  // something marked on the Supervisor screen: load again when Home is seen (not only after 30 s)
+  const [seen, setSeen] = useState(supervisorVersion());
+  useFocusEffect(
+    useCallback(() => {
+      const now = supervisorVersion();
+      if (now !== seen) setSeen(now);
+    }, [seen]),
+  );
   useFocusRefresh(
     useCallback(() => {
       supervisorHome()
         .then(setData)
         .catch(() => undefined);
-    }, [setData]),
+      // (seen: a new version makes a new callback, which loads at once)
+    }, [setData, seen]),
   );
 
   if (!data || !data.enabled) return null;
@@ -35,8 +44,7 @@ export function SupervisorHomeCard() {
   const summary = [
     me.urgent ? `${SEVERITY.urgent.icon} ${me.urgent}` : null,
     me.today ? `${SEVERITY.today.icon} ${me.today}` : null,
-    // (the card brings the first 5)
-    data.tasks.length ? `📋 ${data.tasks.length}${data.tasks.length >= 5 ? '+' : ''}` : null,
+    data.tasks.length ? `📋 ${data.tasks.length}` : null,
     team && teamOpen ? `👥 ${teamOpen}` : null,
   ]
     .filter(Boolean)

@@ -17,6 +17,7 @@ import { Sheet } from '@/features/alumni/sheets';
 import { Chip, s as ui } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { getPendingFollowUp, scheduleFollowUp } from '@/features/follow-ups/api';
+import { useFocusRefresh } from '@/shared/lib/useFocusRefresh';
 import { Avatar, MIcon, md, Tap } from '@/features/home/md';
 import { AskTab, CoachSheet, promiseTime, ReportsTab, TipCard, type Qa } from '@/features/supervisor/AiParts';
 import { ask } from '@/features/aiChance/ask';
@@ -25,6 +26,7 @@ import {
   listFindings,
   markFindings,
   SEVERITY,
+  supervisorChanged,
   supervisorHome,
   teamToday,
   todayTasks,
@@ -45,6 +47,8 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 // =====================================================================
 
 type TabKey = 'tasks' | 'issues' | 'team' | 'reports' | 'ask';
+/** may this person open the screen a finding points to (the Lead Bank: settings admins) */
+const routeOk = (r: string, canBank: boolean) => !r.startsWith('/bank') || canBank;
 const TABS: TabKey[] = ['tasks', 'issues', 'team', 'reports', 'ask'];
 
 function say(text: string) {
@@ -80,6 +84,8 @@ export default function SupervisorScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // the Lead Bank opens only for settings admins
+  const canBank = hasPermission('settings.manage');
   const req = useRef(0);
 
   useEffect(() => {
@@ -90,14 +96,17 @@ export default function SupervisorScreen() {
   const self = !!who && who.id === profile?.id;
   const key = `${tab}|${scope}|${severity ?? ''}|${who?.id ?? ''}`;
 
+  const [homeError, setHomeError] = useState<string | null>(null);
   const loadHome = useCallback(() => {
     supervisorHome()
-      .then(setHome)
-      .catch(() => undefined);
+      .then((h) => {
+        setHome(h);
+        setHomeError(null);
+      })
+      .catch((e) => setHomeError(e instanceof Error ? e.message : 'লোড করা যায়নি।'));
   }, []);
-  useEffect(() => {
-    loadHome();
-  }, [loadHome]);
+  // (back on this screen after a call: fresh counts and lists; within 30 s it keeps what it has)
+  useFocusRefresh(loadHome);
 
   const loadList = useCallback(
     async (page = 0) => {
@@ -133,16 +142,14 @@ export default function SupervisorScreen() {
     [tab, scope, severity, who, self, key],
   );
 
-  useEffect(() => {
-    loadList(0);
-  }, [loadList]);
+  useFocusRefresh(useCallback(() => void loadList(0), [loadList]));
 
   // a tab I may not see (or not any more, e.g. the AI was switched off): back to Today
   useEffect(() => {
     if (!home || !home.enabled) return;
     const allowed: TabKey[] = ['tasks', 'issues'];
     if (home.manager) allowed.push('team', 'reports');
-    if (home.ai?.enabled && home.ai.ask) allowed.push('ask');
+    if (home.ai?.enabled && home.ai.ask && home.ai_ready) allowed.push('ask');
     if (!allowed.includes(tab)) setTab('tasks');
   }, [home, tab]);
 
@@ -171,6 +178,7 @@ export default function SupervisorScreen() {
           loadList(0);
         }
         loadHome();
+        supervisorChanged();
       } catch (e) {
         say(e instanceof Error ? e.message : 'করা যায়নি।');
         setGone((g) => {
@@ -227,11 +235,14 @@ export default function SupervisorScreen() {
     [mark],
   );
 
-  const open = useCallback((f: Finding) => {
-    if (f.lead_id) router.push(`/leads/${f.lead_id}` as Href);
-    else if (f.data?.route) router.push(f.data.route as Href);
-    else if (f.data?.lead_ids?.length) setLeadsOf(f);
-  }, []);
+  const open = useCallback(
+    (f: Finding) => {
+      if (f.lead_id) router.push(`/leads/${f.lead_id}` as Href);
+      else if (f.data?.route && routeOk(f.data.route, canBank)) router.push(f.data.route as Href);
+      else if (f.data?.lead_ids?.length) setLeadsOf(f);
+    },
+    [canBank],
+  );
 
   const taskRows = tasks?.key === key ? tasks.rows : null;
   const issueRows = issues?.key === key ? issues.rows.filter((x) => !gone.has(x.id)) : null;
@@ -262,7 +273,7 @@ export default function SupervisorScreen() {
       ['issues', '⚠️ সমস্যা'],
       manager ? ['team', '👥 টিম'] : null,
       manager ? ['reports', '📊 রিপোর্ট'] : null,
-      ai?.enabled && ai.ask ? ['ask', '💬 প্রশ্ন'] : null,
+      ai?.enabled && ai.ask && home?.enabled && home.ai_ready ? ['ask', '💬 প্রশ্ন'] : null,
     ] as ([TabKey, string] | null)[]
   ).filter((x): x is [TabKey, string] => !!x);
   const shownTab: TabKey = home && !tabs.some(([k]) => k === tab) ? 'tasks' : tab;
@@ -300,7 +311,12 @@ export default function SupervisorScreen() {
       </View>
 
       {/* tabs */}
-      <View style={styles.tabs}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabsWrap}
+        contentContainerStyle={styles.tabs}
+      >
         {tabs.map(([k, label]) => (
           <Tap key={k} onPress={() => setTab(k)} style={[styles.tab, tab === k && styles.tabOn]} label={label}>
             <Text style={[styles.tabText, tab === k && styles.tabTextOn]} numberOfLines={1}>
@@ -308,7 +324,12 @@ export default function SupervisorScreen() {
             </Text>
           </Tap>
         ))}
-      </View>
+      </ScrollView>
+      {homeError && !home && (
+        <Tap onPress={loadHome} label="আবার চেষ্টা" style={styles.link}>
+          <Text style={ui.error}>{homeError} · আবার চেষ্টা করুন ›</Text>
+        </Tap>
+      )}
 
       {who && (
         <View style={ui.chips}>
@@ -354,7 +375,11 @@ export default function SupervisorScreen() {
     (tab === 'team' && teamRows === null);
   const empty = (
     <View style={styles.empty}>
-      {loading ? (
+      {loading && error ? (
+        <Tap onPress={() => loadList(0)} label="আবার চেষ্টা" style={styles.link}>
+          <Text style={styles.linkText}>আবার চেষ্টা করুন ›</Text>
+        </Tap>
+      ) : loading ? (
         <ActivityIndicator color={colors.primary} />
       ) : (
         <>
@@ -377,7 +402,7 @@ export default function SupervisorScreen() {
   return (
     <View style={styles.screen}>
       <Stack.Screen options={{ title: 'সুপারভাইজার' }} />
-      {tab === 'tasks' && (
+      {shownTab === 'tasks' && (
         <FlatList
           data={taskRows ?? []}
           keyExtractor={(x) => x.lead_id}
@@ -406,6 +431,7 @@ export default function SupervisorScreen() {
               onMark={mark}
               // (the person's own planned calls: only they set them)
               onPromise={item.user_id === profile?.id ? setPromise : undefined}
+              canBank={canBank}
             />
           )}
         />
@@ -430,7 +456,7 @@ export default function SupervisorScreen() {
                 setTab('tasks');
               }}
               onCoach={
-                ai?.enabled && ai.coach && item.user_id !== profile?.id
+                ai?.enabled && ai.coach && home?.enabled && home.ai_ready && item.user_id !== profile?.id
                   ? () => setCoachFor({ id: item.user_id, name: item.name ?? 'No name' })
                   : undefined
               }
@@ -438,14 +464,16 @@ export default function SupervisorScreen() {
           )}
         />
       )}
-      {home && (shownTab === 'reports' || shownTab === 'ask') && (
+      {(shownTab === 'reports' || shownTab === 'ask') && (
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
         >
           {header}
-          {shownTab === 'reports' ? (
+          {!home ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : shownTab === 'reports' ? (
             <ReportsTab
               key={refreshKey}
               admin={admin}
@@ -466,6 +494,7 @@ export default function SupervisorScreen() {
 /** The leads behind a finding ("12 leads at the same stage"): tap one to open it */
 function LeadsSheet({ f, onClose }: { f: Finding; onClose: () => void }) {
   const [rows, setRows] = useState<{ id: string; name: string; phone: string | null }[] | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     const ids = (f.data?.lead_ids ?? []).slice(0, 50);
     let live = true;
@@ -473,8 +502,9 @@ function LeadsSheet({ f, onClose }: { f: Finding; onClose: () => void }) {
       .from('leads')
       .select('id, name, phone')
       .in('id', ids)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (!live) return;
+        if (error) return setFailed(true);
         const byId = new Map(
           ((data ?? []) as { id: string; name: string; phone: string | null }[]).map((r) => [r.id, r]),
         );
@@ -487,7 +517,9 @@ function LeadsSheet({ f, onClose }: { f: Finding; onClose: () => void }) {
   }, [f]);
   return (
     <Sheet title={f.title} onClose={onClose}>
-      {rows === null ? (
+      {failed ? (
+        <Text style={ui.error}>লোড করা যায়নি। ইন্টারনেট দেখে আবার খুলুন।</Text>
+      ) : rows === null ? (
         <ActivityIndicator color={colors.primary} />
       ) : rows.length === 0 ? (
         <Text style={ui.muted}>এগুলোর কোনোটা আর দেখা যাচ্ছে না।</Text>
@@ -570,15 +602,17 @@ const IssueRow = memo(function IssueRow({
   onOpen,
   onMark,
   onPromise,
+  canBank,
 }: {
   f: Finding;
   showWho: boolean;
   onOpen: (f: Finding) => void;
   onMark: (f: Finding, status: 'done' | 'wrong' | 'snoozed' | 'open', days?: number) => void;
   onPromise?: (f: Finding) => void;
+  canBank: boolean;
 }) {
   const sev = SEVERITY[f.severity];
-  const canOpen = !!f.lead_id || !!f.data?.route || !!f.data?.lead_ids?.length;
+  const canOpen = !!f.lead_id || (!!f.data?.route && routeOk(f.data.route, canBank)) || !!f.data?.lead_ids?.length;
   const tone = f.severity === 'urgent' ? md.errorC : f.severity === 'today' ? md.warnC : md.okC;
   return (
     <View style={[styles.card, styles.issue]}>
@@ -710,8 +744,24 @@ const styles = StyleSheet.create({
   tile: { flex: 1, padding: spacing.sm, borderRadius: radius.md, gap: 2 },
   tileValue: { fontSize: fontSize.title, fontWeight: fontWeight.bold },
   tileLabel: { fontSize: fontSize.caption },
-  tabs: { flexDirection: 'row', padding: 4, gap: 4, borderRadius: radius.lg, backgroundColor: md.surface2 },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm + 2, borderRadius: radius.md, overflow: 'hidden' },
+  tabsWrap: { flexGrow: 0 },
+  tabs: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    padding: 4,
+    gap: 4,
+    borderRadius: radius.lg,
+    backgroundColor: md.surface2,
+  },
+  tab: {
+    flexGrow: 1,
+    minWidth: 76,
+    alignItems: 'center',
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
   tabOn: { backgroundColor: colors.surface, ...Platform.select({ web: {}, default: { elevation: 1 } }) },
   tabText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.textMuted },
   tabTextOn: { color: colors.primary },

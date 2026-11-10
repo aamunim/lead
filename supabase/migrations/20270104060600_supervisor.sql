@@ -1039,8 +1039,8 @@ begin
            count(*) filter (where f.severity = 'today')::int as today,
            count(*) filter (where f.severity = 'improve')::int as improve
     from public.supervisor_findings f
-    -- the same as the person's list (later ones too)
-    where f.user_id = pe.id and f.status in ('open', 'snoozed')
+    -- open now (the same as the counts at the top; "later" ones are not counted till they are back)
+    where f.user_id = pe.id and f.status = 'open'
       and not (pe.id = v_me and f.for_managers and not v_admin)
   ) fs on true
   order by coalesce(fs.urgent, 0) desc, coalesce(fs.today, 0) desc, pe.full_name;

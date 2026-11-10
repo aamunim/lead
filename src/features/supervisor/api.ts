@@ -98,6 +98,13 @@ export type TeamRow = {
   last_call: string | null;
 };
 
+/** Something was marked: the Home card loads again when it is next seen */
+let version = 0;
+export const supervisorChanged = () => {
+  version += 1;
+};
+export const supervisorVersion = () => version;
+
 export async function supervisorHome(): Promise<SupervisorHome | null> {
   return rpc<SupervisorHome | null>('supervisor_home');
 }
@@ -388,13 +395,17 @@ async function callAi<T>(body: Record<string, unknown>): Promise<T> {
   if (error) {
     let msg = error.message;
     try {
-      const b = await (error as { context?: Response }).context?.json();
+      const b = await (error as { context?: Response }).context?.clone().json();
       if (b?.error) msg = b.error;
+      else if (typeof b?.message === 'string') msg = b.message;
     } catch {
       // keep the first message
     }
+    const status = (error as { context?: Response }).context?.status;
     // (the request never reached the server; a server's own error text is shown as it is)
     if (/^Failed to send/i.test(msg)) msg = 'ইন্টারনেট সংযোগ নেই, বা AI এখনো server-এ চালু হয়নি।';
+    else if (status === 404) msg = 'AI এখনো server-এ চালু হয়নি (Edge Function ai-supervisor)।';
+    else if (/non-2xx/i.test(msg)) msg = 'Server উত্তর দিতে পারেনি। একটু পরে চেষ্টা করুন।';
     throw new Error(msg);
   }
   if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
