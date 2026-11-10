@@ -158,16 +158,35 @@ Answer in plain, short Bangla (আপনি), like a sharp, kind supervisor:
 // ---------------------------------------------------------------------
 // Phone numbers and other contact details never go to the AI
 // ---------------------------------------------------------------------
-const PHONE =
-  /(?<![0-9০-৯])(\+?(88|৮৮)[ .–-]{0,2})?([0০][ .–-]{0,2})?[1১][3-9৩-৯]([ .–-]{0,2}[0-9০-৯]){8}(?![0-9০-৯])/g;
-const LONG = /[0-9০-৯]{10,}/g;
+const D = '[0-9০-৯]';
+// between digits: spaces (also no-break), dots, dashes of every kind, slashes, brackets, commas, _ and *
+const S = '[\\s\\u00A0()/,_*.\\u2010-\\u2015-]';
+// a Bangladesh mobile (+88 / 88 / 0 1[3-9] + 8 digits), however it is written
+const PHONE = new RegExp(
+  `(?<!${D})(\\+?(88|৮৮)${S}{0,5})?[0০]${S}{0,5}[1১]${S}{0,5}[3-9৩-৯](${S}{0,5}${D}){8}(?!${D})`,
+  'g',
+);
+// a land line (02-9123456), a foreign number (+1 415 …), any 10+ digit run
+const LAND = new RegExp(`(?<!${D})[0০][2-9২-৯]${D}{0,2}[ -]?${D}{6,8}(?!${D})`, 'g');
+const INTL = new RegExp(`\\+[1-9](${S}{0,2}[0-9]){7,14}(?![0-9])`, 'g');
+const LONG = new RegExp(`${D}{10,}`, 'g');
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const CONTACT_KEY = /phone|whatsapp|mobile|email|hash|password|token|secret/i;
+// ids and times are kept as they are (an id with many digits is not a phone number)
+const KEEP =
+  /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{4}-\d{2}-\d{2}([T ][0-9:.]+(Z|[+-]\d{2}(:?\d{2})?)?)?)$/i;
 
-export const maskText = (s: string) => s.replace(PHONE, '[নম্বর]').replace(LONG, '[নম্বর]');
+export const maskText = (s: string) =>
+  s
+    .replace(EMAIL, '[ইমেইল]')
+    .replace(PHONE, '[নম্বর]')
+    .replace(INTL, '[নম্বর]')
+    .replace(LAND, '[নম্বর]')
+    .replace(LONG, '[নম্বর]');
 
 export function clean(v: unknown, depth = 0): unknown {
   if (depth > 12) return null;
-  if (typeof v === 'string') return maskText(v);
+  if (typeof v === 'string') return KEEP.test(v) ? v : maskText(v);
   if (Array.isArray(v)) return v.slice(0, 200).map((x) => clean(x, depth + 1));
   if (v && typeof v === 'object') {
     const out: Record<string, unknown> = {};
@@ -242,8 +261,28 @@ async function runTool(db: SupabaseClient, t: ToolCall): Promise<unknown> {
     }
     case 'bank':
       return call('bank_summary', {});
-    case 'findings':
-      return call('supervisor_list', { p_scope: 'team', p_limit: 80 });
+    case 'findings': {
+      // what each issue is about (its lead lists can be thousands long: only how many)
+      const rows = await call('supervisor_list', { p_scope: 'team', p_limit: 80 });
+      if (!Array.isArray(rows)) return rows;
+      return (rows as Record<string, unknown>[]).map((f) => {
+        const d = (f.data ?? {}) as { lead_ids?: unknown[] };
+        return {
+          rule: f.rule,
+          severity: f.severity,
+          title: f.title,
+          detail: f.detail,
+          status: f.status,
+          person: f.user_name,
+          person_id: f.user_id,
+          lead: f.lead_name,
+          lead_id: f.lead_id,
+          leads: Array.isArray(d.lead_ids) ? d.lead_ids.length : undefined,
+          managers_only: f.for_managers,
+          since: f.created_at,
+        };
+      });
+    }
     case 'reports':
       return call('supervisor_reports_latest', {});
     case 'activity': {
@@ -306,14 +345,11 @@ export async function handleChat(
     json({ error: why || 'এখন কোনো AI উত্তর দিতে পারছে না। একটু পরে চেষ্টা করুন।', chat_id: s.chat_id }, 503);
 
   // 1. what to read
-  const people = s.people.map((p) => ({ id: p.id, name: p.name, role: p.role, team_lead: p.team_lead }));
-  const plan = await ask<{ tools: ToolCall[] }>(
-    cfg,
-    PLAN_SYSTEM,
-    { ...chat, people, courses: s.courses },
-    PLAN_SCHEMA,
-    800,
-  );
+  const people = clean(
+    s.people.map((p) => ({ id: p.id, name: p.name, role: p.role, team_lead: p.team_lead })),
+  ) as Start['people'];
+  const courses = clean(s.courses);
+  const plan = await ask<{ tools: ToolCall[] }>(cfg, PLAN_SYSTEM, { ...chat, people, courses }, PLAN_SCHEMA, 800);
   if (!plan.shown) return fail(plan.errors.map((e) => e.message).join(' · '));
   const calls = (Array.isArray(plan.shown.value.tools) ? plan.shown.value.tools : [])
     .filter((t) => TOOL_NAMES.includes(t?.name))
@@ -344,7 +380,7 @@ export async function handleChat(
     links: { type: string; id: string }[];
     actions: Record<string, unknown>[];
     memory: string;
-  }>(cfg, ANSWER_SYSTEM, { ...chat, people, courses: s.courses, stages: s.stages, data }, ANSWER_SCHEMA, 3000);
+  }>(cfg, ANSWER_SYSTEM, { ...chat, people, courses, stages: clean(s.stages), data }, ANSWER_SCHEMA, 3000);
   if (!r.shown) return fail(r.errors.map((e) => e.message).join(' · '));
   const v = r.shown.value;
 

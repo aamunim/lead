@@ -124,17 +124,78 @@ create index if not exists supervisor_chat_messages_chat_idx on public.superviso
 alter table public.supervisor_chat_messages enable row level security;
 revoke all on public.supervisor_chat_messages from anon, authenticated;
 
--- 📵 phone numbers out of a text (Bangla or English digits, +880, spaces / dashes; any 10+ digit run)
+-- 📵 phone numbers and e-mails out of a text: a Bangladesh mobile however it is written
+--   (Bangla or English digits, +88, spaces / dots / dashes / slashes / brackets between),
+--   a land line, a foreign number, any 10+ digit run
 create or replace function public.sup_mask(p text)
 returns text
 language sql
 immutable
 as $$
-  select regexp_replace(regexp_replace(coalesce(p, ''),
-           '(?<![0-9০-৯])(\+?(88|৮৮)[ .–-]{0,2})?([0০][ .–-]{0,2})?[1১][3-9৩-৯]([ .–-]{0,2}[0-9০-৯]){8}(?![0-9০-৯])',
+  select regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(coalesce(p, ''),
+           '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '[ইমেইল]', 'g'),
+           '(?<![0-9০-৯])(\+?(88|৮৮)[\s ()/,_*.‐-―-]{0,5})?[0০][\s ()/,_*.‐-―-]{0,5}[1১][\s ()/,_*.‐-―-]{0,5}[3-9৩-৯]([\s ()/,_*.‐-―-]{0,5}[0-9০-৯]){8}(?![0-9০-৯])',
            '[নম্বর]', 'g'),
+           '\+[1-9]([\s ()/,_*.‐-―-]{0,2}[0-9]){7,14}(?![0-9])', '[নম্বর]', 'g'),
+           '(?<![0-9০-৯])[0০][2-9২-৯][0-9০-৯]{0,2}[ -]?[0-9০-৯]{6,8}(?![0-9০-৯])', '[নম্বর]', 'g'),
          '[0-9০-৯]{10,}', '[নম্বর]', 'g');
 $$;
+
+-- the AI's note reading uses the same mask
+create or replace function public.sup_notes_todo(p_limit int default 20)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+set jit = off
+as $$
+declare
+  c      jsonb := public.supervisor_setting();
+  v_cap  int := coalesce((c -> 'ai' ->> 'notes_daily')::int, 200);
+  v_done int;
+  v_n    int;
+begin
+  if not coalesce((c -> 'ai' ->> 'enabled')::boolean, true) then return '[]'::jsonb; end if;
+  select count(*) into v_done from public.note_insights where created_at >= public.sup_today_start();
+  v_n := least(greatest(coalesce(p_limit, 20), 1), 40, greatest(v_cap - v_done, 0));
+  if v_n = 0 then return '[]'::jsonb; end if;
+  return coalesce((
+    with n as (
+      select 'call' as source, cl.id, cl.lead_id, cl.user_id, cl.called_at as written_at,
+             left(trim(cl.notes), 1000) as text, cl.outcome as call_result
+      from public.call_logs cl
+      where cl.called_at > now() - interval '7 days' and cl.deleted_at is null
+        and length(trim(coalesce(cl.notes, ''))) >= 8 and cl.lead_id is not null
+        and not exists (select 1 from public.note_insights i where i.source = 'call' and i.source_id = cl.id)
+      union all
+      select 'note', a.id, a.lead_id, a.user_id, a.created_at, left(trim(a.details ->> 'note'), 1000), null
+      from public.lead_activity a
+      where a.action = 'note_added' and a.created_at > now() - interval '7 days'
+        and length(trim(coalesce(a.details ->> 'note', ''))) >= 8
+        and not exists (select 1 from public.note_insights i where i.source = 'note' and i.source_id = a.id)
+        -- a note deleted later is not read
+        and not exists (select 1 from public.lead_activity d where d.lead_id = a.lead_id and d.action = 'note_deleted'
+                         and d.created_at >= a.created_at and d.details ->> 'note' = left(a.details ->> 'note', 300))
+        -- the same note put on many leads at once: read once (its reading is copied to the others)
+        and not exists (select 1 from public.lead_activity b where b.action = 'note_added' and b.user_id = a.user_id
+                         and b.created_at = a.created_at and b.details ->> 'note' = a.details ->> 'note' and b.id < a.id)
+    ),
+    live as (
+      select n.* from n where exists (select 1 from public.leads l where l.id = n.lead_id and l.deleted_at is null)
+    ),
+    -- one person's notes per batch (a note can't steer another person's reading)
+    who as (select user_id from live order by written_at desc limit 1)
+    select jsonb_agg(jsonb_build_object(
+             'source', x.source, 'id', x.id, 'lead_id', x.lead_id, 'user_id', x.user_id, 'written_at', x.written_at,
+             -- 📵 phone numbers never go to the AI
+             'text', public.sup_mask(x.text),
+             'call_result', x.call_result) order by x.written_at desc)
+    from (select * from live where user_id is not distinct from (select user_id from who)
+          order by written_at desc limit v_n) x), '[]'::jsonb);
+end;
+$$;
+revoke all on function public.sup_notes_todo(int) from public, anon, authenticated;
 
 -- may I use the chat? (a super admin, the supervisor's AI and the chat on)
 create or replace function public.sup_chat_check()
@@ -190,7 +251,8 @@ begin
   end if;
 
   -- chats are kept 90 days
-  delete from public.supervisor_chats where updated_at < now() - interval '90 days';
+  delete from public.supervisor_chats
+   where updated_at < now() - interval '90 days' and id is distinct from p_chat;
 
   if v_chat.id is null then
     insert into public.supervisor_chats (user_id, title)
@@ -388,7 +450,9 @@ begin
       select array_agg(l.id), array_agg(l.name) into v_ids, v_names
         from public.leads l where l.id = any (v_ids) and l.deleted_at is null;
       if a ->> 'type' = 'follow_up' then
-        v_due := (a ->> 'due_at')::timestamptz;
+        -- a time written without its zone is Bangladesh time
+        v_due := case when a ->> 'due_at' ~ '(Z|z|[+-][0-9]{2}(:?[0-9]{2})?)$' then (a ->> 'due_at')::timestamptz
+                      else ((a ->> 'due_at')::timestamp at time zone 'Asia/Dhaka') end;
         if coalesce(cardinality(v_ids), 0) <> 1 or v_due is null or v_due < now() - interval '1 hour'
            or v_due > now() + interval '60 days' then continue; end if;
         v_acts := v_acts || jsonb_build_array(jsonb_build_object(
@@ -407,7 +471,7 @@ begin
         if v_name is null or length(trim(coalesce(a ->> 'text', ''))) < 2 then continue; end if;
         v_acts := v_acts || jsonb_build_array(jsonb_build_object(
           'type', 'message', 'status', 'pending', 'user_id', v_id, 'user_name', v_name,
-          'text', left(trim(a ->> 'text'), 500)));
+          'text', left(trim(a ->> 'text'), 400)));
       end if;
     exception when others then
       continue; -- a broken suggestion is left out
@@ -517,6 +581,7 @@ declare
   v_ids  uuid[];
   v_me   text;
   v_res  text;
+  v_out  jsonb;
 begin
   perform public.sup_chat_check();
   select m.* into v_msg from public.supervisor_chat_messages m
@@ -536,11 +601,19 @@ begin
       if (a ->> 'due_at')::timestamptz < now() - interval '1 hour' then
         raise exception 'সময়টা পেরিয়ে গেছে। AI-কে নতুন সময় দিতে বলুন।';
       end if;
+      if not exists (select 1 from public.leads where id = v_ids[1] and deleted_at is null) then
+        raise exception 'এই lead আর নেই (মুছে ফেলা হয়েছে)।';
+      end if;
       perform public.schedule_follow_up(v_ids[1], (a ->> 'due_at')::timestamptz, nullif(a ->> 'note', ''));
       v_res := 'Follow-up রাখা হয়েছে';
     elsif a ->> 'type' = 'hand_over' then
-      perform public.hand_over_leads(v_ids, (a ->> 'user_id')::uuid, nullif(a ->> 'note', ''));
-      v_res := (a ->> 'user_name') || '-কে দেওয়া হয়েছে';
+      v_out := public.hand_over_leads(v_ids, (a ->> 'user_id')::uuid, nullif(a ->> 'note', ''));
+      if coalesce((v_out ->> 'done')::int, 0) = 0 then
+        raise exception 'কোনো lead দেওয়া যায়নি (আগেই %-এর কাছে আছে, বা মুছে ফেলা হয়েছে)।', a ->> 'user_name';
+      end if;
+      v_res := format('%s টা lead %s-কে দেওয়া হয়েছে', v_out ->> 'done', a ->> 'user_name')
+               || case when coalesce((v_out ->> 'skipped')::int, 0) > 0
+                       then format(' (%s টা আগেই ছিল বা নেই)', v_out ->> 'skipped') else '' end;
     elsif a ->> 'type' = 'message' then
       select full_name into v_me from public.profiles where id = auth.uid();
       if public.notify((a ->> 'user_id')::uuid, 'supervisor', '💬 ' || coalesce(v_me, 'সুপার অ্যাডমিন'),

@@ -399,10 +399,13 @@ async function callAi<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('ai-supervisor', { body });
   if (error) {
     let msg = error.message;
+    // (a chat answer that failed: the chat it was saved in, to try again there)
+    let chatId: string | undefined;
     try {
       const b = await (error as { context?: Response }).context?.clone().json();
       if (b?.error) msg = b.error;
       else if (typeof b?.message === 'string') msg = b.message;
+      if (typeof b?.chat_id === 'string') chatId = b.chat_id;
     } catch {
       // keep the first message
     }
@@ -411,7 +414,7 @@ async function callAi<T>(body: Record<string, unknown>): Promise<T> {
     if (/^Failed to send/i.test(msg)) msg = 'ইন্টারনেট সংযোগ নেই, বা AI এখনো server-এ চালু হয়নি।';
     else if (status === 404) msg = 'AI এখনো server-এ চালু হয়নি (Edge Function ai-supervisor)।';
     else if (/non-2xx/i.test(msg)) msg = 'Server উত্তর দিতে পারেনি। একটু পরে চেষ্টা করুন।';
-    throw new Error(msg);
+    throw Object.assign(new Error(msg), { chatId });
   }
   if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
   return data as T;

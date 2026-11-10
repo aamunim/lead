@@ -131,38 +131,59 @@ export default function SupervisorChatScreen() {
       });
   }, [open]);
 
+  // one message at a time (also while another chat is looked at)
+  const sending = useRef(false);
   const send = useCallback(
     async (raw: string) => {
       const q = raw.trim();
-      if (q.length < 2 || (pending && !pending.error)) return;
-      const chatId = open && open !== 'new' ? open : null;
+      if (q.length < 2 || sending.current) return;
+      sending.current = true;
+      const where = open ?? 'new';
+      const chatId = where !== 'new' ? where : null;
       setText('');
       setPending({ text: q, error: null });
+      // the answer is shown only if that chat is still the one on the screen
+      const here = () => want.current === where;
+      const moveTo = (id: string) => {
+        want.current = id;
+        justMade.current = id;
+        setOpen(id);
+      };
       try {
         const r = await chatSend(chatId, q);
         setUsage({ used: r.used, daily: r.daily });
-        const mine: ChatMessage = {
-          id: r.user_message_id,
-          role: 'user',
-          body: q,
-          data: {},
-          created_at: new Date().toISOString(),
-        };
-        // a new chat: it gets its id now (its messages are these two)
-        if (!chatId) {
-          want.current = r.chat_id;
-          justMade.current = r.chat_id;
-          setOpen(r.chat_id);
+        if (here()) {
+          const mine: ChatMessage = {
+            id: r.user_message_id,
+            role: 'user',
+            body: q,
+            data: {},
+            created_at: new Date().toISOString(),
+          };
+          // a new chat: it gets its id now (its messages are these two)
+          if (!chatId) moveTo(r.chat_id);
+          setMessages((m) => [...(m ?? []).filter((x) => x.id !== mine.id), mine, r.message]);
+          setPending(null);
         }
-        setMessages((m) => [...(m ?? []).filter((x) => x.id !== mine.id), mine, r.message]);
-        setPending(null);
-        loadList();
       } catch (e) {
-        setPending({ text: q, error: e instanceof Error ? e.message : 'উত্তর পাওয়া যায়নি।' });
+        if (here()) {
+          // the question was saved in a new chat before the AI failed: "try again" goes there
+          const made = (e as { chatId?: string }).chatId;
+          if (!chatId && made) moveTo(made);
+          setPending({ text: q, error: e instanceof Error ? e.message : 'উত্তর পাওয়া যায়নি।' });
+        }
+      } finally {
+        sending.current = false;
+        loadList();
       }
     },
-    [open, pending, loadList],
+    [open, loadList],
   );
+
+  // a wide screen always shows a chat on the right (a new one at first)
+  useEffect(() => {
+    if (wide && open === null) setOpen('new');
+  }, [wide, open]);
 
   const act = useCallback(async (m: ChatMessage, index: number, yes: boolean) => {
     const a = m.data.actions?.[index];
