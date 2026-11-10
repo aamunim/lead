@@ -406,22 +406,25 @@ begin
            jsonb_build_object('action', 'followup', 'at', x.promise_at, 'note', x.promise_text),
            row_number() over (partition by x.assigned_to order by x.promise_at, x.id) <= 20
     from (
-      select distinct on (i.lead_id) i.id, i.lead_id, i.promise_at, i.promise_text, l.assigned_to, l.name
+      -- the lead's latest note the AI read (a later note, e.g. "joined another college", replaces the promise)
+      select distinct on (i.lead_id) i.id, i.lead_id, i.promise_at, i.promise_text, i.written_at, l.assigned_to, l.name
       from public.note_insights i
       join public.leads l on l.id = i.lead_id and l.deleted_at is null and l.assigned_to is not null
       join public.pipeline_stages s on s.id = l.stage_id and s.kind = 'open'
-      where i.promise_at is not null and i.written_at > now() - make_interval(days => public.sup_num(c, 'promise', 'days', 14)::int)
+      where i.written_at > now() - make_interval(days => public.sup_num(c, 'promise', 'days', 14)::int)
+        and coalesce(i.quality, 'good') <> 'skip'
       order by i.lead_id, i.written_at desc
     ) x
-    where x.promise_at > now() - interval '3 days' and x.promise_at < now() + interval '14 days'
+    where x.promise_at is not null
+      and x.promise_at > now() - interval '3 days' and x.promise_at < now() + interval '14 days'
       -- nothing planned for it: no next call around then, no visit, no talk since the day passed
       and not exists (select 1 from public.follow_ups f where f.lead_id = x.lead_id and f.status = 'pending'
                        and f.due_at >= x.promise_at - interval '1 day')
       and not exists (select 1 from public.leads l2 where l2.id = x.lead_id and l2.visit_status = 'planned'
                        and l2.visit_at >= x.promise_at - interval '1 day')
+      -- a talk after the promise note (the day came, or it was talked over again)
       and not exists (select 1 from public.call_logs cl where cl.lead_id = x.lead_id and cl.deleted_at is null
-                       and cl.called_at >= greatest(x.promise_at - interval '1 day', now() - interval '3 days')
-                       and cl.called_at > (select max(i2.written_at) from public.note_insights i2 where i2.lead_id = x.lead_id));
+                       and cl.outcome = 'connected' and cl.called_at > x.written_at + interval '1 minute');
   end if;
 
   -- 📉 interest falling in the last two notes the AI read (per person)
@@ -669,10 +672,13 @@ begin
   get diagnostics v_new = row_count;
 
   update public.supervisor_findings f
-     set title = s.title, detail = s.detail, data = s.data, severity = s.severity, updated_at = now()
+     set title = s.title, detail = s.detail, data = s.data, severity = s.severity,
+         -- a lead given to someone else: its finding goes with it
+         user_id = s.user_id, updated_at = now()
     from (select distinct on (dkey) * from _sup order by dkey) s
    where f.dkey = s.dkey and f.status in ('open', 'snoozed')
-     and (f.detail is distinct from s.detail or f.data is distinct from s.data or f.severity is distinct from s.severity);
+     and (f.detail is distinct from s.detail or f.data is distinct from s.data or f.severity is distinct from s.severity
+          or f.user_id is distinct from s.user_id);
 
   -- "later" is over
   update public.supervisor_findings
@@ -694,6 +700,10 @@ begin
                   select 1 from public.leads l where l.id = f.lead_id and l.deleted_at is null
                     and l.assigned_to = f.user_id and l.last_contacted_at is null
                     and not exists (select 1 from public.call_logs cl where cl.lead_id = l.id and cl.deleted_at is null))
+             then 'expired'
+           when f.rule = 'promise' and exists (
+                  select 1 from public.note_insights ni
+                  where ni.id::text = split_part(f.dkey, ':', 2) and ni.promise_at <= now() - interval '3 days')
              then 'expired'
            when f.rule = 'followup_late' and exists (
                   select 1 from public.follow_ups fu
@@ -1209,12 +1219,21 @@ begin
     insert into public.supervisor_state (key, value) values ('day_end_day', v_day)
     on conflict (key) do update set value = excluded.value, updated_at = now();
     v_res := v_res || jsonb_build_object('summaries', public.supervisor_send_day_end());
-    -- 🤖 the day's report (and on the week's day, the week's) by the AI
-    if coalesce((c -> 'ai' ->> 'enabled')::boolean, true) and coalesce((c -> 'ai' ->> 'reports')::boolean, true)
-       and to_regproc('public.sup_ai_kick') is not null then
-      v_res := v_res || jsonb_build_object('ai_reports', public.sup_ai_kick('reports',
-                 extract(dow from v_local)::int = coalesce((c -> 'ai' ->> 'weekly_day')::int, 6)));
-    end if;
+  end if;
+
+  -- 🤖 the AI's day report (working days) and week report (its day), from the day's end;
+  --    asked again each hour until the AI says it is done
+  if coalesce((c -> 'ai' ->> 'enabled')::boolean, true) and coalesce((c -> 'ai' ->> 'reports')::boolean, true)
+     and to_regproc('public.sup_ai_kick') is not null
+     and v_hour >= coalesce((c ->> 'end_hour')::int, 21)
+     and coalesce((select value from public.supervisor_state where key = 'ai_report_done'), '') <> v_day
+     and coalesce((select value::timestamptz from public.supervisor_state where key = 'ai_report_kick_at'),
+                  '-infinity'::timestamptz) < now() - interval '50 minutes'
+     and (v_work or extract(dow from v_local)::int = coalesce((c -> 'ai' ->> 'weekly_day')::int, 6)) then
+    insert into public.supervisor_state (key, value) values ('ai_report_kick_at', now()::text)
+    on conflict (key) do update set value = excluded.value, updated_at = now();
+    v_res := v_res || jsonb_build_object('ai_reports', public.sup_ai_kick('reports',
+               extract(dow from v_local)::int = coalesce((c -> 'ai' ->> 'weekly_day')::int, 6), v_work));
   end if;
 
   -- 🤖 new notes for the AI to read (in working hours; it stops at the day's limit)

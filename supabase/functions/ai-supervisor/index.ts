@@ -17,9 +17,18 @@
 // =====================================================================
 import { admin, json, loadConfig, type AiConfig } from '../_shared/ai.ts';
 import { asUser, cors, currentUser } from '../_shared/drive.ts';
-import { answerByPlan, onlyPauses, type Provider, recordUsage } from '../_shared/llm.ts';
+import { answerByPlan, type Provider, recordUsage } from '../_shared/llm.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
+
+/** The job password, compared without giving away how much matched */
+function sameText(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a);
+  const y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
 
 const OBJECTIONS = ['fee', 'family', 'distance', 'time', 'other_college', 'job', 'doubt', 'documents', 'other'];
 
@@ -71,7 +80,7 @@ const NOTES_SYSTEM = `You read short notes that staff of a teachers' training co
 For each note, find:
 - promise: did the person promise or agree to do something on a day ("will come Friday", "will pay after salary on the 5th", "call me Sunday", "will decide after talking to husband next week")? Give promise_kind (call, visit, admit, pay, papers, decide, other or none), promise_text (a few words in Bangla, e.g. "শুক্রবার ক্যাম্পাসে আসবেন") and promise_at as YYYY-MM-DD worked out from the note's own date (written_at) — Bangladesh weekdays; "next week" = the same weekday next week; "after salary" ≈ the 5th of next month; if no day can be worked out, promise_kind none and promise_at "".
 - objections: only from this list: fee, family, distance, time, other_college, job, doubt, documents, other. Empty if none.
-- interest: 1 if the person sounds warmer than a usual first call (keen, asking about admission), -1 if cooler (not interested, busy, no answer for long, "later"), 0 if unclear.
+- interest: 1 if the person sounds warmer than a usual first call (keen, asking about admission), -1 if the person said they are less interested (not interested, "later", "next session", joined elsewhere), 0 if unclear. Not picking up / switched off / busy line is 0, not -1.
 - quality: "good" if the note says what happened and what is next; "thin" if it says almost nothing ("ok", "called", "no answer" with nothing else, one word); "skip" if it is not about the person.
 - tip: only for a thin note — one short Bangla tip (max 12 words) on what to write next time. Else "".
 Never invent facts that are not in the note. Answer for every note, using its source and id exactly.`;
@@ -129,54 +138,66 @@ type NoteOut = {
   tip: string;
 };
 
+/** One batch: the AI's reading saved (a note it skipped: read, nothing found) */
+async function saveReading(batch: NoteIn[], items: NoteOut[], provider: string | null) {
+  const mine = new Set(batch.map((n) => `${n.source}:${n.id}`));
+  const got = (items ?? []).filter((x) => mine.has(`${x.source}:${x.id}`));
+  const seen = new Set(got.map((x) => `${x.source}:${x.id}`));
+  const rows = [
+    ...got.map((x) => ({
+      ...x,
+      promise_kind: x.promise_kind === 'none' ? null : x.promise_kind,
+      promise_at: x.promise_kind === 'none' ? null : x.promise_at || null,
+      interest: String(x.interest),
+    })),
+    ...batch.filter((n) => !seen.has(`${n.source}:${n.id}`)).map((n) => ({ source: n.source, id: n.id })),
+  ];
+  const { error } = await admin.rpc('sup_notes_save', { p_rows: rows, p_provider: provider });
+  if (error) throw new Error(error.message);
+}
+
+const askNotes = (cfg: AiConfig, batch: NoteIn[]) =>
+  ask<{ items: NoteOut[] }>(
+    cfg,
+    NOTES_SYSTEM,
+    {
+      today: todayText(),
+      notes: batch.map((n) => ({
+        source: n.source,
+        id: n.id,
+        written_at: dhaka(n.written_at),
+        call_result: n.call_result,
+        text: n.text,
+      })),
+    },
+    NOTES_SCHEMA,
+    6000,
+  );
+
 async function readNotes(cfg: AiConfig) {
   const started = Date.now();
-  while (Date.now() - started < 45_000) {
+  // (a new batch only while there is time for it to finish inside the server's limit)
+  while (Date.now() - started < 30_000) {
     const { data, error } = await admin.rpc('sup_notes_todo', { p_limit: 20 });
     if (error) throw new Error(error.message);
     const batch = (data ?? []) as NoteIn[];
     if (batch.length === 0) return;
-    const r = await ask<{ items: NoteOut[] }>(
-      cfg,
-      NOTES_SYSTEM,
-      {
-        today: todayText(),
-        notes: batch.map((n) => ({
-          source: n.source,
-          id: n.id,
-          written_at: dhaka(n.written_at),
-          call_result: n.call_result,
-          text: n.text,
-        })),
-      },
-      NOTES_SCHEMA,
-      6000,
-    );
-    if (!r.shown) {
-      // the AI is off / out / busy: try again on the next run
-      if (onlyPauses(r.errors) || r.exhausted) return;
-      // it could not read these (refused, broken answer): mark them read, empty, so they are not tried for ever
-      await admin.rpc('sup_notes_save', {
-        p_rows: batch.map((n) => ({ source: n.source, id: n.id })),
-        p_provider: null,
-      });
+    const r = await askNotes(cfg, batch);
+    if (r.shown) {
+      await saveReading(batch, r.shown.value.items, r.shown.provider);
       continue;
     }
-    const mine = new Set(batch.map((n) => `${n.source}:${n.id}`));
-    const got = (r.shown.value.items ?? []).filter((x) => mine.has(`${x.source}:${x.id}`));
-    const seen = new Set(got.map((x) => `${x.source}:${x.id}`));
-    const rows = [
-      ...got.map((x) => ({
-        ...x,
-        promise_kind: x.promise_kind === 'none' ? null : x.promise_kind,
-        promise_at: x.promise_kind === 'none' ? null : x.promise_at || null,
-        interest: String(x.interest),
-      })),
-      // a note the AI skipped: read, nothing found
-      ...batch.filter((n) => !seen.has(`${n.source}:${n.id}`)).map((n) => ({ source: n.source, id: n.id })),
-    ];
-    const { error: saveErr } = await admin.rpc('sup_notes_save', { p_rows: rows, p_provider: r.shown.provider });
-    if (saveErr) throw new Error(saveErr.message);
+    // anything but a refusal (off, out, busy, a broken answer, a server error): stop, try on the next run
+    if (r.errors.length === 0 || !r.errors.every((e) => e.kind === 'refusal')) return;
+    // the AI declined this batch: one by one, so only the note it declines is put aside
+    for (const n of batch) {
+      if (Date.now() - started > 40_000) return;
+      const one = await askNotes(cfg, [n]);
+      if (one.shown) await saveReading([n], one.shown.value.items, one.shown.provider);
+      else if (one.errors.length > 0 && one.errors.every((e) => e.kind === 'refusal')) {
+        await saveReading([n], [], null); // read: nothing to keep
+      } else return;
+    }
   }
 }
 
@@ -230,8 +251,17 @@ async function makeReport(
   subject: string | null,
 ) {
   const days = kind === 'weekly' ? 7 : kind === 'daily' ? 1 : kind === 'coach' ? 14 : 7;
-  const { data, error } = await admin.rpc('sup_report_input', { p_reader: reader, p_subject: subject, p_days: days });
+  const { data, error } = await admin.rpc('sup_report_input', {
+    p_reader: reader,
+    p_subject: subject,
+    p_days: days,
+    // a tip is read by the person it is about: not the Team Lead / admin-only findings
+    p_hide_managers_of: kind === 'tip' ? subject : null,
+  });
   if (error) throw new Error(error.message);
+  if (subject && !((data as { people?: unknown[] } | null)?.people ?? []).length) {
+    return { ok: false as const, why: 'এই মানুষের কোনো lead-এর কাজের হিসাব নেই (caller / Team Lead নন)।', empty: true };
+  }
   const system = kind === 'coach' ? COACH_SYSTEM : kind === 'tip' ? TIP_SYSTEM : REPORT_SYSTEM;
   const r = await ask<Report>(cfg, system, { today: todayText(), kind, period_days: days, data }, REPORT_SCHEMA, 3000);
   if (!r.shown) return { ok: false as const, why: r.errors.map((e) => e.message).join(' · ') };
@@ -260,14 +290,21 @@ async function makeReport(
   return { ok: true as const, body, provider: r.shown.provider };
 }
 
-async function reports(cfg: AiConfig, weekly: boolean) {
+async function reports(cfg: AiConfig, weekly: boolean, daily: boolean) {
   const { data, error } = await admin.rpc('sup_report_readers');
   if (error) throw new Error(error.message);
   for (const reader of (data ?? []) as (string | null)[]) {
-    const day = await makeReport(cfg, 'daily', reader, null);
-    if (!day.ok) return; // the AI is out for now
-    if (weekly) await makeReport(cfg, 'weekly', reader, null);
+    if (daily) {
+      const day = await makeReport(cfg, 'daily', reader, null);
+      if (!day.ok) return; // the AI is out for now: the tick asks again in an hour
+    }
+    if (weekly) {
+      const week = await makeReport(cfg, 'weekly', reader, null);
+      if (!week.ok) return;
+    }
   }
+  // all made: no more asking today
+  await admin.rpc('sup_reports_done');
 }
 
 // ---------------------------------------------------------------------
@@ -293,6 +330,7 @@ Deno.serve(async (req) => {
     const body = (await req.json().catch(() => ({}))) as {
       job?: string;
       weekly?: boolean;
+      daily?: boolean;
       mode?: string;
       user_id?: string;
       question?: string;
@@ -306,13 +344,13 @@ Deno.serve(async (req) => {
     // ---- the 15-minute job ----
     const secret = req.headers.get('x-cron-secret');
     if (secret) {
-      if (!cfg.cron_secret || secret !== cfg.cron_secret) return json({ error: 'Not allowed.' }, 403);
+      if (!cfg.cron_secret || !sameText(secret, cfg.cron_secret)) return json({ error: 'Not allowed.' }, 403);
       if (noAi || ai.enabled === false) return json({ ok: false, code: 'off' });
       const work =
         body.job === 'reports'
           ? ai.reports === false
             ? Promise.resolve()
-            : reports(cfg, !!body.weekly)
+            : reports(cfg, !!body.weekly, body.daily !== false)
           : readNotes(cfg);
       const done = work.catch((e) => console.error('ai-supervisor', e));
       if (typeof EdgeRuntime !== 'undefined') {
@@ -338,6 +376,10 @@ Deno.serve(async (req) => {
       const { data: have, error: canErr } = await db.rpc('supervisor_report_get', { p_kind: kind, p_subject: subject });
       if (canErr) return json({ error: canErr.message }, 403);
       if (have && !body.refresh) return json({ report: have });
+      // a cap per person per day (the budget is shared with every AI feature)
+      const { data: may, error: takeErr } = await db.rpc('supervisor_ai_take', { p_kind: kind });
+      if (takeErr) return json({ error: takeErr.message }, 403);
+      if (!may) return json({ error: 'আজকের মতো যথেষ্ট তৈরি হয়েছে। কাল আবার চেষ্টা করুন।' }, 429);
       const r = await makeReport(cfg, kind, null, subject);
       if (!r.ok) return json({ error: r.why || 'এখন কোনো AI উত্তর দিতে পারছে না। একটু পরে চেষ্টা করুন।' }, 503);
       const { data: saved } = await db.rpc('supervisor_report_get', { p_kind: kind, p_subject: subject });

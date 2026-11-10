@@ -69,25 +69,38 @@ begin
   v_n := least(greatest(coalesce(p_limit, 20), 1), 40, greatest(v_cap - v_done, 0));
   if v_n = 0 then return '[]'::jsonb; end if;
   return coalesce((
-    select jsonb_agg(x order by x.written_at desc) from (
-      select * from (
-        select 'call' as source, cl.id, cl.lead_id, cl.user_id, cl.called_at as written_at,
-               left(trim(cl.notes), 1000) as text, cl.outcome as call_result
-        from public.call_logs cl
-        where cl.called_at > now() - interval '7 days' and cl.deleted_at is null
-          and length(trim(coalesce(cl.notes, ''))) >= 8 and cl.lead_id is not null
-          and not exists (select 1 from public.note_insights i where i.source = 'call' and i.source_id = cl.id)
-        union all
-        select 'note', a.id, a.lead_id, a.user_id, a.created_at, left(trim(a.details ->> 'note'), 1000), null
-        from public.lead_activity a
-        where a.action = 'note_added' and a.created_at > now() - interval '7 days'
-          and length(trim(coalesce(a.details ->> 'note', ''))) >= 8
-          and not exists (select 1 from public.note_insights i where i.source = 'note' and i.source_id = a.id)
-      ) n
-      where exists (select 1 from public.leads l where l.id = n.lead_id and l.deleted_at is null)
-      order by n.written_at desc
-      limit v_n
-    ) x), '[]'::jsonb);
+    with n as (
+      select 'call' as source, cl.id, cl.lead_id, cl.user_id, cl.called_at as written_at,
+             left(trim(cl.notes), 1000) as text, cl.outcome as call_result
+      from public.call_logs cl
+      where cl.called_at > now() - interval '7 days' and cl.deleted_at is null
+        and length(trim(coalesce(cl.notes, ''))) >= 8 and cl.lead_id is not null
+        and not exists (select 1 from public.note_insights i where i.source = 'call' and i.source_id = cl.id)
+      union all
+      select 'note', a.id, a.lead_id, a.user_id, a.created_at, left(trim(a.details ->> 'note'), 1000), null
+      from public.lead_activity a
+      where a.action = 'note_added' and a.created_at > now() - interval '7 days'
+        and length(trim(coalesce(a.details ->> 'note', ''))) >= 8
+        and not exists (select 1 from public.note_insights i where i.source = 'note' and i.source_id = a.id)
+        -- a note deleted later is not read
+        and not exists (select 1 from public.lead_activity d where d.lead_id = a.lead_id and d.action = 'note_deleted'
+                         and d.created_at >= a.created_at and d.details ->> 'note' = left(a.details ->> 'note', 300))
+        -- the same note put on many leads at once: read once (its reading is copied to the others)
+        and not exists (select 1 from public.lead_activity b where b.action = 'note_added' and b.user_id = a.user_id
+                         and b.created_at = a.created_at and b.details ->> 'note' = a.details ->> 'note' and b.id < a.id)
+    ),
+    live as (
+      select n.* from n where exists (select 1 from public.leads l where l.id = n.lead_id and l.deleted_at is null)
+    ),
+    -- one person's notes per batch (a note can't steer another person's reading)
+    who as (select user_id from live order by written_at desc limit 1)
+    select jsonb_agg(jsonb_build_object(
+             'source', x.source, 'id', x.id, 'lead_id', x.lead_id, 'user_id', x.user_id, 'written_at', x.written_at,
+             -- 📵 phone numbers never go to the AI
+             'text', regexp_replace(x.text, '\+?[0-9][0-9 -]{5,}[0-9]', '[নম্বর]', 'g'),
+             'call_result', x.call_result) order by x.written_at desc)
+    from (select * from live where user_id is not distinct from (select user_id from who)
+          order by written_at desc limit v_n) x), '[]'::jsonb);
 end;
 $$;
 revoke all on function public.sup_notes_todo(int) from public, anon, authenticated;
@@ -152,7 +165,21 @@ begin
       left(nullif(trim(r ->> 'tip'), ''), 200),
       left(p_provider, 20))
     on conflict (source, source_id) do nothing;
-    if found then v_n := v_n + 1; end if;
+    if found then
+      v_n := v_n + 1;
+      if r ->> 'source' = 'note' then
+        insert into public.note_insights (source, source_id, lead_id, user_id, written_at, promise_kind, promise_text,
+                                          promise_at, objections, interest, quality, tip, provider)
+        select 'note', b.id, b.lead_id, b.user_id, b.created_at, i.promise_kind, i.promise_text, i.promise_at,
+               i.objections, i.interest, i.quality, i.tip, i.provider
+        from public.note_insights i
+        join public.lead_activity a on a.id = i.source_id
+        join public.lead_activity b on b.action = 'note_added' and b.user_id = a.user_id and b.created_at = a.created_at
+                                    and b.details ->> 'note' = a.details ->> 'note' and b.id <> a.id
+        where i.source = 'note' and i.source_id = (r ->> 'id')::uuid
+        on conflict (source, source_id) do nothing;
+      end if;
+    end if;
   end loop;
   return v_n;
 end;
@@ -316,7 +343,8 @@ revoke all on public.supervisor_reports from anon, authenticated;
 
 -- the numbers for a report / a one-to-one page / a tip (the AI gets these, no phone numbers)
 --   p_reader null: everyone · a Team Lead: their team · p_subject: one person
-create or replace function public.sup_report_input(p_reader uuid, p_subject uuid, p_days int)
+create or replace function public.sup_report_input(p_reader uuid, p_subject uuid, p_days int,
+                                                   p_hide_managers_of uuid default null)
 returns jsonb
 language plpgsql
 stable
@@ -352,7 +380,8 @@ begin
                 from public.leads l
                 cross join lateral (select min(c.called_at) as first from public.call_logs c
                                      where c.lead_id = l.id and c.deleted_at is null) fc
-                where l.assigned_to = pe.id and l.created_at >= w.f and l.created_at < w.t and fc.first is not null)
+                where l.assigned_to = pe.id and l.created_at >= w.f and l.created_at < w.t
+                  and fc.first is not null and fc.first >= l.created_at)
                as first_call_min,
              (select count(*) from public.follow_ups f join public.leads l on l.id = f.lead_id
                 where l.assigned_to = pe.id and f.due_at >= w.f and f.due_at < least(w.t, now())
@@ -378,7 +407,10 @@ begin
                           and st.kind = 'open' where l.assigned_to = n.id and l.deleted_at is null),
           'issues', (select coalesce(jsonb_object_agg(x.rule, x.n), '{}'::jsonb) from (
                       select f.rule, count(*) as n from public.supervisor_findings f
-                      where f.user_id = n.id and f.status in ('open', 'snoozed') group by f.rule) x),
+                      where f.user_id = n.id and f.status in ('open', 'snoozed')
+                        -- (the Team Lead / admin-only ones are not shown to the person they are about)
+                        and not (f.for_managers and coalesce(f.user_id = p_hide_managers_of, false))
+                      group by f.rule) x),
           'thin_notes', (select count(*) from public.note_insights i where i.user_id = n.id and i.quality = 'thin'
                           and i.written_at >= v_from),
           'notes_read', (select count(*) from public.note_insights i where i.user_id = n.id and i.written_at >= v_from),
@@ -397,7 +429,7 @@ begin
     ));
 end;
 $$;
-revoke all on function public.sup_report_input(uuid, uuid, int) from public, anon, authenticated;
+revoke all on function public.sup_report_input(uuid, uuid, int, uuid) from public, anon, authenticated;
 
 -- who gets the day's / week's report: admins (null) and each Team Lead with a team
 create or replace function public.sup_report_readers()
@@ -428,10 +460,11 @@ begin
   if p_kind not in ('daily', 'weekly', 'coach', 'tip') or jsonb_typeof(p_body) <> 'object' then
     raise exception 'Bad report.';
   end if;
-  delete from public.supervisor_reports
-   where kind = p_kind and day = v_day and reader is not distinct from p_reader and subject is not distinct from p_subject;
   insert into public.supervisor_reports (kind, reader, subject, day, data, body, provider)
   values (p_kind, p_reader, p_subject, v_day, coalesce(p_data, '{}'::jsonb), p_body, left(p_provider, 20))
+  on conflict (kind, day, coalesce(reader, '00000000-0000-0000-0000-000000000000'::uuid),
+               coalesce(subject, '00000000-0000-0000-0000-000000000000'::uuid))
+  do update set data = excluded.data, body = excluded.body, provider = excluded.provider, created_at = now()
   returning id into v_id;
   -- 90 days are kept
   delete from public.supervisor_reports where day < v_day - 90;
@@ -506,6 +539,38 @@ create table if not exists public.supervisor_asks (
 alter table public.supervisor_asks enable row level security;
 revoke all on public.supervisor_asks from anon, authenticated;
 
+create table if not exists public.supervisor_ai_uses (
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  day     date not null,
+  kind    text not null,
+  n       integer not null default 0,
+  primary key (user_id, day, kind)
+);
+alter table public.supervisor_ai_uses enable row level security;
+revoke all on public.supervisor_ai_uses from anon, authenticated;
+
+-- one AI use (tip: 3 a day · coach: 15 a day per person); false when used up
+create or replace function public.supervisor_ai_take(p_kind text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_day date := (now() at time zone 'Asia/Dhaka')::date;
+  v_n   int;
+begin
+  if auth.uid() is null or not public.is_active_user() or p_kind not in ('tip', 'coach') then return false; end if;
+  insert into public.supervisor_ai_uses (user_id, day, kind, n) values (auth.uid(), v_day, p_kind, 1)
+  on conflict (user_id, day, kind) do update set n = supervisor_ai_uses.n + 1
+  returning n into v_n;
+  delete from public.supervisor_ai_uses where day < v_day - 7;
+  return v_n <= case p_kind when 'tip' then 3 else 15 end;
+end;
+$$;
+revoke all on function public.supervisor_ai_take(text) from public, anon;
+grant execute on function public.supervisor_ai_take(text) to authenticated;
+
 -- one question used (20 a day per person); false when today's are used up
 create or replace function public.supervisor_ask_take()
 returns boolean
@@ -546,8 +611,8 @@ begin
     'asker_role', case when v_admin then 'admin' when v_tl then 'team_lead' else 'caller' end,
     'today', to_char(now() at time zone 'Asia/Dhaka', 'YYYY-MM-DD Dy'),
     'numbers', case when v_admin then public.sup_report_input(null, null, 30)
-                    when v_tl then public.sup_report_input(v_me, null, 30)
-                    else public.sup_report_input(null, v_me, 30) end,
+                    when v_tl then public.sup_report_input(v_me, null, 30, v_me)
+                    else public.sup_report_input(null, v_me, 30, v_me) end,
     'objections', public.supervisor_objections(30),
     'forecast', case when v_admin or v_tl then public.supervisor_forecast(null) end);
 end;
@@ -585,7 +650,8 @@ begin
                 from public.leads l
                 cross join lateral (select min(c.called_at) as first from public.call_logs c
                                      where c.lead_id = l.id and c.deleted_at is null) fc
-                where l.created_at >= w.f and l.created_at < w.t and fc.first is not null and l.assigned_to is not null)
+                where l.created_at >= w.f and l.created_at < w.t and fc.first is not null and fc.first >= l.created_at
+                  and l.assigned_to is not null)
                as first_call_min,
              (select round(100.0 * count(*) filter (where f.status = 'done' and f.completed_at <= f.due_at + interval '2 hours')
                      / nullif(count(*), 0))
@@ -638,7 +704,21 @@ grant execute on function public.supervisor_rule_stats(int) to authenticated;
 -- ---------------------------------------------------------------------
 -- Waking the AI job (Edge Function ai-supervisor) from the 15-minute tick
 -- ---------------------------------------------------------------------
-create or replace function public.sup_ai_kick(p_job text, p_weekly boolean default false)
+-- the AI job says the day's reports are made (the tick stops asking)
+create or replace function public.sup_reports_done()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.supervisor_state (key, value)
+  values ('ai_report_done', to_char(now() at time zone 'Asia/Dhaka', 'YYYY-MM-DD'))
+  on conflict (key) do update set value = excluded.value, updated_at = now();
+$$;
+revoke all on function public.sup_reports_done() from public, anon, authenticated;
+
+drop function if exists public.sup_ai_kick(text, boolean);
+create or replace function public.sup_ai_kick(p_job text, p_weekly boolean default false, p_daily boolean default true)
 returns boolean
 language plpgsql
 security definer
@@ -650,14 +730,23 @@ declare
 begin
   if to_regproc('net.http_post') is null or v_url is null or v_secret is null then return false; end if;
   if jsonb_array_length(coalesce(public.ai_feature_plan('chance') -> 'providers', '[]'::jsonb)) = 0 then return false; end if;
+  -- notes: not while a run (about a minute) may still be going
+  if p_job = 'notes' then
+    if coalesce((select value::timestamptz from public.supervisor_state where key = 'notes_kick_at'),
+                '-infinity'::timestamptz) > now() - interval '3 minutes' then
+      return false;
+    end if;
+    insert into public.supervisor_state (key, value) values ('notes_kick_at', now()::text)
+    on conflict (key) do update set value = excluded.value, updated_at = now();
+  end if;
   perform net.http_post(
     url := v_url || '/ai-supervisor',
-    body := jsonb_build_object('job', p_job, 'weekly', p_weekly),
+    body := jsonb_build_object('job', p_job, 'weekly', p_weekly, 'daily', p_daily),
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', v_secret),
     timeout_milliseconds := 5000);
   return true;
 end;
 $$;
-revoke all on function public.sup_ai_kick(text, boolean) from public, anon, authenticated;
+revoke all on function public.sup_ai_kick(text, boolean, boolean) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';
