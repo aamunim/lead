@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { s as ui } from '@/features/alumni/ui';
@@ -41,17 +41,21 @@ export default function SupervisorTargetsScreen() {
       .catch((e) => setError(e instanceof Error ? e.message : 'লোড করা যায়নি।'));
   }, []);
 
+  const req = useRef(0);
   const load = useCallback(async () => {
+    const id = ++req.current;
     setLoading(true);
     setError(null);
     try {
       const t = await getTargets(month);
+      // another month asked meanwhile: this answer is not for the screen
+      if (id !== req.current) return;
       setValues(Object.fromEntries(Object.entries(t).map(([k, v]) => [k, String(v)])));
       setDirty(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'লোড করা যায়নি।');
+      if (id === req.current) setError(e instanceof Error ? e.message : 'লোড করা যায়নি।');
     } finally {
-      setLoading(false);
+      if (id === req.current) setLoading(false);
     }
   }, [month]);
   useEffect(() => {
@@ -59,9 +63,19 @@ export default function SupervisorTargetsScreen() {
   }, [load]);
 
   const shift = (n: number) => {
-    if (dirty && Platform.OS === 'web' && !window.confirm('Save না করা পরিবর্তন হারাবে। চালিয়ে যাবেন?')) return;
-    const [y, m] = month.split('-').map(Number);
-    setMonth(monthKey(new Date(y, m - 1 + n, 1)));
+    const go = () => {
+      const [y, m] = month.split('-').map(Number);
+      setMonth(monthKey(new Date(y, m - 1 + n, 1)));
+    };
+    if (!dirty || saving) return saving ? undefined : go();
+    if (Platform.OS === 'web') {
+      if (window.confirm('Save না করা পরিবর্তন হারাবে। চালিয়ে যাবেন?')) go();
+      return;
+    }
+    Alert.alert('Save করা হয়নি', 'এই মাসের পরিবর্তন হারাবে। চালিয়ে যাবেন?', [
+      { text: 'না', style: 'cancel' },
+      { text: 'হ্যাঁ', style: 'destructive', onPress: go },
+    ]);
   };
 
   const save = async () => {
@@ -141,7 +155,13 @@ export default function SupervisorTargetsScreen() {
           </View>
         )}
         {error && <Text style={ui.error}>{error}</Text>}
-        <Button title={dirty ? 'Save' : 'Saved'} onPress={save} loading={saving} disabled={!dirty} fullWidth />
+        <Button
+          title={dirty ? 'Save' : 'Saved'}
+          onPress={save}
+          loading={saving}
+          disabled={!dirty || loading}
+          fullWidth
+        />
       </ScrollView>
     </View>
   );

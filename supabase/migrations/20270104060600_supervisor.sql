@@ -845,6 +845,8 @@ begin
     'admin', v_admin,
     -- the AI parts the app may offer (Settings → Supervisor)
     'ai', c -> 'ai',
+    'ai_ready', to_regproc('public.ai_feature_plan') is not null
+                and jsonb_array_length(coalesce(public.ai_feature_plan('chance') -> 'providers', '[]'::jsonb)) > 0,
     'me', (select jsonb_build_object(
               'urgent', count(*) filter (where severity = 'urgent'),
               'today', count(*) filter (where severity = 'today'),

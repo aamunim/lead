@@ -64,6 +64,8 @@ export type SupervisorHome =
       manager: boolean;
       admin: boolean;
       ai: AiFlags;
+      /** an AI is set up and on in Settings → AI */
+      ai_ready: boolean;
       me: Counts;
       top: Pick<Finding, 'id' | 'rule' | 'severity' | 'title' | 'detail' | 'lead_id'>[];
       tasks: Task[];
@@ -391,7 +393,8 @@ async function callAi<T>(body: Record<string, unknown>): Promise<T> {
     } catch {
       // keep the first message
     }
-    if (/Failed to send|fetch/i.test(msg)) msg = 'ইন্টারনেট সংযোগ নেই, বা AI এখনো server-এ চালু হয়নি।';
+    // (the request never reached the server; a server's own error text is shown as it is)
+    if (/^Failed to send/i.test(msg)) msg = 'ইন্টারনেট সংযোগ নেই, বা AI এখনো server-এ চালু হয়নি।';
     throw new Error(msg);
   }
   if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);

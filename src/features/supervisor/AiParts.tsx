@@ -1,5 +1,5 @@
 import { router, type Href } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { OBJECTION_LABEL } from '@/features/aiChance/api';
@@ -80,6 +80,7 @@ export function TipCard() {
   }, []);
 
   const make = async (refresh = false) => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -96,7 +97,7 @@ export function TipCard() {
     <View style={styles.tip}>
       <View style={styles.row}>
         <Text style={[styles.cardTitle, styles.flex]}>💡 আজকের পরামর্শ (AI)</Text>
-        {tip && (
+        {tip && !busy && (
           <Tap onPress={() => make(true)} label="আবার তৈরি করুন" style={styles.iconBtn}>
             <MIcon name="refresh" size={20} color={md.onGoldC} />
           </Tap>
@@ -121,11 +122,14 @@ export function TipCard() {
 // ---------------------------------------------------------------------
 export function CoachSheet({ person, onClose }: { person: { id: string; name: string }; onClose: () => void }) {
   const [page, setPage] = useState<Report | null | undefined>(undefined);
+  const making = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const make = useCallback(
     async (refresh: boolean) => {
+      if (making.current) return;
+      making.current = true;
       setBusy(true);
       setError(null);
       try {
@@ -134,6 +138,7 @@ export function CoachSheet({ person, onClose }: { person: { id: string; name: st
         setError(e instanceof Error ? e.message : 'তৈরি করা যায়নি।');
         setPage((p) => p ?? null);
       } finally {
+        making.current = false;
         setBusy(false);
       }
     },
@@ -160,7 +165,14 @@ export function CoachSheet({ person, onClose }: { person: { id: string; name: st
       {page ? <ReportBodyView body={page.body} /> : busy ? <ActivityIndicator color={colors.primary} /> : null}
       {error && <Text style={ui.error}>{error}</Text>}
       {page && (
-        <Button title="🔄 আবার তৈরি করুন" variant="secondary" onPress={() => make(true)} loading={busy} fullWidth />
+        <Button
+          title="🔄 আবার তৈরি করুন"
+          variant="secondary"
+          onPress={() => make(true)}
+          loading={busy}
+          disabled={busy}
+          fullWidth
+        />
       )}
     </Sheet>
   );
@@ -169,10 +181,20 @@ export function CoachSheet({ person, onClose }: { person: { id: string; name: st
 // ---------------------------------------------------------------------
 // 📊 The Reports tab (Team Leads / admins)
 // ---------------------------------------------------------------------
-export function ReportsTab({ admin }: { admin: boolean }) {
-  const [reports, setReports] = useState<{ daily: Report | null; weekly: Report | null } | null>(null);
+export function ReportsTab({
+  admin,
+  canEdit,
+  aiReports,
+}: {
+  admin: boolean;
+  /** may change targets / answers (settings.manage) */
+  canEdit: boolean;
+  /** the AI writes the day's / week's report */
+  aiReports: boolean;
+}) {
+  const [reports, setReports] = useState<{ daily: Report | null; weekly: Report | null } | null | 'failed'>(null);
   const [which, setWhich] = useState<'daily' | 'weekly'>('daily');
-  const [forecast, setForecast] = useState<Forecast | null>(null);
+  const [forecast, setForecast] = useState<Forecast | null | 'failed'>(null);
   const [objections, setObjections] = useState<{ kind: string; leads: number }[] | null>(null);
   const [playbook, setPlaybook] = useState<PlaybookItem[]>([]);
   const [impact, setImpact] = useState<Awaited<ReturnType<typeof getImpact>> | null>(null);
@@ -184,10 +206,16 @@ export function ReportsTab({ admin }: { admin: boolean }) {
     const fail = (e: unknown) => live && setError(e instanceof Error ? e.message : 'লোড করা যায়নি।');
     latestReports()
       .then((r) => live && setReports(r))
-      .catch(fail);
+      .catch((e) => {
+        fail(e);
+        if (live) setReports('failed');
+      });
     getForecast()
       .then((f) => live && setForecast(f))
-      .catch(fail);
+      .catch((e) => {
+        fail(e);
+        if (live) setForecast('failed');
+      });
     getObjections(30)
       .then((o) => live && setObjections(o.kinds))
       .catch(() => live && setObjections([]));
@@ -207,7 +235,7 @@ export function ReportsTab({ admin }: { admin: boolean }) {
     };
   }, [admin]);
 
-  const shown = reports ? reports[which] : null;
+  const shown = reports && reports !== 'failed' ? reports[which] : null;
   const maxObj = Math.max(1, ...(objections ?? []).map((o) => o.leads));
 
   return (
@@ -223,6 +251,8 @@ export function ReportsTab({ admin }: { admin: boolean }) {
         </View>
         {reports === null ? (
           <ActivityIndicator color={colors.primary} />
+        ) : reports === 'failed' ? (
+          <Text style={ui.muted}>লোড করা যায়নি।</Text>
         ) : shown ? (
           <>
             <Text style={ui.muted}>{dayText(shown.day)}</Text>
@@ -230,9 +260,11 @@ export function ReportsTab({ admin }: { admin: boolean }) {
           </>
         ) : (
           <Text style={ui.muted}>
-            {which === 'daily'
-              ? 'প্রতিদিন কাজ শেষের পর AI রিপোর্ট লেখে। প্রথমটা আজ রাতে আসবে।'
-              : 'সপ্তাহের রিপোর্ট সপ্তাহে একবার আসে (Settings → Supervisor-এ দিন ঠিক করা যায়)।'}
+            {!aiReports
+              ? 'AI রিপোর্ট বন্ধ আছে (Settings → Supervisor → AI)।'
+              : which === 'daily'
+                ? 'প্রতিদিন কাজ শেষের পর AI রিপোর্ট লেখে (Settings → AI-তে কোনো AI চালু থাকলে)।'
+                : 'সপ্তাহের রিপোর্ট সপ্তাহে একবার আসে (Settings → Supervisor-এ দিন ঠিক করা যায়)।'}
           </Text>
         )}
       </View>
@@ -241,7 +273,7 @@ export function ReportsTab({ admin }: { admin: boolean }) {
       <View style={styles.card}>
         <View style={styles.row}>
           <Text style={[styles.cardTitle, styles.flex]}>🎯 এই মাসের লক্ষ্য ও পূর্বাভাস</Text>
-          {admin && (
+          {canEdit && (
             <Tap
               onPress={() => router.push('/settings/supervisor-targets' as Href)}
               label="লক্ষ্য ঠিক করুন"
@@ -253,6 +285,8 @@ export function ReportsTab({ admin }: { admin: boolean }) {
         </View>
         {forecast === null ? (
           <ActivityIndicator color={colors.primary} />
+        ) : forecast === 'failed' ? (
+          <Text style={ui.muted}>লোড করা যায়নি।</Text>
         ) : (
           <>
             <Text style={ui.muted}>
@@ -300,7 +334,7 @@ export function ReportsTab({ admin }: { admin: boolean }) {
                 );
               })}
             {forecast.courses.every((c) => c.target == null) && (
-              <Text style={ui.muted}>কোনো লক্ষ্য দেওয়া নেই{admin ? ' — “লক্ষ্য ›” থেকে দিন।' : '।'}</Text>
+              <Text style={ui.muted}>কোনো লক্ষ্য দেওয়া নেই{canEdit ? ' — “লক্ষ্য ›” থেকে দিন।' : '।'}</Text>
             )}
           </>
         )}
@@ -335,7 +369,7 @@ export function ReportsTab({ admin }: { admin: boolean }) {
             );
           })
         )}
-        {admin && (
+        {canEdit && (
           <Tap
             onPress={() => router.push('/settings/supervisor-playbook' as Href)}
             label="উত্তর ভান্ডার"
@@ -437,17 +471,24 @@ const SUGGEST_CALLER = [
   'ভর্তি বাড়াতে আমি কী করতে পারি?',
 ];
 
-type Qa = { q: string; a?: string; points?: string[]; error?: string };
+export type Qa = { q: string; a?: string; points?: string[]; error?: string };
 
-export function AskTab({ manager }: { manager: boolean }) {
+export function AskTab({
+  manager,
+  list,
+  setList,
+}: {
+  manager: boolean;
+  /** kept by the screen: a tab switch keeps the questions and their answers */
+  list: Qa[];
+  setList: (f: (l: Qa[]) => Qa[]) => void;
+}) {
   const [text, setText] = useState('');
-  const [list, setList] = useState<Qa[]>([]);
-  const [busy, setBusy] = useState(false);
+  const busy = list.length > 0 && !list[0].a && !list[0].error;
 
   const go = async (q: string) => {
     const question = q.trim();
     if (question.length < 3 || busy) return;
-    setBusy(true);
     setText('');
     setList((l) => [{ q: question }, ...l]);
     try {
@@ -457,8 +498,6 @@ export function AskTab({ manager }: { manager: boolean }) {
       setList((l) =>
         l.map((x, i) => (i === 0 ? { ...x, error: e instanceof Error ? e.message : 'উত্তর পাওয়া যায়নি।' } : x)),
       );
-    } finally {
-      setBusy(false);
     }
   };
 

@@ -44,10 +44,8 @@ export default function SupervisorPlaybookScreen() {
   useEffect(() => {
     getPlaybook()
       .then((p) => setItems(Object.fromEntries(p.map((x) => [x.kind, x.answer]))))
-      .catch((e) => {
-        setError(e instanceof Error ? e.message : 'লোড করা যায়নি।');
-        setItems({});
-      });
+      // (left empty: saving now would wipe the stored answers)
+      .catch((e) => setError(e instanceof Error ? e.message : 'লোড করা যায়নি।'));
   }, []);
 
   const save = async () => {
@@ -83,7 +81,9 @@ export default function SupervisorPlaybookScreen() {
           প্রতিটা আপত্তির জন্য আপনাদের নিজের উত্তর লিখুন। টিম এগুলো রিপোর্টে আপত্তির নিচে দেখবে। ভুল তথ্য দেবেন না।
         </Text>
         {items === null ? (
-          <ActivityIndicator color={colors.primary} />
+          error ? null : (
+            <ActivityIndicator color={colors.primary} />
+          )
         ) : (
           KINDS.map((k) => (
             <View key={k} style={styles.card}>
@@ -105,7 +105,13 @@ export default function SupervisorPlaybookScreen() {
           ))
         )}
         {error && <Text style={ui.error}>{error}</Text>}
-        <Button title={dirty ? 'Save' : 'Saved'} onPress={save} loading={saving} disabled={!dirty} fullWidth />
+        <Button
+          title={dirty ? 'Save' : 'Saved'}
+          onPress={save}
+          loading={saving}
+          disabled={!dirty || !items}
+          fullWidth
+        />
       </ScrollView>
     </View>
   );

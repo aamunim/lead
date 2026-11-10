@@ -16,9 +16,10 @@ import {
 import { Sheet } from '@/features/alumni/sheets';
 import { Chip, s as ui } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { scheduleFollowUp } from '@/features/follow-ups/api';
+import { getPendingFollowUp, scheduleFollowUp } from '@/features/follow-ups/api';
 import { Avatar, MIcon, md, Tap } from '@/features/home/md';
-import { AskTab, CoachSheet, promiseTime, ReportsTab, TipCard } from '@/features/supervisor/AiParts';
+import { AskTab, CoachSheet, promiseTime, ReportsTab, TipCard, type Qa } from '@/features/supervisor/AiParts';
+import { ask } from '@/features/aiChance/ask';
 import {
   hourText,
   listFindings,
@@ -72,6 +73,8 @@ export default function SupervisorScreen() {
   const [gone, setGone] = useState<Set<string>>(new Set());
   // "N leads": their names in a small sheet
   const [leadsOf, setLeadsOf] = useState<Finding | null>(null);
+  // 💬 the questions asked on this screen (a tab switch keeps them)
+  const [asked, setAsked] = useState<Qa[]>([]);
   // 🧑‍🏫 a one-to-one page about this person
   const [coachFor, setCoachFor] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +137,15 @@ export default function SupervisorScreen() {
     loadList(0);
   }, [loadList]);
 
+  // a tab I may not see (or not any more, e.g. the AI was switched off): back to Today
+  useEffect(() => {
+    if (!home || !home.enabled) return;
+    const allowed: TabKey[] = ['tasks', 'issues'];
+    if (home.manager) allowed.push('team', 'reports');
+    if (home.ai?.enabled && home.ai.ask) allowed.push('ask');
+    if (!allowed.includes(tab)) setTab('tasks');
+  }, [home, tab]);
+
   const refresh = async () => {
     setRefreshing(true);
     setRefreshKey((k) => k + 1);
@@ -175,9 +187,35 @@ export default function SupervisorScreen() {
   const setPromise = useCallback(
     async (f: Finding) => {
       if (!f.lead_id) return;
+      const leadId = f.lead_id;
       const at = promiseTime(typeof f.data?.at === 'string' ? f.data.at : undefined);
+      const set = async () => {
+        await scheduleFollowUp(leadId, at, typeof f.data?.note === 'string' ? `🤝 ${f.data.note}` : null);
+      };
       try {
-        await scheduleFollowUp(f.lead_id, at, typeof f.data?.note === 'string' ? `🤝 ${f.data.note}` : null);
+        // another call is planned already: ask before it is moved
+        const pending = await getPendingFollowUp(leadId);
+        if (pending) {
+          const when = new Date(pending.due_at).toLocaleString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+            hour: 'numeric',
+            minute: '2-digit',
+          });
+          ask('আগে থেকে follow-up আছে', `${when}-এ একটা কল ঠিক করা আছে। সেটা সরিয়ে প্রতিশ্রুতির দিনে নেবেন?`, [
+            {
+              label: 'প্রতিশ্রুতির দিনে নিন',
+              run: () => {
+                set()
+                  .then(() => mark(f, 'done'))
+                  .catch((e) => say(e instanceof Error ? e.message : 'সেট করা যায়নি।'));
+              },
+            },
+            { label: 'আগেরটাই থাক', run: () => mark(f, 'done') },
+          ]);
+          return;
+        }
+        await set();
         say(
           `⏰ Follow-up সেট হয়েছে: ${at.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`,
         );
@@ -227,6 +265,7 @@ export default function SupervisorScreen() {
       ai?.enabled && ai.ask ? ['ask', '💬 প্রশ্ন'] : null,
     ] as ([TabKey, string] | null)[]
   ).filter((x): x is [TabKey, string] => !!x);
+  const shownTab: TabKey = home && !tabs.some(([k]) => k === tab) ? 'tasks' : tab;
 
   const header = (
     <View style={styles.head}>
@@ -296,7 +335,7 @@ export default function SupervisorScreen() {
           ))}
         </View>
       )}
-      {tab === 'tasks' && !who && ai?.enabled && <TipCard />}
+      {tab === 'tasks' && !who && ai?.enabled && home?.enabled && home.ai_ready && <TipCard />}
       {tab === 'tasks' && (
         <Text style={ui.muted}>
           {who ? `${who.name}-এর আজকের তালিকা` : 'আগে যাদের কল করবেন, কেন সহ।'} নাম চাপলে lead খুলবে।
@@ -360,7 +399,14 @@ export default function SupervisorScreen() {
           contentContainerStyle={styles.content}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
           renderItem={({ item }) => (
-            <IssueRow f={item} showWho={scope === 'team' || !!who} onOpen={open} onMark={mark} onPromise={setPromise} />
+            <IssueRow
+              f={item}
+              showWho={scope === 'team' || !!who}
+              onOpen={open}
+              onMark={mark}
+              // (the person's own planned calls: only they set them)
+              onPromise={item.user_id === profile?.id ? setPromise : undefined}
+            />
           )}
         />
       )}
@@ -392,14 +438,23 @@ export default function SupervisorScreen() {
           )}
         />
       )}
-      {(tab === 'reports' || tab === 'ask') && (
+      {home && (shownTab === 'reports' || shownTab === 'ask') && (
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
         >
           {header}
-          {tab === 'reports' ? <ReportsTab key={refreshKey} admin={admin} /> : <AskTab manager={manager} />}
+          {shownTab === 'reports' ? (
+            <ReportsTab
+              key={refreshKey}
+              admin={admin}
+              canEdit={hasPermission('settings.manage')}
+              aiReports={!!ai?.enabled && !!ai.reports}
+            />
+          ) : (
+            <AskTab manager={manager} list={asked} setList={setAsked} />
+          )}
         </ScrollView>
       )}
       {leadsOf && <LeadsSheet f={leadsOf} onClose={() => setLeadsOf(null)} />}
@@ -520,7 +575,7 @@ const IssueRow = memo(function IssueRow({
   showWho: boolean;
   onOpen: (f: Finding) => void;
   onMark: (f: Finding, status: 'done' | 'wrong' | 'snoozed' | 'open', days?: number) => void;
-  onPromise: (f: Finding) => void;
+  onPromise?: (f: Finding) => void;
 }) {
   const sev = SEVERITY[f.severity];
   const canOpen = !!f.lead_id || !!f.data?.route || !!f.data?.lead_ids?.length;
@@ -558,7 +613,7 @@ const IssueRow = memo(function IssueRow({
           <Action label="↩ এখনই দেখান" onPress={() => onMark(f, 'open')} />
         ) : (
           <>
-            {f.data?.action === 'followup' && f.lead_id && (
+            {f.data?.action === 'followup' && f.lead_id && onPromise && (
               <Action label="⏰ ঐ দিন follow-up" onPress={() => onPromise(f)} />
             )}
             <Action label="✅ হয়ে গেছে" onPress={() => onMark(f, 'done')} />
