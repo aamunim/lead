@@ -79,6 +79,9 @@ export type AiFlags = {
   weekly_day: number;
   coach: boolean;
   ask: boolean;
+  /** 💬 the chat with the AI supervisor (super admins only) */
+  chat: boolean;
+  chat_daily: number;
 };
 
 export type TeamRow = {
@@ -188,6 +191,8 @@ export const DEFAULT_AI: AiFlags = {
   weekly_day: 6,
   coach: true,
   ask: true,
+  chat: true,
+  chat_daily: 50,
 };
 
 export async function getSupervisorSettings(): Promise<SupervisorSettings> {
@@ -394,10 +399,13 @@ async function callAi<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('ai-supervisor', { body });
   if (error) {
     let msg = error.message;
+    // (a chat answer that failed: the chat it was saved in, to try again there)
+    let chatId: string | undefined;
     try {
       const b = await (error as { context?: Response }).context?.clone().json();
       if (b?.error) msg = b.error;
       else if (typeof b?.message === 'string') msg = b.message;
+      if (typeof b?.chat_id === 'string') chatId = b.chat_id;
     } catch {
       // keep the first message
     }
@@ -406,7 +414,7 @@ async function callAi<T>(body: Record<string, unknown>): Promise<T> {
     if (/^Failed to send/i.test(msg)) msg = 'ইন্টারনেট সংযোগ নেই, বা AI এখনো server-এ চালু হয়নি।';
     else if (status === 404) msg = 'AI এখনো server-এ চালু হয়নি (Edge Function ai-supervisor)।';
     else if (/non-2xx/i.test(msg)) msg = 'Server উত্তর দিতে পারেনি। একটু পরে চেষ্টা করুন।';
-    throw new Error(msg);
+    throw Object.assign(new Error(msg), { chatId });
   }
   if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
   return data as T;
@@ -426,6 +434,61 @@ export async function makeReport(kind: 'tip' | 'coach', subject?: string | null,
 
 export async function latestReports(): Promise<{ daily: Report | null; weekly: Report | null }> {
   return rpc('supervisor_reports_latest');
+}
+
+// ---------------------------------------------------------------------
+// 💬 The chat with the AI supervisor (super admins only)
+// ---------------------------------------------------------------------
+export type ChatSummary = { id: string; title: string; pinned: boolean; updated_at: string; last: string | null };
+export type ChatAction = {
+  type: 'follow_up' | 'hand_over' | 'message';
+  status: 'pending' | 'done' | 'dismissed';
+  lead_ids?: string[];
+  lead_names?: string[];
+  user_id?: string;
+  user_name?: string;
+  due_at?: string;
+  note?: string;
+  text?: string;
+  result?: string;
+};
+export type ChatLink = { type: 'lead' | 'person'; id: string; label: string };
+export type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  body: string;
+  data: { sources?: string[]; links?: ChatLink[]; actions?: ChatAction[] };
+  provider?: string | null;
+  created_at: string;
+};
+
+export async function chatList(): Promise<{ daily: number; used: number; chats: ChatSummary[] }> {
+  return rpc('supervisor_chat_list');
+}
+export async function chatGet(chatId: string): Promise<ChatMessage[]> {
+  return rpc<ChatMessage[]>('supervisor_chat_get', { p_chat: chatId });
+}
+/** Send a message; the answer comes back saved (with its links and suggested actions) */
+export async function chatSend(
+  chatId: string | null,
+  text: string,
+): Promise<{ chat_id: string; user_message_id: string; message: ChatMessage; used: number; daily: number }> {
+  return callAi({ mode: 'chat', chat_id: chatId, text });
+}
+export async function chatEdit(
+  chatId: string,
+  change: { title?: string; pinned?: boolean; remove?: boolean },
+): Promise<void> {
+  await rpc('supervisor_chat_edit', {
+    p_chat: chatId,
+    p_title: change.title ?? null,
+    p_pinned: change.pinned ?? null,
+    p_delete: !!change.remove,
+  });
+}
+/** A suggested action: do it (yes) or put it aside (no) */
+export async function chatAct(messageId: string, index: number, yes: boolean): Promise<ChatAction> {
+  return rpc<ChatAction>('supervisor_chat_act', { p_message: messageId, p_index: index, p_do: yes });
 }
 
 export async function askSupervisor(question: string): Promise<{ answer: string; points: string[]; provider: string }> {
