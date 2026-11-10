@@ -78,7 +78,14 @@ export default function SupervisorChatScreen() {
   const [text, setText] = useState(params.text ?? '');
   const [pending, setPending] = useState<Pending | null>(null);
   const [renaming, setRenaming] = useState(false);
+  // an answer is on its way (whichever chat is open now): one at a time
+  const [inFlight, setInFlight] = useState(false);
+  // "try again" after a chat failed to load
+  const [reload, setReload] = useState(0);
+  // each "new chat" tap is a new one (an answer for an earlier new chat does not land here)
+  const newChat = useRef(0);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  const lastCount = useRef(-1);
   // the chat whose messages are wanted now (an older answer arriving late is not shown)
   const want = useRef<string | null>(open);
   want.current = open;
@@ -124,26 +131,34 @@ export default function SupervisorChatScreen() {
     const id = open;
     chatGet(id)
       .then((m) => {
-        if (want.current === id) setMessages(m);
+        if (want.current !== id) return;
+        // the last question has no answer (it failed earlier): shown with "try again"
+        const last = m[m.length - 1];
+        if (last?.role === 'user') {
+          setMessages(m.slice(0, -1));
+          setPending({ text: last.body, error: 'এই প্রশ্নের উত্তর আসেনি।' });
+        } else setMessages(m);
       })
       .catch((e) => {
         if (want.current === id) setMsgError(e instanceof Error ? e.message : 'লোড করা যায়নি।');
       });
-  }, [open]);
+  }, [open, reload]);
 
   // one message at a time (also while another chat is looked at)
   const sending = useRef(false);
   const send = useCallback(
     async (raw: string) => {
       const q = raw.trim();
-      if (q.length < 2 || sending.current) return;
+      if (q.length < 2 || sending.current || msgError) return;
       sending.current = true;
+      setInFlight(true);
       const where = open ?? 'new';
       const chatId = where !== 'new' ? where : null;
+      const tap = newChat.current;
       setText('');
       setPending({ text: q, error: null });
       // the answer is shown only if that chat is still the one on the screen
-      const here = () => want.current === where;
+      const here = () => want.current === where && (where !== 'new' || newChat.current === tap);
       const moveTo = (id: string) => {
         want.current = id;
         justMade.current = id;
@@ -174,10 +189,11 @@ export default function SupervisorChatScreen() {
         }
       } finally {
         sending.current = false;
+        setInFlight(false);
         loadList();
       }
     },
-    [open, loadList],
+    [open, msgError, loadList],
   );
 
   // a wide screen always shows a chat on the right (a new one at first)
@@ -210,7 +226,6 @@ export default function SupervisorChatScreen() {
     if (yes && a.type === 'hand_over') {
       ask('Lead দেওয়া', `${a.lead_ids?.length ?? 0}টা lead ${a.user_name}-কে দেবেন?`, [
         { label: 'হ্যাঁ, দিন', run: () => void go() },
-        { label: 'না', run: () => undefined },
       ]);
       return;
     }
@@ -259,6 +274,7 @@ export default function SupervisorChatScreen() {
     <View style={[styles.listPane, wide && styles.listPaneWide]}>
       <Tap
         onPress={() => {
+          newChat.current += 1;
           setOpen('new');
           setText('');
         }}
@@ -310,7 +326,9 @@ export default function SupervisorChatScreen() {
 
   // ---- one chat ----
   const shown = messages ?? [];
-  const busy = !!pending && !pending.error;
+  const busy = inFlight;
+  // scrolled down only when a message comes (not when a "📎" is opened higher up)
+  const count = shown.length + (pending ? 1 : 0) + (pending?.error ? 1 : 0);
   const conversation = (
     <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={90}>
       <View style={styles.chatHead}>
@@ -340,6 +358,9 @@ export default function SupervisorChatScreen() {
       {msgError ? (
         <View style={styles.center}>
           <Text style={ui.error}>{msgError}</Text>
+          <Tap onPress={() => setReload((n) => n + 1)} label="আবার চেষ্টা" style={styles.retry}>
+            <Text style={styles.link}>↻ আবার চেষ্টা করুন</Text>
+          </Tap>
         </View>
       ) : messages === null ? (
         <View style={styles.center}>
@@ -352,7 +373,12 @@ export default function SupervisorChatScreen() {
           keyExtractor={(m) => m.id}
           contentContainerStyle={styles.thread}
           keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+          onContentSizeChange={() => {
+            if (count !== lastCount.current) {
+              lastCount.current = count;
+              listRef.current?.scrollToEnd({ animated: true });
+            }
+          }}
           ListEmptyComponent={
             pending ? undefined : (
               <View style={styles.hello}>
@@ -405,18 +431,22 @@ export default function SupervisorChatScreen() {
           style={styles.input}
           multiline
           maxLength={1500}
-          editable={!busy}
+          editable={!busy && !msgError}
           accessibilityLabel="Message"
         />
         <Tap
           onPress={() => send(text)}
           label="পাঠান"
-          style={[styles.sendBtn, (busy || text.trim().length < 2) && styles.sendOff]}
+          style={[styles.sendBtn, (busy || !!msgError || text.trim().length < 2) && styles.sendOff]}
         >
           {busy ? <ActivityIndicator color="#FFFFFF" size="small" /> : <MIcon name="send" size={20} color="#FFFFFF" />}
         </Tap>
       </View>
-      <Text style={[ui.muted, styles.note]}>AI ভুল করতে পারে। বড় সিদ্ধান্তের আগে সংখ্যাগুলো যাচাই করুন।</Text>
+      <Text style={[ui.muted, styles.note]}>
+        {busy && !pending
+          ? 'আগের প্রশ্নের উত্তর আসছে… একটু অপেক্ষা করুন।'
+          : 'AI ভুল করতে পারে। বড় সিদ্ধান্তের আগে সংখ্যাগুলো যাচাই করুন।'}
+      </Text>
     </KeyboardAvoidingView>
   );
 

@@ -12,6 +12,7 @@
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
 import { admin, json, type AiConfig } from '../_shared/ai.ts';
+import type { Provider } from '../_shared/llm.ts';
 
 type Ask = <T>(
   cfg: AiConfig,
@@ -19,9 +20,10 @@ type Ask = <T>(
   user: unknown,
   schema: unknown,
   maxTokens: number,
+  down?: Set<Provider>,
 ) => Promise<{
   shown: { value: T; provider: string } | null;
-  errors: { kind: string; message: string }[];
+  errors: { kind: string; message: string; provider?: Provider }[];
 }>;
 
 type Start = {
@@ -160,17 +162,17 @@ Answer in plain, short Bangla (আপনি), like a sharp, kind supervisor:
 // ---------------------------------------------------------------------
 const D = '[0-9০-৯]';
 // between digits: spaces (also no-break), dots, dashes of every kind, slashes, brackets, commas, _ and *
-const S = '[\\s\\u00A0()/,_*.\\u2010-\\u2015-]';
-// a Bangladesh mobile (+88 / 88 / 0 1[3-9] + 8 digits), however it is written
+const S = '[\\s\\u00A0()/,_*.:|~=\\u2010-\\u2015-]';
+// a Bangladesh mobile (+88 / 88 / 0 1[3-9] + 8 digits), however it is written (not the end of a date)
 const PHONE = new RegExp(
-  `(?<!${D})(\\+?(88|৮৮)${S}{0,5})?[0০]${S}{0,5}[1১]${S}{0,5}[3-9৩-৯](${S}{0,5}${D}){8}(?!${D})`,
+  `(?<!${D})(?<!${D}[-/.:])(\\+?(88|৮৮)${S}{0,8})?([0০]${S}{0,8})?[1১]${S}{0,8}[3-9৩-৯](${S}{0,8}${D}){8}(?!${D})`,
   'g',
 );
 // a land line (02-9123456), a foreign number (+1 415 …), any 10+ digit run
 const LAND = new RegExp(`(?<!${D})[0০][2-9২-৯]${D}{0,2}[ -]?${D}{6,8}(?!${D})`, 'g');
-const INTL = new RegExp(`\\+[1-9](${S}{0,2}[0-9]){7,14}(?![0-9])`, 'g');
+const INTL = new RegExp(`(?<![0-9])(\\+|00)[1-9](${S}{0,2}[0-9]){7,14}(?![0-9])`, 'g');
 const LONG = new RegExp(`${D}{10,}`, 'g');
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+const EMAIL = /[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9.-]+\s*\.\s*[A-Za-z]{2,}/g;
 const CONTACT_KEY = /phone|whatsapp|mobile|email|hash|password|token|secret/i;
 // ids and times are kept as they are (an id with many digits is not a phone number)
 const KEEP =
@@ -206,9 +208,15 @@ function dhakaDate(offsetDays = 0) {
   return d.toISOString().slice(0, 10);
 }
 
+/** a real day (2026-13-01 or 2026-11-32 is not) */
+const realDay = (d: string) =>
+  DAY.test(d) &&
+  !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) &&
+  new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+
 function range(t: ToolCall): [string, string] {
-  let to = DAY.test(t.to) ? t.to : dhakaDate();
-  let from = DAY.test(t.from) ? t.from : '';
+  let to = realDay(t.to) ? t.to : dhakaDate();
+  let from = realDay(t.from) ? t.from : '';
   if (!from) from = dhakaDate(Math.max(1, Math.min(t.days || 7, 366)) - 1);
   if (from > to) [from, to] = [to, from];
   // at most a year
@@ -344,55 +352,71 @@ export async function handleChat(
   const fail = (why: string) =>
     json({ error: why || 'এখন কোনো AI উত্তর দিতে পারছে না। একটু পরে চেষ্টা করুন।', chat_id: s.chat_id }, 503);
 
-  // 1. what to read
-  const people = clean(
-    s.people.map((p) => ({ id: p.id, name: p.name, role: p.role, team_lead: p.team_lead })),
-  ) as Start['people'];
-  const courses = clean(s.courses);
-  const plan = await ask<{ tools: ToolCall[] }>(cfg, PLAN_SYSTEM, { ...chat, people, courses }, PLAN_SCHEMA, 800);
-  if (!plan.shown) return fail(plan.errors.map((e) => e.message).join(' · '));
-  const calls = (Array.isArray(plan.shown.value.tools) ? plan.shown.value.tools : [])
-    .filter((t) => TOOL_NAMES.includes(t?.name))
-    .slice(0, 3);
+  // an AI that failed in the first step is not waited for again in the second
+  const down = new Set<Provider>();
+  try {
+    // 1. what to read
+    const people = clean(
+      s.people.map((p) => ({ id: p.id, name: p.name, role: p.role, team_lead: p.team_lead })),
+    ) as Start['people'];
+    const courses = clean(s.courses);
+    const plan = await ask<{ tools: ToolCall[] }>(
+      cfg,
+      PLAN_SYSTEM,
+      { ...chat, people, courses },
+      PLAN_SCHEMA,
+      800,
+      down,
+    );
+    for (const e of plan.errors) if (e.provider) down.add(e.provider);
+    if (!plan.shown) return fail(plan.errors.map((e) => e.message).join(' · '));
+    const calls = (Array.isArray(plan.shown.value.tools) ? plan.shown.value.tools : [])
+      .filter((t) => TOOL_NAMES.includes(t?.name))
+      .slice(0, 3);
 
-  // 2. the reads, as the super admin
-  const data: Record<string, unknown> = {};
-  const sources: string[] = [];
-  for (const [i, t] of calls.entries()) {
-    const v = await runTool(db, t).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
-    data[`${i + 1}_${t.name}`] = { asked: { ...t }, result: forAi(v) };
-    const what = [
-      BN_TOOL[t.name],
-      t.name === 'person' ? s.people.find((p) => p.id === t.person_id)?.name : null,
-      t.name === 'lead' ? t.query : null,
-      ['pipeline', 'not_now', 'fees', 'activity'].includes(t.name) ? range(t).join(' → ') : null,
-      ['team', 'person', 'objections'].includes(t.name) ? `${days(t, t.name === 'team' ? 7 : 14)} দিন` : null,
-      t.name === 'forecast' && t.month ? t.month : null,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    sources.push(what);
+    // 2. the reads, as the super admin
+    const data: Record<string, unknown> = {};
+    const sources: string[] = [];
+    for (const [i, t] of calls.entries()) {
+      const v = await runTool(db, t).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+      data[`${i + 1}_${t.name}`] = { asked: { ...t }, result: forAi(v) };
+      const what = [
+        BN_TOOL[t.name],
+        t.name === 'person' ? s.people.find((p) => p.id === t.person_id)?.name : null,
+        t.name === 'lead' ? t.query : null,
+        ['pipeline', 'not_now', 'fees', 'activity'].includes(t.name) ? range(t).join(' → ') : null,
+        ['team', 'person', 'objections'].includes(t.name) ? `${days(t, t.name === 'team' ? 7 : 14)} দিন` : null,
+        t.name === 'forecast' && t.month ? t.month : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      sources.push(what);
+    }
+
+    // 3. the answer
+    const r = await ask<{
+      answer: string;
+      links: { type: string; id: string }[];
+      actions: Record<string, unknown>[];
+      memory: string;
+    }>(cfg, ANSWER_SYSTEM, { ...chat, people, courses, stages: clean(s.stages), data }, ANSWER_SCHEMA, 3000, down);
+    if (!r.shown) return fail(r.errors.map((e) => e.message).join(' · '));
+    const v = r.shown.value;
+
+    // saved with its links and actions checked against the database
+    const { data: saved, error: saveErr } = await admin.rpc('sup_chat_save', {
+      p_user: userId,
+      p_chat: s.chat_id,
+      p_body: maskText(String(v.answer ?? '')).slice(0, 4000),
+      p_data: { sources, links: v.links ?? [], actions: v.actions ?? [] },
+      p_memory: maskText(String(v.memory ?? '')).slice(0, 1200),
+      p_provider: r.shown.provider,
+    });
+    if (saveErr) return fail(saveErr.message);
+    return json({ chat_id: s.chat_id, user_message_id: s.message_id, message: saved, used: s.used, daily: s.daily });
+  } catch (e) {
+    // anything unexpected after the question was saved: the chat is sent back, so "try again" goes there
+    console.error('ai-supervisor chat', e);
+    return fail(e instanceof Error ? e.message : String(e));
   }
-
-  // 3. the answer
-  const r = await ask<{
-    answer: string;
-    links: { type: string; id: string }[];
-    actions: Record<string, unknown>[];
-    memory: string;
-  }>(cfg, ANSWER_SYSTEM, { ...chat, people, courses, stages: clean(s.stages), data }, ANSWER_SCHEMA, 3000);
-  if (!r.shown) return fail(r.errors.map((e) => e.message).join(' · '));
-  const v = r.shown.value;
-
-  // saved with its links and actions checked against the database
-  const { data: saved, error: saveErr } = await admin.rpc('sup_chat_save', {
-    p_user: userId,
-    p_chat: s.chat_id,
-    p_body: maskText(String(v.answer ?? '')).slice(0, 4000),
-    p_data: { sources, links: v.links ?? [], actions: v.actions ?? [] },
-    p_memory: maskText(String(v.memory ?? '')).slice(0, 1200),
-    p_provider: r.shown.provider,
-  });
-  if (saveErr) return fail(saveErr.message);
-  return json({ chat_id: s.chat_id, user_message_id: s.message_id, message: saved, used: s.used, daily: s.daily });
 }

@@ -69,11 +69,19 @@ function single(cfg: AiConfig): AiConfig {
   };
 }
 
-async function ask<T>(cfg: AiConfig, system: string, user: unknown, schema: unknown, maxTokens: number) {
+async function ask<T>(
+  cfg: AiConfig,
+  system: string,
+  user: unknown,
+  schema: unknown,
+  maxTokens: number,
+  // (shared by several questions in one request: an AI that failed once is not waited for again)
+  down: Set<Provider> = new Set<Provider>(),
+) {
   const r = await answerByPlan<T>(
     cfg,
     { system, user: JSON.stringify(user), schema: schema as Record<string, unknown>, maxTokens },
-    { allowClaude: cfg.plan.budget_ok, down: new Set<Provider>() },
+    { allowClaude: cfg.plan.budget_ok, down },
   );
   for (const a of r.answers) await recordUsage('supervisor', a);
   return r;

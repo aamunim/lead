@@ -133,10 +133,10 @@ language sql
 immutable
 as $$
   select regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(coalesce(p, ''),
-           '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '[ইমেইল]', 'g'),
-           '(?<![0-9০-৯])(\+?(88|৮৮)[\s ()/,_*.‐-―-]{0,5})?[0০][\s ()/,_*.‐-―-]{0,5}[1১][\s ()/,_*.‐-―-]{0,5}[3-9৩-৯]([\s ()/,_*.‐-―-]{0,5}[0-9০-৯]){8}(?![0-9০-৯])',
+           '[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9.-]+\s*\.\s*[A-Za-z]{2,}', '[ইমেইল]', 'g'),
+           '(?<![0-9০-৯])(?<![0-9০-৯][-/.:])(\+?(88|৮৮)[\s ()/,_*.:|~=‐-―-]{0,8})?([0০][\s ()/,_*.:|~=‐-―-]{0,8})?[1১][\s ()/,_*.:|~=‐-―-]{0,8}[3-9৩-৯]([\s ()/,_*.:|~=‐-―-]{0,8}[0-9০-৯]){8}(?![0-9০-৯])',
            '[নম্বর]', 'g'),
-           '\+[1-9]([\s ()/,_*.‐-―-]{0,2}[0-9]){7,14}(?![0-9])', '[নম্বর]', 'g'),
+           '(?<![0-9])(\+|00)[1-9]([\s ()/,_*.:|~=‐-―-]{0,2}[0-9]){7,14}(?![0-9])', '[নম্বর]', 'g'),
            '(?<![0-9০-৯])[0০][2-9২-৯][0-9০-৯]{0,2}[ -]?[0-9০-৯]{6,8}(?![0-9০-৯])', '[নম্বর]', 'g'),
          '[0-9০-৯]{10,}', '[নম্বর]', 'g');
 $$;
@@ -340,7 +340,8 @@ begin
     where l.deleted_at is null
       and (l.id::text = q or l.student_ref = q or l.nu_admission_id = q
            or l.name ilike '%' || replace(replace(q, '%', ''), '_', '') || '%')
-    order by (l.id::text = q or l.student_ref = q) desc, (lower(l.name) = lower(q)) desc,
+    order by coalesce(l.id::text = q or l.student_ref = q or l.nu_admission_id = q, false) desc,
+             (lower(l.name) = lower(q)) desc,
              l.updated_at desc
     limit 5) x;
   if v_ids is null then return jsonb_build_object('found', 0, 'leads', '[]'::jsonb); end if;
@@ -427,7 +428,7 @@ begin
   -- links: real leads / people only
   for a in select * from jsonb_array_elements(case when jsonb_typeof(p_data -> 'links') = 'array'
                                                    then p_data -> 'links' else '[]'::jsonb end) limit 12 loop
-    if coalesce(a ->> 'id', '') !~* '^[0-9a-f-]{36}$' then continue; end if;
+    if coalesce(a ->> 'id', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then continue; end if;
     if a ->> 'type' = 'lead' then
       select name into v_name from public.leads where id = (a ->> 'id')::uuid and deleted_at is null;
     elsif a ->> 'type' = 'person' then
@@ -446,7 +447,7 @@ begin
     begin
       v_ids := array(select x::uuid from jsonb_array_elements_text(
                        case when jsonb_typeof(a -> 'lead_ids') = 'array' then a -> 'lead_ids' else '[]'::jsonb end) x
-                     where x ~* '^[0-9a-f-]{36}$' limit 50);
+                     where x ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' limit 50);
       select array_agg(l.id), array_agg(l.name) into v_ids, v_names
         from public.leads l where l.id = any (v_ids) and l.deleted_at is null;
       if a ->> 'type' = 'follow_up' then
@@ -459,14 +460,14 @@ begin
           'type', 'follow_up', 'status', 'pending', 'lead_ids', to_jsonb(v_ids), 'lead_names', to_jsonb(v_names),
           'due_at', v_due, 'note', left(trim(coalesce(a ->> 'note', '')), 300)));
       elsif a ->> 'type' = 'hand_over' then
-        v_id := case when coalesce(a ->> 'user_id', '') ~* '^[0-9a-f-]{36}$' then (a ->> 'user_id')::uuid end;
+        v_id := case when coalesce(a ->> 'user_id', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then (a ->> 'user_id')::uuid end;
         select full_name into v_name from public.profiles where id = v_id and is_active and deleted_at is null;
         if coalesce(cardinality(v_ids), 0) = 0 or v_name is null then continue; end if;
         v_acts := v_acts || jsonb_build_array(jsonb_build_object(
           'type', 'hand_over', 'status', 'pending', 'lead_ids', to_jsonb(v_ids), 'lead_names', to_jsonb(v_names),
           'user_id', v_id, 'user_name', v_name, 'note', left(trim(coalesce(a ->> 'note', '')), 300)));
       elsif a ->> 'type' = 'message' then
-        v_id := case when coalesce(a ->> 'user_id', '') ~* '^[0-9a-f-]{36}$' then (a ->> 'user_id')::uuid end;
+        v_id := case when coalesce(a ->> 'user_id', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then (a ->> 'user_id')::uuid end;
         select full_name into v_name from public.profiles where id = v_id and is_active and deleted_at is null;
         if v_name is null or length(trim(coalesce(a ->> 'text', ''))) < 2 then continue; end if;
         v_acts := v_acts || jsonb_build_array(jsonb_build_object(
@@ -618,10 +619,10 @@ begin
       select full_name into v_me from public.profiles where id = auth.uid();
       if public.notify((a ->> 'user_id')::uuid, 'supervisor', '💬 ' || coalesce(v_me, 'সুপার অ্যাডমিন'),
                        a ->> 'text', '{}'::jsonb, null, true) is null then
-        v_res := 'পাঠানো যায়নি (নোটিফিকেশন বন্ধ বা অ্যাকাউন্ট বন্ধ)';
-      else
-        v_res := 'পাঠানো হয়েছে';
+        -- (kept for a later try)
+        raise exception 'পাঠানো যায়নি: % সুপারভাইজারের নোটিফিকেশন বন্ধ রেখেছেন, বা অ্যাকাউন্ট বন্ধ।', a ->> 'user_name';
       end if;
+      v_res := 'পাঠানো হয়েছে';
     else
       raise exception 'Unknown action.';
     end if;
