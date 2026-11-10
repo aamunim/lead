@@ -8,6 +8,19 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-10-supervisor',
+    date: '10 Nov 2026',
+    title: '🧑‍💼 সুপারভাইজার',
+    items: [
+      '🧑‍💼 নতুন “সুপারভাইজার” (Home, More, web-এর বাম মেনু): প্রতি ১৫ মিনিটে টিমের কাজ দেখে কী নজর দরকার তা জানায়, কিছু নিজে বদলায় না',
+      '📋 আজকের তালিকা: আগে কাকে কল করবেন, কেন সহ (দেরির follow-up, নতুন lead, আজকের visit, score বেশি অথচ চুপচাপ lead), আর lead সাধারণত কখন ফোন ধরেন',
+      '⚠️ সমস্যা: follow-up বাকি, note ছাড়া কল, অনেক দিন একই stage, ভর্তির পর fee বাকি… প্রতিটায় ✅ হয়ে গেছে · ⏳ কাল · ❌ ভুল। সমস্যা মিটলে নিজে থেকেই সরে যায়',
+      '👥 Team Lead ও admin: টিমের প্রত্যেকের আজকের কল, কথা, দেরি; কাজের ভার বেশি, বেশি Not Now, কাউকে দেওয়া হয়নি এমন lead, Lead Bank পরামর্শ',
+      '🌅 সকাল ৯টায় প্রত্যেকের ব্রিফ, 🌙 রাত ৯টায় Team Lead ও admin-দের দিনের সারাংশ',
+      '⚙️ Settings → Supervisor: কাজের সময়, ছুটির দিন, প্রতিটা নিয়ম চালু/বন্ধ ও তার সংখ্যা',
+    ],
+  },
+  {
     key: '2026-11-09-e',
     date: '9 Nov 2026',
     title: '🏦 Lead Bank, and “Lost” is now “Not Now”',

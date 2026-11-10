@@ -42,6 +42,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/students' as Href,
       },
       {
+        title: 'Supervisor',
+        description: 'Working hours, morning brief, evening summary, and each rule (on/off, its numbers)',
+        icon: '🧑‍💼',
+        href: '/settings/supervisor' as Href,
+      },
+      {
         title: 'Lead score',
         description: 'Admission chance: the points for each sign (visit, fee talk, no contact…)',
         icon: '🔥',

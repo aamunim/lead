@@ -35,6 +35,7 @@ import { ApprovalHomeCard } from '@/features/approval/ApprovalHomeCard';
 import { useAlumniAccess } from '@/features/alumni/ui';
 import { AlumniHomeCard } from '@/features/alumni/AlumniHomeCard';
 import { StoreUpdateCard } from '@/features/updates/StoreUpdateCard';
+import { SupervisorHomeCard } from '@/features/supervisor/SupervisorHomeCard';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const LOGO = require('../../../../assets/web/ittc-logo-64.png');
@@ -284,6 +285,7 @@ function PhoneHome() {
 
         {/* ── Today: visits and calls ──────────────── */}
         <View onLayout={(e) => (callsY.current = e.nativeEvent.layout.y - 8)}>
+          <SupervisorHomeCard />
           <TodayVisits />
           <TodayList />
           <ChanceHomeCard />

@@ -276,6 +276,17 @@ function PhoneMore() {
           ))}
         </View>
 
+        {/* 🧑‍💼 Supervisor: everyone (own · team · all) */}
+        <Section title="SUPERVISOR">
+          <Row
+            icon="support-agent"
+            tone="purple"
+            title="সুপারভাইজার"
+            subtitle="আজ আগে কাকে কল করবেন, কী নজর দরকার, টিমের অবস্থা"
+            onPress={go('/supervisor')}
+          />
+        </Section>
+
         {/* 🏦 Lead Bank (admins) */}
         {canManageSettings && (
           <Section title="LEAD BANK">
