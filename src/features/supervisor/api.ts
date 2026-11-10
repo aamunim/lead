@@ -172,8 +172,24 @@ export type SupervisorSettings = {
   ai: AiFlags;
 };
 
+export const DEFAULT_AI: AiFlags = {
+  enabled: true,
+  notes_daily: 200,
+  reports: true,
+  weekly_day: 6,
+  coach: true,
+  ask: true,
+};
+
 export async function getSupervisorSettings(): Promise<SupervisorSettings> {
-  return rpc<SupervisorSettings>('supervisor_setting');
+  const r = await rpc<SupervisorSettings>('supervisor_setting');
+  // (a server not updated yet sends no AI part: the defaults)
+  return {
+    ...r,
+    off_days: r.off_days ?? [],
+    rules: r.rules ?? ({} as SupervisorSettings['rules']),
+    ai: { ...DEFAULT_AI, ...(r.ai ?? {}) },
+  };
 }
 
 export async function saveSupervisorSettings(value: SupervisorSettings): Promise<void> {
