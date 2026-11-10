@@ -12,12 +12,16 @@
 //                                  (Team Leads / admins, once a day)
 //     { mode: 'ask', question }    a question about the work, answered
 //                                  from the numbers the asker may see
+//     { mode: 'chat', chat_id?, text }  the chat with the AI supervisor
+//                                  (super admins only; see chat.ts)
 //   The AI gets numbers, first names and note texts — never phone numbers.
-//   It changes nothing; it only reads and writes its own answers.
+//   It changes nothing by itself; a chat's suggested action happens only
+//   when the super admin approves it in the app.
 // =====================================================================
 import { admin, json, loadConfig, type AiConfig } from '../_shared/ai.ts';
 import { asUser, cors, currentUser } from '../_shared/drive.ts';
 import { answerByPlan, type Provider, recordUsage } from '../_shared/llm.ts';
+import { handleChat } from './chat.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -382,6 +386,8 @@ Deno.serve(async (req) => {
       mode?: string;
       user_id?: string;
       question?: string;
+      chat_id?: string | null;
+      text?: string;
       refresh?: boolean;
     };
     const cfg = single(await loadConfig('ai_chance'));
@@ -415,6 +421,11 @@ Deno.serve(async (req) => {
     const db = asUser(req);
     if (ai.enabled === false) return json({ error: 'সুপারভাইজারের AI বন্ধ আছে (Settings → Supervisor)।' }, 409);
     if (noAi) return json({ error: 'কোনো AI চালু নেই। Admin Settings → AI থেকে চালু করতে পারেন।' }, 409);
+
+    if (body.mode === 'chat') {
+      if (ai.chat === false) return json({ error: 'সুপারভাইজার চ্যাট বন্ধ আছে (Settings → Supervisor)।' }, 409);
+      return await handleChat(cfg, db, user.id, body, ask, todayText());
+    }
 
     if (body.mode === 'tip' || body.mode === 'coach') {
       const kind = body.mode;

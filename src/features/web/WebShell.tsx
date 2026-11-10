@@ -87,6 +87,7 @@ function pageTitle(path: string): string {
   if (path.startsWith('/alumni/referrals')) return 'Referral inbox';
   if (path.startsWith('/alumni')) return 'Alumni';
   if (path.startsWith('/bank')) return 'Lead Bank';
+  if (path.startsWith('/supervisor/chat')) return 'Supervisor › AI chat';
   if (path.startsWith('/supervisor')) return 'Supervisor';
   if (path.startsWith('/settings/supervisor-targets')) return 'Settings › Admission targets';
   if (path.startsWith('/settings/supervisor-playbook')) return 'Settings › Objection answers';

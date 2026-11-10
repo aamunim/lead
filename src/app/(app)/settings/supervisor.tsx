@@ -229,6 +229,23 @@ export default function SupervisorSettingsScreen() {
                 value={s.ai.ask}
                 onChange={(v) => set({ ai: { ...s.ai, ask: v } })}
               />
+              <Row
+                title="🤖 AI সুপারভাইজার চ্যাট"
+                text="শুধু সুপার অ্যাডমিন: কথোপকথন, তথ্য দেখে উত্তর, আর “হ্যাঁ” চাপলে follow-up / lead দেওয়া / message"
+                value={s.ai.chat}
+                onChange={(v) => set({ ai: { ...s.ai, chat: v } })}
+              />
+              {s.ai.chat && (
+                <View style={styles.hours}>
+                  <Num
+                    label="টা message দিনে (প্রতি সুপার অ্যাডমিন)"
+                    value={s.ai.chat_daily}
+                    min={1}
+                    max={500}
+                    onChange={(v) => set({ ai: { ...s.ai, chat_daily: v } })}
+                  />
+                </View>
+              )}
             </>
           )}
           <View style={styles.links}>

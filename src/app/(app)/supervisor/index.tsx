@@ -64,6 +64,11 @@ export default function SupervisorScreen() {
   const [home, setHome] = useState<SupervisorHome | null>(null);
   const manager = !!home && home.enabled && home.manager;
   const admin = !!home && home.enabled && home.admin;
+  // 💬 a question for the AI supervisor's chat (one function, so the rows do not redraw)
+  const openChat = useCallback(
+    (text: string) => router.push({ pathname: '/supervisor/chat', params: { text } } as unknown as Href),
+    [],
+  );
   const [tab, setTab] = useState<TabKey>(TABS.includes(params.tab as TabKey) ? (params.tab as TabKey) : 'tasks');
   const [scope, setScope] = useState<'me' | 'team'>(params.tab === 'team' ? 'team' : 'me');
   const [severity, setSeverity] = useState<Severity | null>(null);
@@ -267,6 +272,10 @@ export default function SupervisorScreen() {
   const me = home && home.enabled ? home.me : null;
   const t = home && home.enabled ? home.team : null;
   const ai = home && home.enabled ? home.ai : null;
+  // 💬 the chat with the AI supervisor: super admins only
+  const chatOn =
+    profile?.role_key === 'super_admin' && !!ai?.enabled && ai.chat !== false && !!home?.enabled && home.ai_ready;
+  const askAi = chatOn ? openChat : undefined;
   const tabs = (
     [
       ['tasks', '📋 আজ'],
@@ -308,6 +317,16 @@ export default function SupervisorScreen() {
             <Tile value={t.urgent + t.today + t.improve} label="টিমে" tone={md.primaryC} ink={md.onPrimaryC} />
           ) : null}
         </View>
+        {chatOn && (
+          <Tap
+            onPress={() => router.push('/supervisor/chat' as Href)}
+            label="AI সুপারভাইজারের সাথে চ্যাট"
+            style={styles.chatBtn}
+          >
+            <Text style={styles.chatBtnText}>🤖 AI সুপারভাইজারের সাথে চ্যাট</Text>
+            <MIcon name="chevron-right" size={20} color={md.onPurpleC} />
+          </Tap>
+        )}
       </View>
 
       {/* tabs */}
@@ -434,6 +453,7 @@ export default function SupervisorScreen() {
               canBank={canBank}
               // (only an admin can call their own finding wrong: for anyone else the server counts it as done)
               canWrong={admin || item.user_id !== profile?.id}
+              onAskAi={askAi}
             />
           )}
         />
@@ -460,6 +480,14 @@ export default function SupervisorScreen() {
               onCoach={
                 ai?.enabled && ai.coach && home?.enabled && home.ai_ready && item.user_id !== profile?.id
                   ? () => setCoachFor({ id: item.user_id, name: item.name ?? 'No name' })
+                  : undefined
+              }
+              onAskAi={
+                askAi
+                  ? () =>
+                      askAi(
+                        `${item.name ?? 'এই মানুষ'}-এর গত ১৪ দিনের কাজ কেমন? আগের ১৪ দিনের সাথে তুলনা করে বলুন, কী ভালো আর কোথায় উন্নতি দরকার।`,
+                      )
                   : undefined
               }
             />
@@ -606,6 +634,7 @@ const IssueRow = memo(function IssueRow({
   onPromise,
   canBank,
   canWrong,
+  onAskAi,
 }: {
   f: Finding;
   showWho: boolean;
@@ -614,6 +643,7 @@ const IssueRow = memo(function IssueRow({
   onPromise?: (f: Finding) => void;
   canBank: boolean;
   canWrong: boolean;
+  onAskAi?: (text: string) => void;
 }) {
   const sev = SEVERITY[f.severity];
   const canOpen = !!f.lead_id || (!!f.data?.route && routeOk(f.data.route, canBank)) || !!f.data?.lead_ids?.length;
@@ -657,6 +687,16 @@ const IssueRow = memo(function IssueRow({
             <Action label="✅ হয়ে গেছে" onPress={() => onMark(f, 'done')} />
             <Action label="⏳ কাল" onPress={() => onMark(f, 'snoozed', 1)} />
             {canWrong && <Action label="❌ ভুল" onPress={() => onMark(f, 'wrong')} />}
+            {onAskAi && (
+              <Action
+                label="🤖 AI"
+                onPress={() =>
+                  onAskAi(
+                    `এই সমস্যাটা নিয়ে বলুন — কেন হচ্ছে আর কী করা উচিত: "${f.title}"${f.detail ? ` (${f.detail})` : ''}${f.user_name ? `, ${f.user_name}-এর` : ''}`,
+                  )
+                }
+              />
+            )}
           </>
         )}
       </View>
@@ -677,11 +717,13 @@ const PersonRow = memo(function PersonRow({
   onIssues,
   onTasks,
   onCoach,
+  onAskAi,
 }: {
   p: TeamRow;
   onIssues: () => void;
   onTasks: () => void;
   onCoach?: () => void;
+  onAskAi?: () => void;
 }) {
   const last = p.last_call
     ? new Date(p.last_call).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' })
@@ -711,12 +753,25 @@ const PersonRow = memo(function PersonRow({
         <Action label="📋 তালিকা" onPress={onTasks} />
         <Action label={`⚠️ সমস্যা ${p.urgent + p.today + p.improve || ''}`.trim()} onPress={onIssues} />
         {onCoach && <Action label="🧑‍🏫 আলোচনা" onPress={onCoach} />}
+        {onAskAi && <Action label="🤖 AI" onPress={onAskAi} />}
       </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
+  chatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.lg,
+    backgroundColor: colors.background,
+    overflow: 'hidden',
+  },
+  chatBtnText: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: md.onPurpleC },
   screen: { flex: 1, backgroundColor: colors.background },
   center: {
     flex: 1,
