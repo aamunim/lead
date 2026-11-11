@@ -29,6 +29,7 @@ import {
   type ChatMessage,
   type ChatSummary,
 } from '@/features/supervisor/api';
+import { copyAnswer, pdfAnswer, shareAnswer } from '@/features/supervisor/chatExport';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
@@ -396,7 +397,14 @@ export default function SupervisorChatScreen() {
               </View>
             )
           }
-          renderItem={({ item }) => <Bubble m={item} onAct={act} />}
+          renderItem={({ item, index }) => (
+            <Bubble
+              m={item}
+              onAct={act}
+              // (the question this answers: on top of its PDF)
+              question={item.role === 'assistant' && shown[index - 1]?.role === 'user' ? shown[index - 1].body : null}
+            />
+          )}
           ListFooterComponent={
             pending ? (
               <View>
@@ -491,11 +499,14 @@ const ACTION_TITLE: Record<ChatAction['type'], string> = {
 const Bubble = memo(function Bubble({
   m,
   onAct,
+  question,
 }: {
   m: ChatMessage;
   onAct: (m: ChatMessage, index: number, yes: boolean) => void;
+  question: string | null;
 }) {
   const [showSources, setShowSources] = useState(false);
+  const [making, setMaking] = useState(false);
   if (m.role === 'user') {
     return (
       <View style={[styles.bubble, styles.mine]}>
@@ -569,7 +580,45 @@ const Bubble = memo(function Bubble({
           </Text>
         </Tap>
       )}
-      <Text style={styles.time}>{timeText(m.created_at)}</Text>
+      {/* out of the app: copy, share, a PDF report */}
+      <View style={styles.tools}>
+        <Tap
+          onPress={() =>
+            copyAnswer(m.body, sources)
+              .then(() => say('📋 কপি হয়েছে।'))
+              .catch(() => say('কপি করা যায়নি।'))
+          }
+          label="কপি"
+          style={styles.tool}
+        >
+          <Text style={styles.toolText}>📋 কপি</Text>
+        </Tap>
+        <Tap
+          onPress={() =>
+            shareAnswer(m.body, sources)
+              .then((r) => r === 'copied' && say('📋 কপি হয়েছে, যেখানে চান পেস্ট করুন।'))
+              .catch(() => undefined)
+          }
+          label="শেয়ার"
+          style={styles.tool}
+        >
+          <Text style={styles.toolText}>📤 শেয়ার</Text>
+        </Tap>
+        <Tap
+          onPress={() => {
+            if (making) return;
+            setMaking(true);
+            pdfAnswer({ question, body: m.body, sources, at: m.created_at })
+              .catch((e) => say(e instanceof Error ? e.message : 'PDF তৈরি করা যায়নি।'))
+              .finally(() => setMaking(false));
+          }}
+          label="PDF"
+          style={styles.tool}
+        >
+          <Text style={styles.toolText}>{making ? '⏳ PDF…' : '📄 PDF'}</Text>
+        </Tap>
+        <Text style={[styles.time, styles.flex]}>{timeText(m.created_at)}</Text>
+      </View>
     </View>
   );
 });
@@ -671,7 +720,17 @@ const styles = StyleSheet.create({
   actionDone: { fontSize: fontSize.small, color: colors.textMuted },
   sources: { alignSelf: 'flex-start' },
   sourcesText: { fontSize: fontSize.caption, color: colors.textMuted, lineHeight: 18 },
-  time: { fontSize: fontSize.caption, color: colors.textMuted, alignSelf: 'flex-end' },
+  time: { fontSize: fontSize.caption, color: colors.textMuted, alignSelf: 'flex-end', textAlign: 'right' },
+  tools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  tool: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: md.outline,
+    overflow: 'hidden',
+  },
+  toolText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.text },
   retry: { alignSelf: 'flex-start' },
   link: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
 

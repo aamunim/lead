@@ -30,7 +30,7 @@ on:
           - Database only
         default: Database + app update
       functions:
-        description: 'Edge Functions to deploy (optional, space between names, e.g. photo-cutout drive-upload)'
+        description: 'Edge Functions to deploy (optional, just the names, e.g. ai-supervisor or photo-cutout drive-upload)'
         type: string
         required: false
         default: ''
@@ -88,7 +88,18 @@ jobs:
       - name: ⚡ Edge Functions
         if: inputs.functions != ''
         run: |
-          for f in $FUNCTIONS; do
+          # just the names: "ai-supervisor", "a, b", or even a whole "npx supabase functions deploy ai-supervisor"
+          names=$(echo "$FUNCTIONS" | tr ',;' '  ')
+          list=""
+          for w in $names; do
+            case "$w" in npx|supabase|functions|deploy|--*) continue ;; esac
+            list="$list $w"
+          done
+          if [ -z "$list" ]; then
+            echo "::error::Write the Edge Function names, e.g. ai-supervisor"
+            exit 1
+          fi
+          for f in $list; do
             if [ ! -d "supabase/functions/$f" ]; then
               echo "::error::No Edge Function called $f (supabase/functions/)"
               exit 1
