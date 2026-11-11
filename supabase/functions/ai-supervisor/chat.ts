@@ -42,6 +42,8 @@ type Start = {
 // The reads the AI may ask for
 // ---------------------------------------------------------------------
 const TOOLS = {
+  overview:
+    'the whole picture, for the whole time (since the first lead) and for a period `from`-`to` (default the last 30 days): how many leads / unique mobile numbers we have, never called, by stage; all calls, connected, talk minutes, average minutes per talk, calls per lead, how many tries until the first real talk; the team (people by role, how many called); admissions, Not Now, fee collected and due; month by month for 12 months; each person in the period. Use it for "how many numbers / calls / minutes / people / how successful" and for reports to the chairman or board',
   team: 'the whole team: each person\'s calls, talk minutes, follow-ups on time / late, admissions, "Not Now", open issues, what the AI noticed in notes, objections, the month\'s forecast — for the last `days` (1-90) against the same days before',
   person:
     'one person (person_id): the same numbers for the last `days` against the days before, their open issues, tips from their notes',
@@ -78,7 +80,7 @@ const PLAN_SCHEMA = {
   properties: {
     tools: {
       type: 'array',
-      description: 'at most 3; empty when no data is needed (e.g. "write a message to the team")',
+      description: 'at most 5; empty when no data is needed (e.g. "write a message to the team")',
       items: {
         type: 'object',
         properties: {
@@ -103,7 +105,7 @@ const PLAN_SCHEMA = {
 const PLAN_SYSTEM = `You help the AI supervisor of the admission team of a teachers' training college in Bangladesh answer the super admin. Before answering, pick the data needed to answer the latest message, from this list only:
 ${TOOL_NAMES.map((n) => `- ${n}: ${TOOLS[n]}`).join('\n')}
 
-Rules: at most 3 reads; the fewest that answer the question; use ids exactly from "people" / "courses"; dates are in Bangladesh time, "today" is given; "this week" = the last 7 days, "this month" = from the 1st. Use the chat so far to understand short follow-ups ("and Karim?", "what about last month?"). If the message needs no data (a greeting, writing a message from what was already said), pick none.`;
+Rules: at most 5 reads (usually 1-2); the fewest that answer the question; use ids exactly from "people" / "courses"; dates are in Bangladesh time, "today" is given; "this week" = the last 7 days, "this month" = from the 1st. Use the chat so far to understand short follow-ups ("and Karim?", "what about last month?"). If the message needs no data (a greeting, writing a message from what was already said), pick none.`;
 
 const ANSWER_SCHEMA = {
   type: 'object',
@@ -148,7 +150,7 @@ const ANSWER_SCHEMA = {
 
 const ANSWER_SYSTEM = `You are the AI supervisor of the admission team of a teachers' training college in Bangladesh, talking with the super admin (the head of the college's admissions). You get the chat so far, what you kept in mind from earlier ("memory"), the people (ids, names, roles, Team Leads), the courses, and the data read for this message.
 
-Answer in plain, short Bangla (আপনি), like a sharp, kind supervisor:
+Answer in plain Bangla (আপনি), like a sharp, kind supervisor. Short by default (a few sentences). When asked for a report (for the chairman, the board, a meeting) or a full picture, write a well-ordered report instead: a title line, then short sections with emoji headings — 📌 মূল সংখ্যা, 📞 যোগাযোগ, 👥 টিম, 🎓 সাফল্য, ⚠️ চ্যালেঞ্জ, 💡 পরামর্শ — each with short lines ("• ..."), numbers written clearly (e.g. ১২,৩৪০ or 12,340, percentages), and the period the numbers cover. No tables, no markdown symbols like ** or #. Keep even a full report under about 600 words.
 - Use only the numbers in the data, and say which numbers you used. Never invent numbers, names or events. If the data cannot answer, say so and say what would help.
 - Compare with "before" where it helps; name people fairly (praise too).
 - When asked for advice or a plan, be concrete: who, what, by when.
@@ -269,6 +271,10 @@ async function runTool(db: SupabaseClient, t: ToolCall): Promise<unknown> {
     }
     case 'bank':
       return call('bank_summary', {});
+    case 'overview': {
+      const [from, to] = t.from || t.to ? range(t) : [null, null];
+      return call('supervisor_chat_overview', { p_from: from, p_to: to });
+    }
     case 'findings': {
       // what each issue is about (its lead lists can be thousands long: only how many)
       const rows = await call('supervisor_list', { p_scope: 'team', p_limit: 80 });
@@ -316,6 +322,7 @@ const BN_TOOL: Record<ToolName, string> = {
   not_now: 'Not Now',
   fees: 'ফি আদায়',
   bank: 'Lead Bank',
+  overview: 'সামগ্রিক চিত্র',
   findings: 'খোলা সমস্যা',
   reports: 'AI রিপোর্ট',
   activity: 'টিমের কাজ',
@@ -350,7 +357,28 @@ export async function handleChat(
     message: maskText(text),
   };
   const fail = (why: string) =>
-    json({ error: why || 'এখন কোনো AI উত্তর দিতে পারছে না। একটু পরে চেষ্টা করুন।', chat_id: s.chat_id }, 503);
+    json(
+      {
+        error: /cut short/i.test(why)
+          ? 'উত্তরটা খুব বড় হয়ে যাচ্ছিল। প্রশ্নটা ছোট ছোট ভাগে করুন, বা শেষে "সংক্ষেপে" লিখুন।'
+          : why || 'এখন কোনো AI উত্তর দিতে পারছে না। একটু পরে চেষ্টা করুন।',
+        chat_id: s.chat_id,
+      },
+      503,
+    );
+  // an answer cut short (it needed more room): once more with twice the room
+  const askRoomy = async <T>(
+    c: AiConfig,
+    system: string,
+    user: unknown,
+    schema: unknown,
+    maxTokens: number,
+    d?: Set<Provider>,
+  ) => {
+    const first = await ask<T>(c, system, user, schema, maxTokens, d);
+    if (first.shown || !first.errors.some((e) => /cut short/i.test(e.message))) return first;
+    return ask<T>(c, system, user, schema, maxTokens * 2, d);
+  };
 
   // an AI that failed in the first step is not waited for again in the second
   const down = new Set<Provider>();
@@ -360,19 +388,19 @@ export async function handleChat(
       s.people.map((p) => ({ id: p.id, name: p.name, role: p.role, team_lead: p.team_lead })),
     ) as Start['people'];
     const courses = clean(s.courses);
-    const plan = await ask<{ tools: ToolCall[] }>(
+    const plan = await askRoomy<{ tools: ToolCall[] }>(
       cfg,
       PLAN_SYSTEM,
       { ...chat, people, courses },
       PLAN_SCHEMA,
-      800,
+      3000,
       down,
     );
     for (const e of plan.errors) if (e.provider) down.add(e.provider);
     if (!plan.shown) return fail(plan.errors.map((e) => e.message).join(' · '));
     const calls = (Array.isArray(plan.shown.value.tools) ? plan.shown.value.tools : [])
       .filter((t) => TOOL_NAMES.includes(t?.name))
-      .slice(0, 3);
+      .slice(0, 5);
 
     // 2. the reads, as the super admin
     const data: Record<string, unknown> = {};
@@ -384,7 +412,11 @@ export async function handleChat(
         BN_TOOL[t.name],
         t.name === 'person' ? s.people.find((p) => p.id === t.person_id)?.name : null,
         t.name === 'lead' ? t.query : null,
-        ['pipeline', 'not_now', 'fees', 'activity'].includes(t.name) ? range(t).join(' → ') : null,
+        ['pipeline', 'not_now', 'fees', 'activity'].includes(t.name) || (t.name === 'overview' && (t.from || t.to))
+          ? range(t).join(' → ')
+          : t.name === 'overview'
+            ? 'শুরু থেকে + শেষ ৩০ দিন'
+            : null,
         ['team', 'person', 'objections'].includes(t.name) ? `${days(t, t.name === 'team' ? 7 : 14)} দিন` : null,
         t.name === 'forecast' && t.month ? t.month : null,
       ]
@@ -394,12 +426,12 @@ export async function handleChat(
     }
 
     // 3. the answer
-    const r = await ask<{
+    const r = await askRoomy<{
       answer: string;
       links: { type: string; id: string }[];
       actions: Record<string, unknown>[];
       memory: string;
-    }>(cfg, ANSWER_SYSTEM, { ...chat, people, courses, stages: clean(s.stages), data }, ANSWER_SCHEMA, 3000, down);
+    }>(cfg, ANSWER_SYSTEM, { ...chat, people, courses, stages: clean(s.stages), data }, ANSWER_SCHEMA, 10000, down);
     if (!r.shown) return fail(r.errors.map((e) => e.message).join(' · '));
     const v = r.shown.value;
 
@@ -407,7 +439,7 @@ export async function handleChat(
     const { data: saved, error: saveErr } = await admin.rpc('sup_chat_save', {
       p_user: userId,
       p_chat: s.chat_id,
-      p_body: maskText(String(v.answer ?? '')).slice(0, 4000),
+      p_body: maskText(String(v.answer ?? '')).slice(0, 12000),
       p_data: { sources, links: v.links ?? [], actions: v.actions ?? [] },
       p_memory: maskText(String(v.memory ?? '')).slice(0, 1200),
       p_provider: r.shown.provider,
