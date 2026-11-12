@@ -765,9 +765,19 @@ export const KEEP_MAX = 3000;
 
 /** The ids in list order, as the list is right now */
 export async function listLeadIds(options: LeadQuery): Promise<string[]> {
-  const { data, error } = await chanceSafe(() => buildLeadQuery(options, 'ids').range(0, KEEP_MAX - 1));
-  if (error) throw toError(error);
-  return ((data ?? []) as unknown as { id: string }[]).map((r) => r.id);
+  // the server gives at most 1,000 rows at a time: asked in pages, up to KEEP_MAX
+  const PAGE = 1000;
+  const out: string[] = [];
+  for (let from = 0; from < KEEP_MAX; from += PAGE) {
+    const { data, error } = await chanceSafe(() =>
+      buildLeadQuery(options, 'ids').range(from, Math.min(from + PAGE, KEEP_MAX) - 1),
+    );
+    if (error) throw toError(error);
+    const rows = (data ?? []) as unknown as { id: string }[];
+    rows.forEach((r) => out.push(r.id));
+    if (rows.length < PAGE) break;
+  }
+  return out;
 }
 
 /** These leads as list cards, in the order given (deleted ones are left out) */

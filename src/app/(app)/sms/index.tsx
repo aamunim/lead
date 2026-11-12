@@ -11,12 +11,20 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { NextContactPicker } from '@/features/alumni/sheets';
-import { Chip, s as ui } from '@/features/alumni/ui';
+import { MenuSheet, NextContactPicker } from '@/features/alumni/sheets';
+import { s as ui } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { MIcon, md } from '@/features/home/md';
-import { countLeads, KEEP_MAX, listLeadIds, listLeads, type LeadListItem, type LeadQuery } from '@/features/leads/api';
+import { card, MIcon, md, Tap, type MIconName } from '@/features/home/md';
+import {
+  KEEP_MAX,
+  listLeadIds,
+  listLeads,
+  listLeadsByIds,
+  type LeadListItem,
+  type LeadQuery,
+} from '@/features/leads/api';
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { countActiveFilters, type LeadFilters } from '@/features/leads/filters';
 import { listPipelineStages, type PipelineStage } from '@/features/pipeline/api';
@@ -43,10 +51,10 @@ import { Button } from '@/shared/ui/Button';
 
 // =====================================================================
 // 📨 SMS Center: one SMS to many — Active leads, Not Now, Admitted
-//   (every filter of the lead list: stages, tags, course, batch, person,
-//   fee, papers, visit, AI chance…), or Alumni.
-//   ① who gets it ② the message (yourself, a template, or 🤖 AI)
-//   ③ from which sender ID, now or later ④ send → the queue
+//   (every filter of the lead list), or Alumni.
+//   🤖 AI suggestions on top · ① Recipients (counted as you filter)
+//   ② Message (template / AI / fields, an SMS-bubble preview)
+//   ③ From & when · a bar at the bottom: how many, and Send
 // =====================================================================
 
 const say = (title: string, msg: string) =>
@@ -61,36 +69,39 @@ const confirm = (title: string, msg: string, ok: string): Promise<boolean> =>
       ]);
   });
 const errText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
+const fmt = (n: number) => n.toLocaleString('en-US');
 
 type Tab = SmsGroup | 'alumni';
-const TABS: { key: Tab; label: string; icon: Parameters<typeof MIcon>[0]['name'] }[] = [
+const TABS: { key: Tab; label: string; icon: MIconName }[] = [
   { key: 'active', label: 'Active', icon: 'person-search' },
-  { key: 'not_now', label: 'Not Now', icon: 'block' },
+  { key: 'not_now', label: 'Not Now', icon: 'do-not-disturb-on' },
   { key: 'admitted', label: 'Admitted', icon: 'school' },
   { key: 'alumni', label: 'Alumni', icon: 'workspace-premium' },
 ];
 
 export default function SmsCenterScreen() {
   const { profile } = useAuth();
+  const insets = useSafeAreaInsets();
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [tab, setTab] = useState<Tab>('active');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<LeadFilters>({});
   const [filterOpen, setFilterOpen] = useState(false);
   const [stages, setStages] = useState<PipelineStage[]>([]);
-  // 📌 chosen on the lead list (instead of the filters)
+  // 📌 chosen on the lead list or by an AI suggestion (instead of the filters)
   const [chosen, setChosen] = useState<string[] | null>(null);
-  // 🤖 an AI suggestion was used: count who gets it at once, and scroll to it
-  const autoCheck = useRef(false);
+  const [chosenLabel, setChosenLabel] = useState<string | null>(null);
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
-  const [whoY, setWhoY] = useState(0);
+  const whoY = useRef(0);
 
   const [count, setCount] = useState<number | null>(null);
   const [sample, setSample] = useState<LeadListItem[]>([]);
   const [ids, setIds] = useState<string[] | null>(null);
   const [left, setLeft] = useState<Set<string>>(new Set());
   const [preview, setPreview] = useState<LeadSmsPreview | null>(null);
-  const [loadingWho, setLoadingWho] = useState(false);
+  const [counting, setCounting] = useState(false);
+  const [showNames, setShowNames] = useState(false);
+  const [allNames, setAllNames] = useState(false);
 
   const [senders, setSenders] = useState<MySender[]>([]);
   const [sender, setSender] = useState('');
@@ -99,8 +110,13 @@ export default function SmsCenterScreen() {
   const [at, setAt] = useState<Date | null>(null);
   const [later, setLater] = useState(false);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
-  const [aiOpen, setAiOpen] = useState(false);
+  const [sheet, setSheet] = useState<null | 'ai' | 'templates'>(null);
+  const [showFields, setShowFields] = useState(false);
   const [busy, setBusy] = useState(false);
+  // one send at a time (a double tap opens one dialog)
+  const sending = useRef(false);
+  // every id that matches, before names are taken out
+  const [allIds, setAllIds] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -127,6 +143,7 @@ export default function SmsCenterScreen() {
       const d = smsDraft.take();
       if (d) {
         setChosen(d.ids);
+        setChosenLabel('Marked on the lead list');
         setTab(d.group);
       }
     }, []),
@@ -134,12 +151,14 @@ export default function SmsCenterScreen() {
 
   const group: SmsGroup | null = tab === 'alumni' ? null : tab;
   const lostIds = useMemo(() => stages.filter((s) => s.kind === 'lost').map((s) => s.id), [stages]);
+  const nFilters = countActiveFilters(filters);
+  const searchKey = search.trim();
 
   // the lead list's own query for this group
   const query: LeadQuery | null = useMemo(() => {
     if (!group) return null;
     if (chosen) return { onlyIds: chosen, closedMode: 'show', userId: profile?.id };
-    const q: LeadQuery = { search: search.trim(), filters, userId: profile?.id, sort: 'newest' as LeadQuery['sort'] };
+    const q: LeadQuery = { search: searchKey, filters, userId: profile?.id, sort: 'newest' as LeadQuery['sort'] };
     if (group === 'active') return { ...q, closedMode: 'hide' };
     if (group === 'admitted') return { ...q, students: true };
     // Not Now: the "not now" stages (unless stages are chosen in the filter)
@@ -148,81 +167,127 @@ export default function SmsCenterScreen() {
       closedMode: 'show',
       filters: { ...filters, stageIds: filters.stageIds?.length ? filters.stageIds : lostIds },
     };
-  }, [group, chosen, search, filters, profile?.id, lostIds]);
+  }, [group, chosen, searchKey, filters, profile?.id, lostIds]);
 
-  // count + the first names (as the filters change)
+  // ① as the filters change: the matches and the first names (the old numbers stay
+  //    on screen, greyed by "counting", until the new ones are in)
   const seq = useRef(0);
+  const pseq = useRef(0);
   useEffect(() => {
-    setIds(null);
-    setPreview(null);
-    setLeft(new Set());
-    if (!query || (group === 'not_now' && !chosen && lostIds.length === 0)) return;
     const my = ++seq.current;
-    setLoadingWho(true);
-    const t = setTimeout(() => {
-      Promise.all([countLeads(query), listLeads({ ...query, page: 0 })])
-        .then(([n, page]) => {
+    pseq.current++; // an answer for the old choice is dropped
+    setLeft(new Set());
+    setAllIds(null);
+    if (!query || !group || (group === 'not_now' && !chosen && lostIds.length === 0)) {
+      setCount(null);
+      setSample([]);
+      setIds(null);
+      setPreview(null);
+      setCounting(false);
+      return;
+    }
+    setCounting(true);
+    setError(null);
+    const t = setTimeout(async () => {
+      try {
+        if (chosen) {
+          // marked on the lead list / an AI group: the ids are known — no long links,
+          // just the first names
+          const page = await listLeadsByIds(chosen.slice(0, 30));
           if (my !== seq.current) return;
-          setCount(n ?? page.total ?? page.items.length);
+          setCount(chosen.length);
+          setSample(page);
+          setAllIds(chosen);
+        } else {
+          const [page, all] = await Promise.all([listLeads({ ...query, page: 0 }), listLeadIds(query)]);
+          if (my !== seq.current) return;
+          setCount(page.total ?? all.length);
           setSample(page.items);
-          if (autoCheck.current) {
-            autoCheck.current = false;
-            setTimeout(check, 0);
-          }
-        })
-        .catch((e) => my === seq.current && setError(errText(e)))
-        .finally(() => my === seq.current && setLoadingWho(false));
-    }, 400);
+          setAllIds(all);
+        }
+      } catch (e) {
+        if (my === seq.current) {
+          // no old numbers left to send to by mistake
+          setError(errText(e));
+          setIds(null);
+          setPreview(null);
+          setCounting(false);
+        }
+      }
+    }, 450);
     return () => clearTimeout(t);
   }, [query, group, chosen, lostIds.length]);
 
-  // who exactly gets it (the ids, then the server's count)
-  const check = async () => {
-    if (!query || !group) return;
-    setLoadingWho(true);
-    setError(null);
-    try {
-      const all = await listLeadIds(query);
-      const use = all.filter((id) => !left.has(id));
-      setIds(use);
-      setPreview(await previewLeadSms(use, group));
-    } catch (e) {
-      setError(errText(e));
-    } finally {
-      setLoadingWho(false);
-    }
-  };
-  // a name taken out / put back: count again
+  // ② who really gets it (the server's count) — again only this when a name is taken out
   useEffect(() => {
-    if (ids) check();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [left]);
+    if (!allIds || !group) return;
+    const my = ++pseq.current;
+    const use = allIds.filter((id) => !left.has(id));
+    setCounting(true);
+    (use.length ? previewLeadSms(use, group) : Promise.resolve(null))
+      .then((p) => {
+        if (my !== pseq.current) return;
+        setIds(use);
+        setPreview(p);
+      })
+      .catch((e) => {
+        if (my !== pseq.current) return;
+        setError(errText(e));
+        setIds(null);
+        setPreview(null);
+      })
+      .finally(() => my === pseq.current && setCounting(false));
+  }, [allIds, left, group]);
 
   const filterLabel = useMemo(() => {
     if (!group) return '';
-    if (chosen) return `${GROUP_LABEL[group]} · ${name.trim() || 'chosen'} · ${chosen.length} leads`;
-    const n = countActiveFilters(filters);
+    if (chosen) return `${GROUP_LABEL[group]} · ${chosenLabel ?? 'chosen'} · ${chosen.length} leads`;
     return [
       GROUP_LABEL[group],
-      n ? `${n} filter${n === 1 ? '' : 's'}` : 'all',
+      nFilters ? `${nFilters} filter${nFilters === 1 ? '' : 's'}` : 'all',
       search.trim() ? `search “${search.trim()}”` : '',
     ]
       .filter(Boolean)
       .join(' · ');
-  }, [group, chosen, filters, search, name]);
+  }, [group, chosen, chosenLabel, nFilters, search]);
 
   const len = smsLength(text);
+  const limit = len.unicode ? (len.parts === 1 ? 70 : 67 * len.parts) : len.parts === 1 ? 160 : 153 * len.parts;
   const first = sample.find((l) => !left.has(l.id));
   const chosenSender = senders.find((s) => s.id === sender);
+  const willGet = preview?.will_get ?? 0;
+  const ready = !!preview && willGet > 0 && !!text.trim() && !!sender && (!later || !!at) && !counting;
+
+  const switchTab = (t: Tab) => {
+    setTab(t);
+    setChosen(null);
+    setChosenLabel(null);
+    setFilters({});
+    setSearch('');
+    setLeft(new Set());
+    setShowNames(false);
+  };
 
   const send = async () => {
-    if (!group || !ids || !preview) return;
+    if (!group || !ids || !preview || sending.current) return;
     const when = later && at ? at : null;
+    if (when && when.getTime() <= Date.now() + 60_000) {
+      return say('Pick a later time', 'The time you chose has passed. Choose a time ahead, or Send now.');
+    }
+    sending.current = true;
+    try {
+      await sendNow(when);
+    } finally {
+      sending.current = false;
+    }
+  };
+  const sendNow = async (when: Date | null) => {
+    if (!group || !ids || !preview) return;
     const ok = await confirm(
-      `Send to ${preview.will_get} ${preview.will_get === 1 ? 'person' : 'people'}?`,
+      `Send to ${fmt(willGet)} ${willGet === 1 ? 'person' : 'people'}?`,
       `${GROUP_LABEL[group]} · from ${chosenSender?.sender_id ?? ''}${
         chosenSender ? ` (${KIND_LABEL[chosenSender.kind]})` : ''
-      }\nAbout ${preview.will_get * len.parts} SMS (${len.parts} each).\n${
+      }\nAbout ${fmt(willGet * len.parts)} SMS (${len.parts} each).\n${
         when ? `Goes out ${when.toLocaleString()}.` : 'Goes out within a few minutes.'
       }`,
       when ? 'Schedule' : 'Send',
@@ -236,7 +301,7 @@ export default function SmsCenterScreen() {
         group,
         message: text.trim(),
         senderId: sender,
-        name: name.trim() || null,
+        name: name.trim() || chosenLabel || null,
         filterLabel,
         at: when,
       });
@@ -248,8 +313,6 @@ export default function SmsCenterScreen() {
       );
       setText('');
       setName('');
-      setIds(null);
-      setPreview(null);
       router.push(`/alumni/sms?id=${r.batch_id}` as Href);
     } catch (e) {
       setError(errText(e));
@@ -261,7 +324,7 @@ export default function SmsCenterScreen() {
   const saveAsTemplate = async () => {
     const t = text.trim();
     if (!t) return;
-    const title = name.trim() || t.slice(0, 30);
+    const title = name.trim() || chosenLabel || t.slice(0, 30);
     try {
       await saveTemplate(null, {
         name: title,
@@ -279,10 +342,23 @@ export default function SmsCenterScreen() {
     }
   };
 
+  const header = (
+    <Stack.Screen
+      options={{
+        title: 'SMS Center',
+        headerRight: () => (
+          <Tap onPress={() => router.push('/alumni/sms' as Href)} style={styles.headerBtn} label="SMS sent" borderless>
+            <MIcon name="history" color={Platform.OS === 'web' ? colors.primary : colors.textOnPrimary} />
+          </Tap>
+        ),
+      }}
+    />
+  );
+
   if (allowed === null) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'SMS Center' }} />
+        {header}
         <ActivityIndicator color={colors.primary} />
       </View>
     );
@@ -290,7 +366,8 @@ export default function SmsCenterScreen() {
   if (!allowed) {
     return (
       <View style={styles.center}>
-        <Stack.Screen options={{ title: 'SMS Center' }} />
+        {header}
+        <MIcon name="sms-failed" size={48} color={colors.textMuted} />
         <Text style={[ui.muted, styles.pad]}>
           SMS is off, or you are not allowed to send SMS. An admin sets it in Settings → SMS.
         </Text>
@@ -299,238 +376,350 @@ export default function SmsCenterScreen() {
   }
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Stack.Screen options={{ title: 'SMS Center' }} />
+    <View style={styles.screen}>
+      {header}
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={[styles.content, group && { paddingBottom: 120 + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* 🤖 AI: which leads, which SMS today */}
+        <AiSmsPlanCard
+          onUse={(sug) => {
+            setTab(sug.group);
+            setFilters({});
+            setSearch('');
+            setLeft(new Set());
+            setChosen(sug.lead_ids);
+            setChosenLabel(sug.title);
+            if (sug.message) setText(sug.message);
+            // after the card has its new size
+            setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, whoY.current - 8), animated: true }), 250);
+          }}
+        />
 
-      <View style={styles.topRow}>
-        <Text style={[styles.h1, styles.flex]}>📨 SMS Center</Text>
-        <Button title="📋 Sent" variant="ghost" onPress={() => router.push('/alumni/sms' as Href)} />
-      </View>
-
-      <AiSmsPlanCard
-        onUse={(sug) => {
-          setTab(sug.group);
-          setFilters({});
-          setSearch('');
-          setChosen(sug.lead_ids);
-          if (sug.message) setText(sug.message);
-          setName(sug.title);
-          autoCheck.current = true;
-          scrollRef.current?.scrollTo({ y: whoY, animated: true });
-        }}
-      />
-
-      {/* ① who */}
-      <View style={styles.tabs} onLayout={(e) => setWhoY(e.nativeEvent.layout.y)}>
-        {TABS.map((t) => (
-          <Pressable
-            key={t.key}
-            onPress={() => {
-              setTab(t.key);
-              setChosen(null);
-              setFilters({});
-            }}
-            style={[styles.tab, tab === t.key && styles.tabOn]}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: tab === t.key }}
-          >
-            <MIcon name={t.icon} size={18} color={tab === t.key ? md.onPrimaryC : colors.text} />
-            <Text style={[styles.tabText, tab === t.key && styles.tabTextOn]}>{t.label}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {tab === 'alumni' ? (
-        <View style={ui.card}>
-          <Text style={styles.text}>
-            Alumni have their own list and filters. Open Alumni, filter, tap “Mark all”, then SMS — or ask the AI there.
-          </Text>
-          <Button title="🎓 Open Alumni" onPress={() => router.push('/alumni' as Href)} />
-        </View>
-      ) : (
-        <>
-          <View style={ui.card}>
-            <Text style={ui.label}>① WHO GETS IT</Text>
-            {chosen ? (
-              <View style={styles.rowWrap}>
-                <Text style={[styles.text, styles.flex]}>📌 {chosen.length} chosen (lead list or AI suggestion)</Text>
-                <Button title="Use filters instead" variant="ghost" onPress={() => setChosen(null)} />
-              </View>
-            ) : (
-              <>
-                <View style={styles.rowWrap}>
-                  <TextInput
-                    value={search}
-                    onChangeText={setSearch}
-                    placeholder="Search name, phone…"
-                    placeholderTextColor={colors.textMuted}
-                    style={[styles.input, styles.flex]}
-                  />
-                  <Button
-                    title={`🔍 Filter${countActiveFilters(filters) ? ` (${countActiveFilters(filters)})` : ''}`}
-                    variant="secondary"
-                    onPress={() => setFilterOpen(true)}
-                  />
-                </View>
-                <Text style={ui.muted}>
-                  Every filter of the lead list: stage, tags, course, batch, person, source, campaign, fee, papers,
-                  visit, AI chance, added / contacted dates…
-                </Text>
-              </>
-            )}
-
-            {loadingWho && <ActivityIndicator color={colors.primary} />}
-            {count !== null && !loadingWho && (
-              <Text style={styles.big}>
-                {count} {count === 1 ? 'lead' : 'leads'} match
-                {count > KEEP_MAX ? ` (the first ${KEEP_MAX} are used; narrow the filter to send to the rest)` : ''}
-              </Text>
-            )}
-            {sample.slice(0, 12).map((l) => (
-              <Pressable key={l.id} onPress={() => setLeft((s) => toggle(s, l.id))} style={styles.person}>
-                <MIcon
-                  name={left.has(l.id) ? 'check-box-outline-blank' : 'check-box'}
-                  size={20}
-                  color={left.has(l.id) ? colors.textMuted : colors.primary}
-                />
-                <Text style={[styles.text, styles.flex, left.has(l.id) && styles.struck]} numberOfLines={1}>
-                  {l.name} · {l.phone ?? 'no number'}
-                </Text>
-                <Text style={ui.muted} numberOfLines={1}>
-                  {l.stage?.name ?? ''}
+        {/* Who: one segmented bar */}
+        <View style={styles.segment} onLayout={(e) => (whoY.current = e.nativeEvent.layout.y)}>
+          {TABS.map((t) => {
+            const on = tab === t.key;
+            return (
+              <Pressable
+                key={t.key}
+                onPress={() => switchTab(t.key)}
+                style={[styles.segItem, on && styles.segOn]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+              >
+                <MIcon name={t.icon} size={20} color={on ? md.onPrimaryC : colors.textMuted} />
+                <Text style={[styles.segText, on && styles.segTextOn]} numberOfLines={1}>
+                  {t.label}
                 </Text>
               </Pressable>
-            ))}
-            {sample.length > 12 && <Text style={ui.muted}>…and more. Untick a name to leave them out.</Text>}
+            );
+          })}
+        </View>
 
-            <Button
-              title={preview ? '↻ Count again' : '✅ Check who gets it'}
-              variant="secondary"
-              onPress={check}
-              loading={loadingWho}
-              disabled={!count}
-            />
-            {preview && (
-              <View style={styles.counts}>
-                <Text style={styles.big}>✅ {preview.will_get} will get it</Text>
-                {preview.no_number > 0 && <Text style={ui.muted}>📵 {preview.no_number} have no mobile number</Text>}
-                {preview.same_number > 0 && (
-                  <Text style={ui.muted}>👥 {preview.same_number} share a number (one SMS)</Text>
-                )}
-                {preview.other_group > 0 && (
-                  <Text style={ui.muted}>
-                    ↪️ {preview.other_group} are not {GROUP_LABEL[group!]} (left out)
-                  </Text>
-                )}
-                {preview.selected > preview.visible && (
-                  <Text style={ui.muted}>🔒 {preview.selected - preview.visible} you can’t see (left out)</Text>
-                )}
-                {preview.got_sms_before > 0 && (
-                  <Text style={ui.muted}>ℹ️ {preview.got_sms_before} got an SMS before</Text>
-                )}
-              </View>
-            )}
-          </View>
-
-          {/* ② the message */}
-          <View style={ui.card}>
-            <View style={styles.rowWrap}>
-              <Text style={[ui.label, styles.flex]}>② THE MESSAGE</Text>
-              <Button title="🤖 Write with AI" variant="secondary" onPress={() => setAiOpen(true)} />
+        {tab === 'alumni' ? (
+          <View style={styles.card}>
+            <View style={styles.emptyArt}>
+              <MIcon name="workspace-premium" size={40} color={md.onPurpleC} />
             </View>
-            {templates.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hRow}>
-                {templates.map((t) => (
-                  <Chip key={t.id} text={`📄 ${t.name}`} on={text === t.body} onPress={() => setText(t.body)} />
-                ))}
-              </ScrollView>
-            )}
-            <TextInput
-              value={text}
-              onChangeText={setText}
-              placeholder="আসসালামু আলাইকুম {first_name}, …"
-              placeholderTextColor={colors.textMuted}
-              multiline
-              maxLength={1000}
-              style={[styles.input, styles.multi]}
-            />
+            <Text style={styles.cardTitle}>Alumni have their own list</Text>
             <Text style={ui.muted}>
-              {len.chars} letters · {len.parts} SMS each{len.unicode ? ' (Bangla: 70 letters a SMS)' : ''}
+              Open Alumni, filter as you like, tap “Mark all”, then SMS. The AI can write it there too.
             </Text>
-            <View style={ui.chips}>
-              {LEAD_PLACEHOLDERS.map((p) => (
-                <Chip key={p} text={`+ ${p}`} on={false} onPress={() => setText((t) => `${t}${p}`)} />
-              ))}
-            </View>
-            {!!text.trim() && first && (
-              <View style={styles.previewBox}>
-                <Text style={ui.muted}>{first.name} gets:</Text>
-                <Text style={styles.text}>
-                  {fillLeadSms(text.trim(), {
-                    name: first.name,
-                    course: first.admitted_course?.name ?? first.lead_courses[0]?.course?.name ?? null,
-                    stage: first.stage?.name ?? null,
-                    student_id: first.student_ref,
-                    fee_due: first.fee_due,
-                    owner: first.assignee?.full_name ?? null,
-                    owner_phone: null,
-                  })}
-                </Text>
-              </View>
-            )}
-            {!!text.trim() && <Button title="💾 Save as a template" variant="ghost" onPress={saveAsTemplate} />}
+            <Button title="Open Alumni" onPress={() => router.push('/alumni' as Href)} />
           </View>
+        ) : (
+          <>
+            {/* ① Recipients */}
+            <View style={styles.card}>
+              <StepHead n={1} title="Recipients" />
+              {chosen ? (
+                <View style={styles.chosen}>
+                  <MIcon name="push-pin" size={18} color={md.onPrimaryC} />
+                  <Text style={styles.chosenText} numberOfLines={2}>
+                    {chosenLabel ?? 'Chosen'} · {fmt(chosen.length)} leads
+                  </Text>
+                  <Tap
+                    onPress={() => {
+                      setChosen(null);
+                      setChosenLabel(null);
+                    }}
+                    borderless
+                    label="Use filters instead"
+                  >
+                    <MIcon name="close" size={20} color={md.onPrimaryC} />
+                  </Tap>
+                </View>
+              ) : (
+                <View style={styles.searchRow}>
+                  <View style={styles.searchBox}>
+                    <MIcon name="search" size={20} color={colors.textMuted} />
+                    <TextInput
+                      value={search}
+                      onChangeText={setSearch}
+                      placeholder="Search name or phone"
+                      placeholderTextColor={colors.textMuted}
+                      style={styles.searchInput}
+                    />
+                    {!!search && (
+                      <Tap onPress={() => setSearch('')} borderless label="Clear search">
+                        <MIcon name="close" size={18} color={colors.textMuted} />
+                      </Tap>
+                    )}
+                  </View>
+                  <Tap
+                    onPress={() => setFilterOpen(true)}
+                    style={[styles.filterBtn, nFilters > 0 && styles.filterOn]}
+                    label="Filter"
+                  >
+                    <MIcon name="tune" size={20} color={nFilters > 0 ? md.onPrimaryC : colors.text} />
+                    {nFilters > 0 && <Text style={styles.filterCount}>{nFilters}</Text>}
+                  </Tap>
+                </View>
+              )}
 
-          {/* ③ from / when */}
-          <View style={ui.card}>
-            <Text style={ui.label}>③ FROM</Text>
-            {senders.length === 0 ? (
-              <Text style={ui.muted}>No sender ID is ready (Settings → SMS).</Text>
-            ) : (
-              <View style={ui.chips}>
-                {senders.map((s) => (
-                  <Chip
-                    key={s.id}
-                    text={`${s.sender_id} · ${KIND_LABEL[s.kind]}`}
-                    on={sender === s.id}
-                    onPress={() => setSender(s.id)}
-                  />
+              {/* the big number */}
+              <View style={styles.statRow}>
+                <View style={styles.flex}>
+                  {counting && preview === null ? (
+                    <ActivityIndicator color={colors.primary} style={styles.left} />
+                  ) : (
+                    <>
+                      <Text style={styles.big}>{fmt(willGet)}</Text>
+                      <Text style={ui.muted}>
+                        will get it{count !== null && count !== willGet ? ` · ${fmt(count)} match` : ''}
+                      </Text>
+                    </>
+                  )}
+                </View>
+                {counting && preview !== null && <ActivityIndicator size="small" color={colors.primary} />}
+              </View>
+              {count !== null && count > KEEP_MAX && (
+                <Text style={styles.warn}>
+                  Only the first {fmt(KEEP_MAX)} are used. Narrow the filter for the rest.
+                </Text>
+              )}
+              {preview && (
+                <View style={styles.pills}>
+                  {preview.no_number > 0 && <Pill icon="phone-disabled" text={`${preview.no_number} no number`} />}
+                  {preview.same_number > 0 && <Pill icon="people" text={`${preview.same_number} same number`} />}
+                  {preview.other_group > 0 && (
+                    <Pill icon="swap-horiz" text={`${preview.other_group} not ${GROUP_LABEL[group!]}`} />
+                  )}
+                  {preview.selected > preview.visible && (
+                    <Pill icon="lock" text={`${preview.selected - preview.visible} not yours`} />
+                  )}
+                  {preview.got_sms_before > 0 && (
+                    <Pill icon="mark-chat-read" text={`${preview.got_sms_before} had SMS before`} />
+                  )}
+                  {left.size > 0 && <Pill icon="person-remove" text={`${left.size} taken out`} />}
+                </View>
+              )}
+
+              {sample.length > 0 && (
+                <Tap onPress={() => setShowNames(!showNames)} style={styles.namesToggle} label="Show names">
+                  <Text style={styles.link}>
+                    {showNames
+                      ? 'Hide names'
+                      : `See names${sample.length > 1 ? ` (${sample.length}${count && count > sample.length ? '+' : ''})` : ''}`}
+                  </Text>
+                  <MIcon name={showNames ? 'expand-less' : 'expand-more'} size={20} color={colors.primary} />
+                </Tap>
+              )}
+              {showNames &&
+                (allNames ? sample : sample.slice(0, 10)).map((l) => {
+                  const out = left.has(l.id);
+                  return (
+                    <Pressable key={l.id} onPress={() => setLeft((s) => toggle(s, l.id))} style={styles.person}>
+                      <MIcon
+                        name={out ? 'check-box-outline-blank' : 'check-box'}
+                        size={20}
+                        color={out ? colors.textMuted : colors.primary}
+                      />
+                      <View style={styles.flex}>
+                        <Text style={[styles.personName, out && styles.struck]} numberOfLines={1}>
+                          {l.name}
+                        </Text>
+                        <Text style={ui.muted} numberOfLines={1}>
+                          {l.phone ?? 'No number'} · {l.stage?.name ?? ''}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              {showNames && !allNames && sample.length > 10 && (
+                <Tap onPress={() => setAllNames(true)} style={styles.namesToggle} label="Show all names">
+                  <Text style={styles.link}>Show {sample.length - 10} more</Text>
+                </Tap>
+              )}
+            </View>
+
+            {/* ② Message */}
+            <View style={styles.card}>
+              <StepHead n={2} title="Message" />
+              <View style={styles.tools}>
+                <Tool icon="auto-awesome" label="Write with AI" tone="purple" onPress={() => setSheet('ai')} />
+                <Tool
+                  icon="description"
+                  label={`Templates${templates.length ? ` · ${templates.length}` : ''}`}
+                  onPress={() =>
+                    templates.length
+                      ? setSheet('templates')
+                      : say('No templates', 'Save one from here, or in Settings → Templates.')
+                  }
+                />
+                <Tool icon="data-object" label="Fields" on={showFields} onPress={() => setShowFields(!showFields)} />
+              </View>
+              {showFields && (
+                <View style={styles.fields}>
+                  {LEAD_PLACEHOLDERS.map((p) => (
+                    <Pressable key={p} onPress={() => setText((t) => `${t}${p}`)} style={styles.field}>
+                      <Text style={styles.fieldText}>{p}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              <View style={styles.editor}>
+                <TextInput
+                  value={text}
+                  onChangeText={setText}
+                  placeholder="আসসালামু আলাইকুম {first_name}, …"
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  maxLength={1000}
+                  style={styles.editorInput}
+                />
+                <View style={styles.editorFoot}>
+                  {!!text.trim() && (
+                    <Tap onPress={saveAsTemplate} borderless label="Save as a template">
+                      <Text style={styles.footLink}>Save as template</Text>
+                    </Tap>
+                  )}
+                  <Text style={[styles.counter, len.parts > 1 && styles.counterWarn]}>
+                    {len.chars}/{limit} · {len.parts} SMS{len.unicode ? ' · বাংলা' : ''}
+                  </Text>
+                </View>
+              </View>
+
+              {!!text.trim() && first && (
+                <View style={styles.phone}>
+                  <Text style={styles.phoneFrom}>{chosenSender?.sender_id ?? 'SMS'}</Text>
+                  <View style={styles.bubble}>
+                    <Text style={styles.bubbleText}>
+                      {fillLeadSms(text.trim(), {
+                        name: first.name,
+                        course: first.admitted_course?.name ?? first.lead_courses[0]?.course?.name ?? null,
+                        stage: first.stage?.name ?? null,
+                        student_id: first.student_ref,
+                        fee_due: first.fee_due,
+                        owner: first.assignee?.full_name ?? null,
+                        owner_phone: null,
+                      })}
+                    </Text>
+                  </View>
+                  <Text style={styles.phoneFor}>Preview for {first.name}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* ③ From & when */}
+            <View style={styles.card}>
+              <StepHead n={3} title="From & when" />
+              {senders.length === 0 ? (
+                <Text style={styles.warn}>No sender ID is ready. An admin adds one in Settings → SMS.</Text>
+              ) : (
+                <View style={styles.options}>
+                  {senders.map((s) => {
+                    const on = sender === s.id;
+                    return (
+                      <Pressable
+                        key={s.id}
+                        onPress={() => setSender(s.id)}
+                        style={[styles.option, on && styles.optionOn]}
+                      >
+                        <MIcon
+                          name={on ? 'radio-button-checked' : 'radio-button-unchecked'}
+                          size={20}
+                          color={on ? colors.primary : colors.textMuted}
+                        />
+                        <View style={styles.flex}>
+                          <Text style={styles.optionTitle}>{s.sender_id}</Text>
+                          <Text style={ui.muted}>
+                            {KIND_LABEL[s.kind]}
+                            {s.label ? ` · ${s.label}` : ''}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+
+              <View style={styles.when}>
+                {[
+                  { k: false, label: 'Send now', icon: 'send' as MIconName },
+                  { k: true, label: 'Schedule', icon: 'schedule' as MIconName },
+                ].map((o) => (
+                  <Pressable
+                    key={o.label}
+                    onPress={() => setLater(o.k)}
+                    style={[styles.whenItem, later === o.k && styles.segOn]}
+                  >
+                    <MIcon name={o.icon} size={18} color={later === o.k ? md.onPrimaryC : colors.textMuted} />
+                    <Text style={[styles.segText, later === o.k && styles.segTextOn]}>{o.label}</Text>
+                  </Pressable>
                 ))}
               </View>
-            )}
-            <Text style={ui.label}>WHEN</Text>
-            <View style={ui.chips}>
-              <Chip text="Now" on={!later} onPress={() => setLater(false)} />
-              <Chip text="⏰ Later" on={later} onPress={() => setLater(true)} />
-            </View>
-            {later && <NextContactPicker value={at} onChange={setAt} />}
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="A name for this send (optional), e.g. Admission deadline"
-              placeholderTextColor={colors.textMuted}
-              maxLength={80}
-              style={styles.input}
-            />
-          </View>
+              {later && <NextContactPicker value={at} onChange={setAt} />}
 
-          {error && <Text style={ui.error}>{error}</Text>}
-          <Button
-            title={
-              preview
-                ? `${later && at ? '⏰ Schedule' : '📨 Send'} to ${preview.will_get}`
-                : 'First tap “Check who gets it”'
-            }
-            onPress={send}
-            loading={busy}
-            disabled={!preview || preview.will_get === 0 || !text.trim() || !sender || (later && !at)}
-          />
-        </>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder={chosenLabel ?? 'Name this send (optional)'}
+                placeholderTextColor={colors.textMuted}
+                maxLength={80}
+                style={styles.nameInput}
+              />
+            </View>
+            {error && <Text style={ui.error}>{error}</Text>}
+          </>
+        )}
+      </ScrollView>
+
+      {/* the bar: how many, and Send */}
+      {group && (
+        <View style={[styles.bar, { paddingBottom: spacing.md + insets.bottom }]}>
+          <View style={styles.barIn}>
+            <View style={styles.flex}>
+              <Text style={styles.barMain}>
+                {preview ? `${fmt(willGet)} ${willGet === 1 ? 'person' : 'people'}` : counting ? 'Counting…' : '—'}
+              </Text>
+              <Text style={ui.muted} numberOfLines={1}>
+                {!text.trim()
+                  ? 'Write the message'
+                  : `${fmt(willGet * len.parts)} SMS${later && at ? ` · ${at.toLocaleString()}` : ''}`}
+              </Text>
+            </View>
+            <Pressable
+              onPress={send}
+              disabled={!ready || busy}
+              style={[styles.sendBtn, (!ready || busy) && styles.sendOff]}
+              accessibilityRole="button"
+              accessibilityLabel={later ? 'Schedule' : 'Send'}
+            >
+              {busy ? (
+                <ActivityIndicator color={colors.textOnPrimary} />
+              ) : (
+                <>
+                  <MIcon name={later ? 'schedule-send' : 'send'} size={20} color={colors.textOnPrimary} />
+                  <Text style={styles.sendText}>{later ? 'Schedule' : 'Send'}</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </View>
       )}
 
       {group && (
@@ -545,20 +734,79 @@ export default function SmsCenterScreen() {
           }}
         />
       )}
-      {aiOpen && (
+      {sheet === 'ai' && (
         <AiSmsSheet
           group={tab}
           count={preview?.will_get ?? count ?? undefined}
           filter={filterLabel}
           current={text}
-          onClose={() => setAiOpen(false)}
+          onClose={() => setSheet(null)}
           onPick={(t) => {
             setText(t);
-            setAiOpen(false);
+            setSheet(null);
           }}
         />
       )}
-    </ScrollView>
+      {sheet === 'templates' && (
+        <MenuSheet
+          title="Templates"
+          onClose={() => setSheet(null)}
+          items={templates.map((t) => ({
+            label: t.name,
+            icon: 'description' as MIconName,
+            onPress: () => {
+              setText(t.body);
+              setSheet(null);
+            },
+          }))}
+        />
+      )}
+    </View>
+  );
+}
+
+function StepHead({ n, title }: { n: number; title: string }) {
+  return (
+    <View style={styles.stepHead}>
+      <View style={styles.stepNum}>
+        <Text style={styles.stepNumText}>{n}</Text>
+      </View>
+      <Text style={styles.cardTitle}>{title}</Text>
+    </View>
+  );
+}
+
+function Pill({ icon, text }: { icon: MIconName; text: string }) {
+  return (
+    <View style={styles.pill}>
+      <MIcon name={icon} size={14} color={colors.textMuted} />
+      <Text style={styles.pillText}>{text}</Text>
+    </View>
+  );
+}
+
+function Tool({
+  icon,
+  label,
+  onPress,
+  on,
+  tone,
+}: {
+  icon: MIconName;
+  label: string;
+  onPress: () => void;
+  on?: boolean;
+  tone?: 'purple';
+}) {
+  const bg = tone === 'purple' ? md.purpleC : on ? md.primaryC : md.surface1;
+  const fg = tone === 'purple' ? md.onPurpleC : on ? md.onPrimaryC : colors.text;
+  return (
+    <Tap onPress={onPress} style={[styles.tool, { backgroundColor: bg }]} label={label}>
+      <MIcon name={icon} size={18} color={fg} />
+      <Text style={[styles.toolText, { color: fg }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Tap>
   );
 }
 
@@ -571,52 +819,231 @@ function toggle(s: Set<string>, id: string): Set<string> {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: {
-    padding: spacing.lg,
+  content: { padding: spacing.lg, gap: spacing.md, width: '100%', maxWidth: 760, alignSelf: 'center' },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.md,
-    paddingBottom: 100,
-    width: '100%',
-    maxWidth: 820,
-    alignSelf: 'center',
+    backgroundColor: colors.background,
   },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
-  pad: { padding: spacing.xl, textAlign: 'center' },
+  pad: { paddingHorizontal: spacing.xl, textAlign: 'center' },
   flex: { flex: 1 },
-  topRow: { flexDirection: 'row', alignItems: 'center' },
-  h1: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
-  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  tab: {
+  left: { alignSelf: 'flex-start' },
+  headerBtn: { padding: spacing.sm, marginRight: spacing.xs },
+
+  // segmented bar
+  segment: { flexDirection: 'row', padding: 4, gap: 4, borderRadius: 16, backgroundColor: md.surface2 },
+  segItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: 8, borderRadius: 12 },
+  segOn: { backgroundColor: md.primaryC },
+  segText: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.textMuted },
+  segTextOn: { color: md.onPrimaryC },
+
+  // cards
+  card: { ...card, padding: spacing.lg, gap: spacing.md, overflow: 'visible' },
+  cardTitle: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  stepHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepNum: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: md.primaryC,
+  },
+  stepNumText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: md.onPrimaryC },
+  emptyArt: {
+    alignSelf: 'center',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: md.purpleC,
+  },
+
+  // recipients
+  searchRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  searchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    height: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: 22,
+    backgroundColor: md.surface1,
+  },
+  searchInput: { flex: 1, fontSize: fontSize.body, color: colors.text, paddingVertical: 0 },
+  filterBtn: {
+    height: 44,
+    minWidth: 44,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
+    backgroundColor: md.surface1,
+    overflow: 'hidden',
+  },
+  filterOn: { backgroundColor: md.primaryC },
+  filterCount: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: md.onPrimaryC },
+  chosen: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 12,
+    backgroundColor: md.primaryC,
+  },
+  chosenText: { flex: 1, fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: md.onPrimaryC },
+  statRow: { flexDirection: 'row', alignItems: 'center', minHeight: 56 },
+  big: { fontSize: 34, lineHeight: 40, fontWeight: fontWeight.bold, color: colors.text },
+  pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: md.surface1,
+  },
+  pillText: { fontSize: fontSize.caption, color: colors.textMuted },
+  warn: { fontSize: fontSize.small, color: colors.warning },
+  namesToggle: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 2, paddingVertical: 4 },
+  link: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.primary },
+  person: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 6 },
+  personName: { fontSize: fontSize.body, color: colors.text },
+  struck: { textDecorationLine: 'line-through', color: colors.textMuted },
+
+  // message
+  tools: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+  tool: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    height: 36,
     paddingHorizontal: spacing.md,
-    height: 40,
-    borderRadius: radius.lg,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  toolText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold },
+  fields: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  field: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: md.outline },
+  fieldText: {
+    fontSize: fontSize.caption,
+    color: colors.text,
+    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+  },
+  editor: {
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: md.outline,
     backgroundColor: colors.surface,
+    overflow: 'hidden',
   },
-  tabOn: { backgroundColor: md.primaryC, borderColor: md.primaryC },
-  tabText: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
-  tabTextOn: { color: md.onPrimaryC },
-  rowWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
-  hRow: { gap: spacing.xs },
-  text: { fontSize: fontSize.body, color: colors.text },
-  big: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
-  struck: { textDecorationLine: 'line-through', color: colors.textMuted },
-  person: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 4 },
-  counts: { gap: 2 },
-  input: {
-    minHeight: 44,
+  editorInput: {
+    minHeight: 130,
+    padding: spacing.md,
+    fontSize: fontSize.body,
+    color: colors.text,
+    textAlignVertical: 'top',
+  },
+  editorFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    backgroundColor: md.surface1,
+  },
+  footLink: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.primary },
+  counter: { marginLeft: 'auto', fontSize: fontSize.caption, color: colors.textMuted },
+  counterWarn: { color: colors.warning, fontWeight: fontWeight.semibold },
+  phone: { gap: 4, padding: spacing.md, borderRadius: 16, backgroundColor: md.surface1 },
+  phoneFrom: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.textMuted },
+  bubble: {
+    alignSelf: 'flex-start',
+    maxWidth: '92%',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.text,
-    fontSize: fontSize.body,
+    borderRadius: 18,
+    borderTopLeftRadius: 4,
     backgroundColor: colors.surface,
   },
-  multi: { minHeight: 120, textAlignVertical: 'top' },
-  previewBox: { gap: 4, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.background },
+  bubbleText: { fontSize: fontSize.body, color: colors.text, lineHeight: 22 },
+  phoneFor: { fontSize: fontSize.caption, color: colors.textMuted },
+
+  // from & when
+  options: { gap: spacing.sm },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: md.outline,
+  },
+  optionOn: { borderColor: colors.primary, backgroundColor: md.meC },
+  optionTitle: { fontSize: fontSize.body, fontWeight: fontWeight.semibold, color: colors.text },
+  when: { flexDirection: 'row', padding: 4, gap: 4, borderRadius: 14, backgroundColor: md.surface2 },
+  whenItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  nameInput: {
+    height: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+    backgroundColor: md.surface1,
+    fontSize: fontSize.body,
+    color: colors.text,
+  },
+
+  // the bottom bar
+  bar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: md.outline,
+    shadowColor: '#101840',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: -2 },
+    elevation: 8,
+  },
+  barIn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    width: '100%',
+    maxWidth: 728,
+    alignSelf: 'center',
+  },
+  barMain: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
+  sendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    height: 48,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+  },
+  sendOff: { opacity: 0.4 },
+  sendText: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.textOnPrimary },
 });

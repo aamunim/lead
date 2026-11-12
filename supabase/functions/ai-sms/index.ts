@@ -163,7 +163,8 @@ async function plan(
         title: s.title,
         count: s.count,
         skipped_recent_sms: s.skipped_recent_sms,
-        lead_ids: s.lead_ids,
+        // no ids here (could be ~1 MB): the app asks sms_ai_segment_ids on "Use"
+        lead_ids: [] as string[],
         why: String(x.why ?? '').slice(0, 300),
         message: String(x.message ?? '')
           .trim()
@@ -178,7 +179,7 @@ async function plan(
     // the groups the AI did not pick (to choose by hand)
     others: segments
       .filter((s) => !seen.has(s.key))
-      .map((s) => ({ key: s.key, group: s.group, title: s.title, count: s.count, lead_ids: s.lead_ids })),
+      .map((s) => ({ key: s.key, group: s.group, title: s.title, count: s.count, lead_ids: [] as string[] })),
     provider: r.shown.provider,
   });
 }
