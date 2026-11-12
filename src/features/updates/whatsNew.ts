@@ -8,6 +8,17 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-12-sms-ai-plan',
+    date: '12 Nov 2026',
+    title: '🤖 SMS Center: AI বলে দেবে কাকে কী SMS',
+    items: [
+      '🤖 SMS Center-এর উপরে “AI suggestions”: জিজ্ঞেস করুন “আজকে কোন কোন লিডকে কী SMS দেওয়া যায়?”',
+      '📋 AI আপনার লিডগুলোকে দলে ভাগ করে দেখে (আজ কল, কল মিস, নতুন কিন্তু কথা হয়নি, ১৪ দিন চুপ, আজ/কাল ভিজিট, Hot, ফি বাকি, কাগজ বাকি, নতুন ভর্তি, ৩০–১৮০ দিন আগের Not Now) — কোন দলকে আজ SMS দেওয়া উচিত, কেন, আর কী লিখবেন',
+      '👉 “Use this” চাপলে সেই লিডগুলো আর SMS বসে যায় — দেখে নিয়ে পাঠান',
+      '🔒 AI শুধু দলের নাম আর সংখ্যা দেখে, কারো নাম বা নম্বর না; গত ৩ দিনে SMS পাওয়া লিড বাদ থাকে',
+    ],
+  },
+  {
     key: '2026-11-12-sms-center',
     date: '12 Nov 2026',
     title: '📨 SMS Center',
