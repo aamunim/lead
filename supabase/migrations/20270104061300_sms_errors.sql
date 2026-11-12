@@ -3,6 +3,7 @@
 --   A wrong send / balance address gave back a whole web page (HTML
 --   "404 Page") as the reason. Now: "HTTP 404: this address was not found
 --   at the SMS company …" and only the page's title is kept.
+--   Bulk SMS Dhaka: the API is on bulksmsdhaka.net (the .com address gave 404).
 -- =====================================================================
 
 -- the reason for one answer (null = it is fine)
@@ -107,5 +108,12 @@ update public.sms_messages
    set error = left(public.sms_answer_problem(http_status, response, false, null), 300),
        response = public.sms_answer_text(response)
  where status = 'failed' and response ~* '^\s*<(!doctype|html)';
+
+-- Bulk SMS Dhaka's API is on bulksmsdhaka.net (not .com, which gave 404)
+update public.sms_providers
+   set send_url = replace(send_url, 'https://bulksmsdhaka.com/api/', 'https://bulksmsdhaka.net/api/'),
+       balance_url = replace(balance_url, 'https://bulksmsdhaka.com/api/', 'https://bulksmsdhaka.net/api/'),
+       updated_at = now()
+ where send_url like 'https://bulksmsdhaka.com/api/%' or balance_url like 'https://bulksmsdhaka.com/api/%';
 
 notify pgrst, 'reload schema';
