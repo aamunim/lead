@@ -52,9 +52,9 @@ revoke all on public.sms_senders from anon, authenticated;
 -- Bulk SMS Dhaka, ready to fill in (off until a key is saved and it is put in use)
 insert into public.sms_providers (name, send_url, method, balance_url, number_format)
 select 'Bulk SMS Dhaka',
-       'https://bulksmsdhaka.com/api/sendtext?apikey={api_key}&callerID={sender_id}&number={number}&message={message}',
+       'https://bulksmsdhaka.net/api/sendtext?apikey={api_key}&callerID={sender_id}&number={number}&message={message}',
        'GET',
-       'https://bulksmsdhaka.com/api/getBalance?apikey={api_key}',
+       'https://bulksmsdhaka.net/api/getBalance?apikey={api_key}',
        '0'
 where not exists (select 1 from public.sms_providers);
 
