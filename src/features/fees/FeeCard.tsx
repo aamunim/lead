@@ -8,7 +8,10 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import {
   EVENT_LABELS,
   addNegotiationEvent,
+  applyCourseList,
   canUseFees,
+  courseListTotal,
+  feeRows,
   cancelDiscount,
   getFeeSettings,
   getMyDiscountLimit,
@@ -26,6 +29,7 @@ import {
 import { PaymentsSection } from '@/features/fees/PaymentsSection';
 import { FeeChangeSheet } from '@/features/fees/FeeChangeSheet';
 import { canApprove, getApprovalSettings } from '@/features/approval/api';
+import { ask } from '@/features/aiChance/ask';
 import { listCourses } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -86,7 +90,7 @@ export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, on
       const [s, n] = await Promise.all([getFeeSettings(), listNegotiations(leadId)]);
       setSettings(s);
       setItems(n);
-      setTab((t) => (t && n.some((x) => x.id === t) ? t : n[n.length - 1]?.id ?? null));
+      setTab((t) => (t && n.some((x) => x.id === t) ? t : (n[n.length - 1]?.id ?? null)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the fee.');
     } finally {
@@ -185,6 +189,27 @@ export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, on
       },
     ]);
 
+  // 💰 the course's new fee list for this admitted student (the discount stays the same)
+  const applyNewList = () => {
+    if (!current) return;
+    const now = courseListTotal(current);
+    const off = totals(current).discount;
+    ask(
+      'নতুন ফি তালিকা ধরবেন?',
+      `পূর্ণ ফি হবে ${money(now)}, ছাড় আগের মতোই ${money(off)}, তাই চূড়ান্ত ফি হবে ${money(Math.max(now - off, 0))}। কিস্তির পরিকল্পনা থাকলে তা মিলিয়ে নিতে হবে।`,
+      [
+        {
+          label: 'হ্যাঁ, ধরুন',
+          run: () => {
+            applyCourseList(leadId)
+              .then((r) => after(r.changed ? 'নতুন ফি তালিকা ধরা হয়েছে।' : 'ফি আগের মতোই আছে।'))
+              .catch((e) => Alert.alert('করা যায়নি', e instanceof Error ? e.message : ''));
+          },
+        },
+      ],
+    );
+  };
+
   const usedIds = items.map((n) => n.course_id);
   const canWork = allowed && isOpen && current?.status === 'open';
 
@@ -231,6 +256,23 @@ export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, on
         </Text>
       )}
 
+      {/* the course's fee list changed after admission: this student keeps the old one */}
+      {current?.status === 'locked' &&
+        current.list_total != null &&
+        (current.course?.course_fees?.length ?? 0) > 0 &&
+        Math.round(courseListTotal(current)) !== Math.round(Number(current.list_total)) && (
+          <View style={styles.listNote}>
+            <Text style={styles.hint}>
+              ℹ️ ভর্তির পরে এই কোর্সের ফি তালিকা বদলেছে (এখন {money(courseListTotal(current))})। এই ছাত্রের হিসাবে
+              ভর্তির সময়ের ফি ({money(Number(current.list_total))}) ধরা আছে।
+            </Text>
+            {stageKind === 'won' && officer && (
+              <Pressable onPress={applyNewList} hitSlop={8} accessibilityRole="button">
+                <Text style={styles.link}>↻ নতুন ফি তালিকা এই ছাত্রের জন্য ধরুন</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
       {current?.status === 'locked' && stageKind === 'won' && officer && (
         <Pressable onPress={() => setChanging(true)} hitSlop={8} accessibilityRole="button">
           <Text style={styles.link}>✏️ Change fee (discount / final fee)</Text>
@@ -365,7 +407,7 @@ function NegotiationView({
   onCancel: (d: Discount) => void;
 }) {
   const t = totals(n);
-  const fees = n.course?.course_fees ?? [];
+  const fees = feeRows(n);
   const discounts = [...n.fee_discounts].reverse();
   const events = [...n.negotiation_events].reverse();
   const discMore = useShowMore(discounts, 3);
@@ -378,10 +420,10 @@ function NegotiationView({
     <>
       {/* Fee list */}
       <View style={styles.fees}>
-        {fees.map((f) => {
-          const off = offFor(f.id);
+        {fees.map((f, i) => {
+          const off = f.id ? offFor(f.id) : 0;
           return (
-            <View key={f.id} style={styles.feeRow}>
+            <View key={f.id ?? `row-${i}`} style={styles.feeRow}>
               <Text style={styles.feeName} numberOfLines={1}>
                 {f.name}
               </Text>
@@ -416,7 +458,9 @@ function NegotiationView({
             const expired = d.status === 'approved' && !isActive(d, n);
             const s = STATUS[expired ? 'expired' : d.status];
             const mayCancel =
-              canWork && (d.status === 'pending' || (d.status === 'approved' && !expired)) && (d.requested_by === myId || limit > 0);
+              canWork &&
+              (d.status === 'pending' || (d.status === 'approved' && !expired)) &&
+              (d.requested_by === myId || limit > 0);
             return (
               <Pressable
                 key={d.id}
@@ -476,7 +520,9 @@ function NegotiationView({
                   {e.kind === 'note' ? e.note : `${EVENT_LABELS[e.kind]} ${money(Number(e.amount ?? 0))}`}
                 </Text>
                 {e.kind !== 'note' && e.note && <Text style={styles.note}>“{e.note}”</Text>}
-                <Text style={styles.meta}>{[nameOf(e.created_by), shortDate(e.created_at)].filter(Boolean).join(' · ')}</Text>
+                <Text style={styles.meta}>
+                  {[nameOf(e.created_by), shortDate(e.created_at)].filter(Boolean).join(' · ')}
+                </Text>
               </View>
             </View>
           ))}
@@ -643,7 +689,12 @@ function DiscountSheet({
       <View style={styles.chips}>
         <Chip text={`Whole fee · ${money(t.list)}`} on={feeId === null} onPress={() => setFeeId(null)} />
         {fees.map((f) => (
-          <Chip key={f.id} text={`${f.name} · ${money(Number(f.amount))}`} on={feeId === f.id} onPress={() => setFeeId(f.id)} />
+          <Chip
+            key={f.id}
+            text={`${f.name} · ${money(Number(f.amount))}`}
+            on={feeId === f.id}
+            onPress={() => setFeeId(f.id)}
+          />
         ))}
       </View>
 
@@ -665,12 +716,11 @@ function DiscountSheet({
       {amount > 0 && (
         <View style={[styles.preview, autoOk ? styles.previewOk : styles.previewWait]}>
           <Text style={styles.previewText}>
-            {money(amount)} off · to pay {money(Math.max(t.list - t.discount - amount, 0))} · all discounts {pctAfter}% of the fee
+            {money(amount)} off · to pay {money(Math.max(t.list - t.discount - amount, 0))} · all discounts {pctAfter}%
+            of the fee
           </Text>
           <Text style={styles.previewText}>
-            {autoOk
-              ? '✓ Within your limit: approved at once.'
-              : `⏳ Needs approval (you may give up to ${limit}%).`}
+            {autoOk ? '✓ Within your limit: approved at once.' : `⏳ Needs approval (you may give up to ${limit}%).`}
           </Text>
         </View>
       )}
@@ -750,6 +800,7 @@ const styles = StyleSheet.create({
   statusLocked: { color: colors.success },
   row: { flexDirection: 'row', gap: spacing.sm },
   hint: { fontSize: fontSize.caption, color: colors.textMuted },
+  listNote: { gap: 4, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.primarySoft },
   meta: { fontSize: fontSize.caption, color: colors.textMuted },
   note: { fontSize: fontSize.small, color: colors.text, marginTop: 2 },
   link: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary },
