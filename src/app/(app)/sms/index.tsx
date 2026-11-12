@@ -1,5 +1,5 @@
 import { router, Stack, useFocusEffect, type Href } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +20,7 @@ import { countLeads, KEEP_MAX, listLeadIds, listLeads, type LeadListItem, type L
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { countActiveFilters, type LeadFilters } from '@/features/leads/filters';
 import { listPipelineStages, type PipelineStage } from '@/features/pipeline/api';
+import { AiSmsPlanCard } from '@/features/sms/AiSmsPlanCard';
 import { AiSmsSheet } from '@/features/sms/AiSmsSheet';
 import {
   canSendSms,
@@ -79,6 +80,10 @@ export default function SmsCenterScreen() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   // 📌 chosen on the lead list (instead of the filters)
   const [chosen, setChosen] = useState<string[] | null>(null);
+  // 🤖 an AI suggestion was used: count who gets it at once, and scroll to it
+  const autoCheck = useRef(false);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const [whoY, setWhoY] = useState(0);
 
   const [count, setCount] = useState<number | null>(null);
   const [sample, setSample] = useState<LeadListItem[]>([]);
@@ -160,6 +165,10 @@ export default function SmsCenterScreen() {
           if (my !== seq.current) return;
           setCount(n ?? page.total ?? page.items.length);
           setSample(page.items);
+          if (autoCheck.current) {
+            autoCheck.current = false;
+            setTimeout(check, 0);
+          }
         })
         .catch((e) => my === seq.current && setError(errText(e)))
         .finally(() => my === seq.current && setLoadingWho(false));
@@ -191,7 +200,7 @@ export default function SmsCenterScreen() {
 
   const filterLabel = useMemo(() => {
     if (!group) return '';
-    if (chosen) return `${GROUP_LABEL[group]} · ${chosen.length} marked on the lead list`;
+    if (chosen) return `${GROUP_LABEL[group]} · ${name.trim() || 'chosen'} · ${chosen.length} leads`;
     const n = countActiveFilters(filters);
     return [
       GROUP_LABEL[group],
@@ -200,7 +209,7 @@ export default function SmsCenterScreen() {
     ]
       .filter(Boolean)
       .join(' · ');
-  }, [group, chosen, filters, search]);
+  }, [group, chosen, filters, search, name]);
 
   const len = smsLength(text);
   const first = sample.find((l) => !left.has(l.id));
@@ -290,7 +299,12 @@ export default function SmsCenterScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      ref={scrollRef}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'SMS Center' }} />
 
       <View style={styles.topRow}>
@@ -298,8 +312,21 @@ export default function SmsCenterScreen() {
         <Button title="📋 Sent" variant="ghost" onPress={() => router.push('/alumni/sms' as Href)} />
       </View>
 
+      <AiSmsPlanCard
+        onUse={(sug) => {
+          setTab(sug.group);
+          setFilters({});
+          setSearch('');
+          setChosen(sug.lead_ids);
+          if (sug.message) setText(sug.message);
+          setName(sug.title);
+          autoCheck.current = true;
+          scrollRef.current?.scrollTo({ y: whoY, animated: true });
+        }}
+      />
+
       {/* ① who */}
-      <View style={styles.tabs}>
+      <View style={styles.tabs} onLayout={(e) => setWhoY(e.nativeEvent.layout.y)}>
         {TABS.map((t) => (
           <Pressable
             key={t.key}
@@ -331,7 +358,7 @@ export default function SmsCenterScreen() {
             <Text style={ui.label}>① WHO GETS IT</Text>
             {chosen ? (
               <View style={styles.rowWrap}>
-                <Text style={[styles.text, styles.flex]}>📌 {chosen.length} marked on the lead list</Text>
+                <Text style={[styles.text, styles.flex]}>📌 {chosen.length} chosen (lead list or AI suggestion)</Text>
                 <Button title="Use filters instead" variant="ghost" onPress={() => setChosen(null)} />
               </View>
             ) : (

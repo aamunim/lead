@@ -421,3 +421,45 @@ export const smsDraft = {
     return d;
   },
 };
+
+// ---------------------------------------------------------------------
+// 🤖 AI suggestions: "which leads should get which SMS today?"
+//   The server's ready groups of my leads; the AI picks and writes
+// ---------------------------------------------------------------------
+export type SmsSuggestion = {
+  key: string;
+  group: SmsGroup;
+  title: string;
+  count: number;
+  skipped_recent_sms?: number;
+  lead_ids: string[];
+  why?: string;
+  message?: string;
+  priority?: number;
+};
+export async function aiSmsPlan(opts: {
+  question: string;
+  language: 'bn' | 'en';
+  skipDays: number;
+}): Promise<{ suggestions: SmsSuggestion[]; others: SmsSuggestion[]; note?: string }> {
+  const { data, error } = await supabase.functions.invoke('ai-sms', {
+    body: { mode: 'plan', question: opts.question, language: opts.language, skip_days: opts.skipDays },
+  });
+  if (error) {
+    let msg = error.message;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = await (error as any).context?.json?.();
+      if (body?.error) msg = body.error;
+    } catch {
+      /* keep the first message */
+    }
+    if (/not found|404|failed to send a request/i.test(msg)) {
+      msg = 'AI SMS is not ready on the server yet (Edge Function ai-sms). Please ask the admin to deploy it.';
+    }
+    throw new Error(msg);
+  }
+  const d = data as { suggestions?: SmsSuggestion[]; others?: SmsSuggestion[]; note?: string; error?: string };
+  if (d?.error) throw new Error(d.error);
+  return { suggestions: d?.suggestions ?? [], others: d?.others ?? [], note: d?.note };
+}
