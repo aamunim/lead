@@ -12,6 +12,7 @@ import {
   type AlumniSort,
 } from '@/features/alumni/api';
 import { Chip, s as ui } from '@/features/alumni/ui';
+import { listBatches, type SmsBatch } from '@/features/sms/api';
 import { md } from '@/features/home/md';
 import type { AssignableUser } from '@/features/leads/api';
 import type { CourseWithDetails } from '@/features/settings/api';
@@ -76,6 +77,15 @@ export function AlumniFilterSheet(p: Props) {
         setValues({ districts: [], upazilas: [], workplaces: [], designations: [], sessions: [], years: [], tags: [] }),
       );
   }, []);
+
+  // 📨 the recent SMS sends (only for people who send SMS)
+  const [smsSends, setSmsSends] = useState<SmsBatch[]>([]);
+  useEffect(() => {
+    if (!p.order.includes('sms')) return;
+    listBatches(12)
+      .then((b) => setSmsSends(b.filter((x) => x.audience === 'alumni')))
+      .catch(() => undefined);
+  }, [p.order]);
 
   const set = (patch: Partial<AlumniFilters>) => setF((now) => ({ ...now, ...patch }));
   const toggle = <K extends keyof AlumniFilters>(key: K, v: AlumniFilters[K]) =>
@@ -281,6 +291,39 @@ export function AlumniFilterSheet(p: Props) {
             <Chip text="Hide them" on={f.dnc === 'hide'} onPress={() => toggle('dnc', 'hide')} />
             <Chip text="Only them" on={f.dnc === 'only'} onPress={() => toggle('dnc', 'only')} />
           </Block>
+        );
+      case 'sms':
+        return (
+          <View key={key} style={styles.custom}>
+            <Block title="📨 SMS">
+              <Chip text="Got an SMS" on={f.sms === 'any'} onPress={() => toggle('sms', 'any')} />
+              <Chip text="Never got one" on={f.sms === 'never'} onPress={() => toggle('sms', 'never')} />
+            </Block>
+            {smsSends.length > 0 && (
+              <Block title="📨 ONE SEND">
+                {smsSends.map((b) => (
+                  <Chip
+                    key={b.id}
+                    text={b.name || b.message.slice(0, 22) + (b.message.length > 22 ? '…' : '')}
+                    on={f.smsBatchId === b.id}
+                    onPress={() =>
+                      set(
+                        f.smsBatchId === b.id
+                          ? { smsBatchId: null, smsBatchGot: null }
+                          : { smsBatchId: b.id, smsBatchGot: f.smsBatchGot ?? true },
+                      )
+                    }
+                  />
+                ))}
+              </Block>
+            )}
+            {!!f.smsBatchId && (
+              <Block title="OF THAT SEND">
+                <Chip text="✅ Got it" on={f.smsBatchGot !== false} onPress={() => set({ smsBatchGot: true })} />
+                <Chip text="Didn’t get it" on={f.smsBatchGot === false} onPress={() => set({ smsBatchGot: false })} />
+              </Block>
+            )}
+          </View>
         );
       case 'custom':
         return pickFields.length === 0 ? null : (

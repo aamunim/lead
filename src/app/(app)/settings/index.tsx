@@ -60,6 +60,12 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         href: '/settings/alumni' as Href,
       },
       {
+        title: 'SMS',
+        description: 'Your SMS company (API address and key), masking / non-masking sender IDs, who may send',
+        icon: '📨',
+        href: '/settings/sms' as Href,
+      },
+      {
         title: 'Admission flow',
         description: 'Submitted Online → Received by ITTC: who does it, the admission fee',
         icon: '🏛',
