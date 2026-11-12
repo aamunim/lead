@@ -8,6 +8,19 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-12-sms',
+    date: '12 Nov 2026',
+    title: '📨 SMS পাঠানো (অ্যালামনাই)',
+    items: [
+      '⚙️ Settings → SMS: SMS কোম্পানির API ঠিকানা আর API key দিন (Bulk SMS Dhaka আগে থেকেই বসানো); দরকার হলে অন্য কোম্পানি যোগ করে সেটা চালু করুন',
+      '🏷️ Masking আর Non-masking sender ID — যোগ, বদল, চালু/বন্ধ, প্রতিটার একটা default',
+      '🧪 Test SMS আর 💰 ব্যালেন্স দেখা যায় Settings থেকেই',
+      '🎓 Alumni: যাদের চান mark করুন (বা ফিল্টার দিয়ে “Mark all”), তারপর SMS — {name} / {first_name} দিলে প্রত্যেকের নাম বসে যায়; নম্বর নেই বা “do not contact” হলে যায় না',
+      '📋 Alumni → SMS: প্রতিটা পাঠানোয় কে পেয়েছে, কার ব্যর্থ হয়েছে (কারণসহ), কে অপেক্ষায় — ব্যর্থদের আবার পাঠান, বাকিগুলো থামান',
+      '🔍 Alumni ফিল্টার → SMS: কখনো SMS পেয়েছে / পায়নি, আর কোনো একটা পাঠানো কে পেয়েছে / কে পায়নি',
+    ],
+  },
+  {
     key: '2026-11-12-speed',
     date: '12 Nov 2026',
     title: '⚡ রিপোর্ট, লিডারবোর্ড আর কল সিঙ্ক আরো দ্রুত',

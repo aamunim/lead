@@ -50,6 +50,8 @@ import { campaignDraft } from '@/features/alumni/draft';
 import { MenuSheet, NextContactSheet, OwnerSheet, TextSheet, whenText } from '@/features/alumni/sheets';
 import { alumniChanged, Avatar, Chip, s as ui, useAlumniAccess, useAlumniVersion } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { canSendSms } from '@/features/sms/api';
+import { SmsComposeSheet } from '@/features/sms/SmsComposeSheet';
 import { MIcon, md, Tap, type MIconName } from '@/features/home/md';
 import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
 import { listAlumniCourses, type CourseWithDetails } from '@/features/settings/api';
@@ -150,7 +152,14 @@ export default function AlumniScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [coursePicker, setCoursePicker] = useState(false);
-  const [sheet, setSheet] = useState<null | 'note' | 'next' | 'tag_add' | 'tag_remove' | 'owner' | 'more'>(null);
+  const [sheet, setSheet] = useState<null | 'note' | 'next' | 'tag_add' | 'tag_remove' | 'owner' | 'more' | 'sms'>(
+    null,
+  );
+  // 📨 may I send SMS (Settings → SMS)
+  const [canSms, setCanSms] = useState(false);
+  useEffect(() => {
+    canSendSms().then(setCanSms);
+  }, []);
 
   useEffect(() => {
     listAlumniCourses()
@@ -436,6 +445,7 @@ export default function AlumniScreen() {
         <Shortcut icon="insights" label="Dashboard" to="/alumni/dashboard" />
         <Shortcut icon="emoji-events" label="Top referrers" to="/alumni/top" />
         <Shortcut icon="campaign" label="Campaigns" to="/alumni/campaigns" />
+        {canSms && <Shortcut icon="sms" label="SMS" to="/alumni/sms" />}
         <Shortcut icon="apartment" label="Schools" to="/alumni/schools" />
         {access.manage && <Shortcut icon="how-to-reg" label="Updates" to="/alumni/updates" />}
         {access.manage && <Shortcut icon="people-alt" label="Duplicates" to="/alumni/duplicates" />}
@@ -694,6 +704,9 @@ export default function AlumniScreen() {
                 disabled={selected.size === 0}
                 onPress={() => setSheet('next')}
               />
+              {canSms && (
+                <BarAction icon="sms" label="SMS" disabled={selected.size === 0} onPress={() => setSheet('sms')} />
+              )}
               {access.manage && (
                 <BarAction
                   icon="sell"
@@ -750,6 +763,19 @@ export default function AlumniScreen() {
               sheet === 'tag_add' ? `“${tag}” added to ${n} alumni.` : `“${tag}” removed from ${n} alumni.`,
             )
           }
+        />
+      )}
+      {sheet === 'sms' && (
+        <SmsComposeSheet
+          ids={[...selected]}
+          sampleName={(rows ?? []).find((r) => selected.has(r.id))?.name ?? null}
+          onClose={() => setSheet(null)}
+          onSent={(r) => {
+            setSheet(null);
+            stopSelect();
+            say('Sending', `${r.queued} SMS are in the queue (${r.parts} in all). They go out within a few minutes.`);
+            router.push(`/alumni/sms?id=${r.batch_id}` as Href);
+          }}
         />
       )}
       {sheet === 'owner' && (

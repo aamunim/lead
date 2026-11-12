@@ -19,6 +19,7 @@ import { AddReferralSheet } from '@/features/alumni/AddReferralSheet';
 import { AlumniContactSheet } from '@/features/alumni/AlumniContactSheet';
 import { AlumniMessageSheet } from '@/features/alumni/AlumniMessageSheet';
 import { AlumniVoiceButton, AlumniVoicePlay } from '@/features/alumni/AlumniVoice';
+import { AlumnusSmsCard } from '@/features/sms/AlumnusSmsCard';
 import {
   addAlumniEvent,
   alumniThanksDue,
@@ -731,6 +732,8 @@ export default function AlumnusScreen() {
           );
         })}
       </View>
+
+      <AlumnusSmsCard alumniId={a.id} />
 
       {/* Rewards */}
       {access.manage && rewards.length > 0 && (

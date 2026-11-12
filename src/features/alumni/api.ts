@@ -75,6 +75,7 @@ export type AlumniFilterKey =
   | 'reward'
   | 'birthday'
   | 'dnc'
+  | 'sms'
   | 'custom';
 
 export const ALUMNI_FILTER_LABEL: Record<AlumniFilterKey, string> = {
@@ -93,6 +94,7 @@ export const ALUMNI_FILTER_LABEL: Record<AlumniFilterKey, string> = {
   reward: 'Reward',
   birthday: 'Birthday',
   dnc: 'Do not contact',
+  sms: 'SMS',
   custom: 'Your own fields',
 };
 
@@ -375,6 +377,11 @@ export type AlumniFilters = {
   birthday?: 'month' | 'week' | null;
   /** do not contact: hide them / only them */
   dnc?: 'hide' | 'only' | null;
+  /** 📨 got any SMS / never got one */
+  sms?: 'any' | 'never' | null;
+  /** 📨 one send: who got it (true) / who didn't (false) */
+  smsBatchId?: string | null;
+  smsBatchGot?: boolean | null;
   /** your own fields: key → value */
   custom?: Record<string, string>;
 };
@@ -411,6 +418,8 @@ export function countAlumniFilters(f: AlumniFilters | undefined): number {
     'referrals',
     'birthday',
     'dnc',
+    'sms',
+    'smsBatchId',
   ] as const)
     if (f[k]) n++;
   if (f.hasWorkplace != null) n++;
@@ -531,6 +540,12 @@ function alumniFilters<
   if (f.rewardDue) query = query.gt('reward_due' as never, 0 as never);
   if (f.dnc === 'hide') query = query.eq('do_not_contact' as never, false as never);
   if (f.dnc === 'only') query = query.eq('do_not_contact' as never, true as never);
+  if (f.sms === 'any') query = query.gt('sms_count' as never, 0 as never);
+  if (f.sms === 'never') query = query.eq('sms_count' as never, 0 as never);
+  if (f.smsBatchId && /^[0-9a-f-]{36}$/i.test(f.smsBatchId)) {
+    if (f.smsBatchGot === false) query = query.not('sms_batch_ids' as never, 'cs', `{${f.smsBatchId}}`);
+    else query = query.contains('sms_batch_ids' as never, [f.smsBatchId] as never);
+  }
   if (f.birthday === 'month') {
     const m = new Date().getMonth() + 1;
     query = query.gte('birth_md' as never, (m * 100) as never).lte('birth_md' as never, (m * 100 + 31) as never);
