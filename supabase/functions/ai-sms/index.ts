@@ -29,8 +29,7 @@ const SCHEMA = {
   properties: {
     options: {
       type: 'array',
-      minItems: 3,
-      maxItems: 3,
+      description: 'Exactly three different drafts',
       items: { type: 'string', description: 'One SMS, ready to send' },
     },
   },
@@ -54,7 +53,7 @@ const PLAN_SCHEMA = {
   properties: {
     suggestions: {
       type: 'array',
-      maxItems: 6,
+      description: 'At most 6, most important first',
       items: {
         type: 'object',
         properties: {
@@ -172,7 +171,8 @@ async function plan(
         priority: x.priority,
       };
     })
-    .filter((x) => x.message);
+    .filter((x) => x.message)
+    .slice(0, 6);
   return json({
     suggestions,
     // the groups the AI did not pick (to choose by hand)
