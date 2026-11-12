@@ -344,10 +344,17 @@ export async function setFinalFee(
 }
 
 /** 💰 Admission Officer / admin: put an admitted student on the course's new fee list (the discount stays) */
-export async function applyCourseList(leadId: string): Promise<{ changed: boolean; full?: number; final?: number }> {
+export async function applyCourseList(
+  leadId: string,
+): Promise<{ changed: boolean; full?: number; final?: number; installments_off?: boolean }> {
   const { data, error } = await supabase.rpc('fee_apply_course_list' as never, { p_lead: leadId } as never);
   if (error) throw toError(error);
-  return (data ?? { changed: false }) as { changed: boolean; full?: number; final?: number };
+  return (data ?? { changed: false }) as {
+    changed: boolean;
+    full?: number;
+    final?: number;
+    installments_off?: boolean;
+  };
 }
 
 export async function startNegotiation(leadId: string, courseId: string): Promise<string> {

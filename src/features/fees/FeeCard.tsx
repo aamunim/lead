@@ -202,7 +202,15 @@ export function FeeCard({ leadId, stageKind, leadCourseIds, stateKey, nameOf, on
           label: 'হ্যাঁ, ধরুন',
           run: () => {
             applyCourseList(leadId)
-              .then((r) => after(r.changed ? 'নতুন ফি তালিকা ধরা হয়েছে।' : 'ফি আগের মতোই আছে।'))
+              .then((r) =>
+                after(
+                  !r.changed
+                    ? 'ফি আগের মতোই আছে।'
+                    : r.installments_off
+                      ? 'নতুন ফি তালিকা ধরা হয়েছে। কিস্তির পরিকল্পনা আর মিলছে না, Installments থেকে ঠিক করে নিন।'
+                      : 'নতুন ফি তালিকা ধরা হয়েছে।',
+                ),
+              )
               .catch((e) => Alert.alert('করা যায়নি', e instanceof Error ? e.message : ''));
           },
         },

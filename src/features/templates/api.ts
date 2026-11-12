@@ -87,16 +87,15 @@ export function canUseTemplates(s: TemplateSettings, profile: MyProfile | null):
 // Templates
 // ---------------------------------------------------------------------
 export async function listTemplates(): Promise<MessageTemplate[]> {
-  const { data, error } = await supabase
-    .from('message_templates')
-    .select('*')
-    .order('sort_order')
-    .order('name');
+  const { data, error } = await supabase.from('message_templates').select('*').order('sort_order').order('name');
   if (error) throw toError(error);
   return (data ?? []) as unknown as MessageTemplate[];
 }
 
-export type TemplateInput = Pick<MessageTemplate, 'name' | 'body' | 'channels' | 'category' | 'course_ids' | 'is_shared' | 'is_active'>;
+export type TemplateInput = Pick<
+  MessageTemplate,
+  'name' | 'body' | 'channels' | 'category' | 'course_ids' | 'is_shared' | 'is_active'
+>;
 
 export async function saveTemplate(id: string | null, input: TemplateInput): Promise<void> {
   const row = {
@@ -227,7 +226,7 @@ export async function loadTemplateContext(
   ].filter((v, i, a) => a.indexOf(v) === i);
   const courseId = courseIds[0] ?? null;
 
-  const [course, batch, papers, inst] = await Promise.all([
+  const [course, batch, papers, inst, kept] = await Promise.all([
     courseId
       ? supabase.from('courses').select('name, course_fees(name, amount, sort_order)').eq('id', courseId).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -237,6 +236,16 @@ export async function loadTemplateContext(
     supabase.rpc('lead_missing_papers', { p_lead_id: leadId }),
     l?.fee_next_due
       ? supabase.from('fee_installments').select('seq, amount').eq('lead_id', leadId).order('seq')
+      : Promise.resolve({ data: null }),
+    // an admitted student: the fee list of their admission day (not the course's list now)
+    l?.admitted_course_id
+      ? supabase
+          .from('lead_negotiations')
+          .select('list_items')
+          .eq('lead_id', leadId)
+          .eq('course_id', l.admitted_course_id)
+          .eq('status', 'locked')
+          .maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
 
@@ -253,8 +262,15 @@ export async function loadTemplateContext(
     }
   }
 
-  const c = course.data as unknown as { name: string; course_fees: { name: string; amount: number; sort_order: number }[] } | null;
-  const fees = (c?.course_fees ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
+  const c = course.data as unknown as {
+    name: string;
+    course_fees: { name: string; amount: number; sort_order: number }[];
+  } | null;
+  const keptItems = (kept.data as { list_items?: { name: string; amount: number; sort_order: number }[] | null } | null)
+    ?.list_items;
+  const fees = (keptItems && keptItems.length > 0 ? keptItems : (c?.course_fees ?? []))
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order);
   const b = batch.data as unknown as { name: string; start_date: string | null } | null;
   const missing = ((papers.data ?? []) as { name: string }[]).map((p) => `• ${p.name}`);
 
@@ -264,10 +280,13 @@ export async function loadTemplateContext(
     course: c?.name ?? '',
     batch: b?.name ?? '',
     batch_start: dateText(b?.start_date),
-    fee: fees.length > 0
-      ? [...fees.map((f) => `• ${f.name}: ${money(Number(f.amount))}`),
-        ...(fees.length > 1 ? [`মোট: ${money(fees.reduce((t, f) => t + Number(f.amount), 0))}`] : [])].join('\n')
-      : '',
+    fee:
+      fees.length > 0
+        ? [
+            ...fees.map((f) => `• ${f.name}: ${money(Number(f.amount))}`),
+            ...(fees.length > 1 ? [`মোট: ${money(fees.reduce((t, f) => t + Number(f.amount), 0))}`] : []),
+          ].join('\n')
+        : '',
     // From the fee negotiation (💰 card); empty when there was no fee talk
     full_fee: l?.fee_full != null ? money(Number(l.fee_full)) : '',
     discount: l?.fee_discount ? money(Number(l.fee_discount)) : '',
