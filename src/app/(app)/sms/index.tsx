@@ -17,7 +17,14 @@ import { MenuSheet, NextContactPicker } from '@/features/alumni/sheets';
 import { s as ui } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { card, MIcon, md, Tap, type MIconName } from '@/features/home/md';
-import { countLeads, KEEP_MAX, listLeadIds, listLeads, type LeadListItem, type LeadQuery } from '@/features/leads/api';
+import {
+  KEEP_MAX,
+  listLeadIds,
+  listLeads,
+  listLeadsByIds,
+  type LeadListItem,
+  type LeadQuery,
+} from '@/features/leads/api';
 import { LeadFilterSheet } from '@/features/leads/LeadFilterSheet';
 import { countActiveFilters, type LeadFilters } from '@/features/leads/filters';
 import { listPipelineStages, type PipelineStage } from '@/features/pipeline/api';
@@ -106,6 +113,10 @@ export default function SmsCenterScreen() {
   const [sheet, setSheet] = useState<null | 'ai' | 'templates'>(null);
   const [showFields, setShowFields] = useState(false);
   const [busy, setBusy] = useState(false);
+  // one send at a time (a double tap opens one dialog)
+  const sending = useRef(false);
+  // every id that matches, before names are taken out
+  const [allIds, setAllIds] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -141,12 +152,13 @@ export default function SmsCenterScreen() {
   const group: SmsGroup | null = tab === 'alumni' ? null : tab;
   const lostIds = useMemo(() => stages.filter((s) => s.kind === 'lost').map((s) => s.id), [stages]);
   const nFilters = countActiveFilters(filters);
+  const searchKey = search.trim();
 
   // the lead list's own query for this group
   const query: LeadQuery | null = useMemo(() => {
     if (!group) return null;
     if (chosen) return { onlyIds: chosen, closedMode: 'show', userId: profile?.id };
-    const q: LeadQuery = { search: search.trim(), filters, userId: profile?.id, sort: 'newest' as LeadQuery['sort'] };
+    const q: LeadQuery = { search: searchKey, filters, userId: profile?.id, sort: 'newest' as LeadQuery['sort'] };
     if (group === 'active') return { ...q, closedMode: 'hide' };
     if (group === 'admitted') return { ...q, students: true };
     // Not Now: the "not now" stages (unless stages are chosen in the filter)
@@ -155,42 +167,77 @@ export default function SmsCenterScreen() {
       closedMode: 'show',
       filters: { ...filters, stageIds: filters.stageIds?.length ? filters.stageIds : lostIds },
     };
-  }, [group, chosen, search, filters, profile?.id, lostIds]);
+  }, [group, chosen, searchKey, filters, profile?.id, lostIds]);
 
-  // ① counted as the filters change: the matches, the names, then who really gets it
+  // ① as the filters change: the matches and the first names (the old numbers stay
+  //    on screen, greyed by "counting", until the new ones are in)
   const seq = useRef(0);
+  const pseq = useRef(0);
   useEffect(() => {
-    setIds(null);
-    setPreview(null);
-    setCount(null);
-    if (!query || !group || (group === 'not_now' && !chosen && lostIds.length === 0)) return;
     const my = ++seq.current;
+    pseq.current++; // an answer for the old choice is dropped
+    setLeft(new Set());
+    setAllIds(null);
+    if (!query || !group || (group === 'not_now' && !chosen && lostIds.length === 0)) {
+      setCount(null);
+      setSample([]);
+      setIds(null);
+      setPreview(null);
+      setCounting(false);
+      return;
+    }
     setCounting(true);
     setError(null);
     const t = setTimeout(async () => {
       try {
-        const [n, page, all] = await Promise.all([
-          countLeads(query),
-          listLeads({ ...query, page: 0 }),
-          listLeadIds(query),
-        ]);
-        if (my !== seq.current) return;
-        setCount(n ?? page.total ?? page.items.length);
-        setSample(page.items);
-        const use = all.filter((id) => !left.has(id));
-        const p = use.length ? await previewLeadSms(use, group) : null;
-        if (my !== seq.current) return;
-        setIds(use);
-        setPreview(p);
+        if (chosen) {
+          // marked on the lead list / an AI group: the ids are known — no long links,
+          // just the first names
+          const page = await listLeadsByIds(chosen.slice(0, 30));
+          if (my !== seq.current) return;
+          setCount(chosen.length);
+          setSample(page);
+          setAllIds(chosen);
+        } else {
+          const [page, all] = await Promise.all([listLeads({ ...query, page: 0 }), listLeadIds(query)]);
+          if (my !== seq.current) return;
+          setCount(page.total ?? all.length);
+          setSample(page.items);
+          setAllIds(all);
+        }
       } catch (e) {
-        if (my === seq.current) setError(errText(e));
-      } finally {
-        if (my === seq.current) setCounting(false);
+        if (my === seq.current) {
+          // no old numbers left to send to by mistake
+          setError(errText(e));
+          setIds(null);
+          setPreview(null);
+          setCounting(false);
+        }
       }
     }, 450);
     return () => clearTimeout(t);
-    // left: a name taken out / put back counts again
-  }, [query, group, chosen, lostIds.length, left]);
+  }, [query, group, chosen, lostIds.length]);
+
+  // ② who really gets it (the server's count) — again only this when a name is taken out
+  useEffect(() => {
+    if (!allIds || !group) return;
+    const my = ++pseq.current;
+    const use = allIds.filter((id) => !left.has(id));
+    setCounting(true);
+    (use.length ? previewLeadSms(use, group) : Promise.resolve(null))
+      .then((p) => {
+        if (my !== pseq.current) return;
+        setIds(use);
+        setPreview(p);
+      })
+      .catch((e) => {
+        if (my !== pseq.current) return;
+        setError(errText(e));
+        setIds(null);
+        setPreview(null);
+      })
+      .finally(() => my === pseq.current && setCounting(false));
+  }, [allIds, left, group]);
 
   const filterLabel = useMemo(() => {
     if (!group) return '';
@@ -222,8 +269,20 @@ export default function SmsCenterScreen() {
   };
 
   const send = async () => {
-    if (!group || !ids || !preview) return;
+    if (!group || !ids || !preview || sending.current) return;
     const when = later && at ? at : null;
+    if (when && when.getTime() <= Date.now() + 60_000) {
+      return say('Pick a later time', 'The time you chose has passed. Choose a time ahead, or Send now.');
+    }
+    sending.current = true;
+    try {
+      await sendNow(when);
+    } finally {
+      sending.current = false;
+    }
+  };
+  const sendNow = async (when: Date | null) => {
+    if (!group || !ids || !preview) return;
     const ok = await confirm(
       `Send to ${fmt(willGet)} ${willGet === 1 ? 'person' : 'people'}?`,
       `${GROUP_LABEL[group]} · from ${chosenSender?.sender_id ?? ''}${

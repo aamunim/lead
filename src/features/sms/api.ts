@@ -54,6 +54,7 @@ export async function getSmsSettings(): Promise<SmsSettings> {
 }
 export async function saveSmsSettings(s: SmsSettings): Promise<void> {
   await updateSetting('sms', s as unknown as Json);
+  forgetSmsAccess();
 }
 
 export type SenderKind = 'masking' | 'non_masking';
@@ -100,6 +101,7 @@ export type ProviderInput = {
   api_key?: string;
 };
 export async function saveProvider(id: string | null, p: ProviderInput): Promise<string> {
+  forgetSmsAccess();
   return rpc<string>('sms_provider_save', { p_id: id, p });
 }
 export async function deleteProvider(id: string): Promise<void> {
@@ -118,6 +120,7 @@ export type SenderInput = {
   is_default: boolean;
 };
 export async function saveSender(id: string | null, p: SenderInput): Promise<string> {
+  forgetSmsAccess();
   return rpc<string>('sms_sender_save', { p_id: id, p });
 }
 export async function deleteSender(id: string): Promise<void> {
@@ -159,8 +162,20 @@ export async function sendTest(phone: string, message: string, senderId: string)
 // ---------------------------------------------------------------------
 // Sending
 // ---------------------------------------------------------------------
-export async function canSendSms(): Promise<boolean> {
-  return rpc<boolean>('sms_can_send').catch(() => false);
+// asked by the lead list, More, the website menu and SMS Center: one request
+// for all of them, kept 5 minutes (Settings → SMS forgets it at once)
+let canSmsCache: { at: number; p: Promise<boolean> } | null = null;
+export function canSendSms(): Promise<boolean> {
+  if (canSmsCache && Date.now() - canSmsCache.at < 5 * 60_000) return canSmsCache.p;
+  const p = rpc<boolean>('sms_can_send').catch(() => {
+    canSmsCache = null; // not kept when it failed
+    return false;
+  });
+  canSmsCache = { at: Date.now(), p };
+  return p;
+}
+export function forgetSmsAccess() {
+  canSmsCache = null;
 }
 
 export type MySender = { id: string; sender_id: string; kind: SenderKind; label: string | null; is_default: boolean };
@@ -462,4 +477,9 @@ export async function aiSmsPlan(opts: {
   const d = data as { suggestions?: SmsSuggestion[]; others?: SmsSuggestion[]; note?: string; error?: string };
   if (d?.error) throw new Error(d.error);
   return { suggestions: d?.suggestions ?? [], others: d?.others ?? [], note: d?.note };
+}
+
+/** One AI group's lead ids (asked when "Use" is tapped; the AI answer carries none) */
+export async function aiSegmentIds(key: string, skipDays: number): Promise<string[]> {
+  return rpc<string[]>('sms_ai_segment_ids', { p_key: key, p_skip_days: skipDays });
 }

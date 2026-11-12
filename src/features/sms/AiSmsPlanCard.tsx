@@ -5,7 +5,7 @@ import { s as ui } from '@/features/alumni/ui';
 import { card, MIcon, md, Tap } from '@/features/home/md';
 import { colors, fontSize, fontWeight, spacing } from '@/shared/theme';
 
-import { aiSmsPlan, GROUP_LABEL, smsLength, type SmsSuggestion } from './api';
+import { aiSegmentIds, aiSmsPlan, GROUP_LABEL, smsLength, type SmsSuggestion } from './api';
 
 // =====================================================================
 // 🤖 AI suggestions: a banner that opens into "ask the AI" — it picks
@@ -41,9 +41,22 @@ export function AiSmsPlanCard({ onUse }: { onUse: (s: SmsSuggestion) => void }) 
       setBusy(false);
     }
   };
-  const use = (s: SmsSuggestion) => {
-    setUsed(s.key);
-    onUse(s);
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  // the group's leads are fetched now (the AI answer has only counts)
+  const use = async (s: SmsSuggestion) => {
+    if (loadingKey) return;
+    setLoadingKey(s.key);
+    setError(null);
+    try {
+      const ids = s.lead_ids?.length ? s.lead_ids : await aiSegmentIds(s.key, skip ? 3 : 0);
+      if (ids.length === 0) return setError('Nobody is left in this group now.');
+      setUsed(s.key);
+      onUse({ ...s, lead_ids: ids, count: ids.length });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load this group.');
+    } finally {
+      setLoadingKey(null);
+    }
   };
 
   if (!open) {
@@ -137,10 +150,15 @@ export function AiSmsPlanCard({ onUse }: { onUse: (s: SmsSuggestion) => void }) 
             </View>
             <Pressable
               onPress={() => use(s)}
+              disabled={!!loadingKey}
               style={[styles.useBtn, isUsed && styles.useBtnDone]}
               accessibilityRole="button"
             >
-              <MIcon name={isUsed ? 'check' : 'arrow-downward'} size={18} color={isUsed ? md.onOkC : '#fff'} />
+              {loadingKey === s.key ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <MIcon name={isUsed ? 'check' : 'arrow-downward'} size={18} color={isUsed ? md.onOkC : '#fff'} />
+              )}
               <Text style={[styles.useText, isUsed && styles.useTextDone]}>
                 {isUsed ? 'In use below' : `Use for ${s.count} leads`}
               </Text>
