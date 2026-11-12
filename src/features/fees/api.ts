@@ -150,6 +150,9 @@ export type Negotiation = {
   locked_at: string | null;
   started_by: string | null;
   started_at: string;
+  /** admitted: the course's fee list as it was at admission (a fee added to the course later is not in it) */
+  list_total?: number | null;
+  list_items?: { id: string | null; name: string; amount: number; sort_order: number }[] | null;
   course: { id: string; name: string; course_fees: CourseFeeItem[] } | null;
   negotiation_events: NegotiationEvent[];
   fee_discounts: Discount[];
@@ -289,8 +292,19 @@ export const isActive = (d: Discount, n: Pick<Negotiation, 'status'>) =>
   d.status === 'approved' && (n.status === 'locked' || !d.expires_at || new Date(d.expires_at) > new Date());
 
 /** The full fee, the discounts in force and what's left to pay */
+/** The course's fee list now */
+export const courseListTotal = (n: Negotiation) =>
+  (n.course?.course_fees ?? []).reduce((t, f) => t + Number(f.amount), 0);
+
+/** The fee rows to show: as at admission once admitted, else the course's list now */
+export function feeRows(n: Negotiation): { id: string | null; name: string; amount: number }[] {
+  if (n.status === 'locked' && n.list_items) return n.list_items.map((f) => ({ ...f, amount: Number(f.amount) }));
+  return (n.course?.course_fees ?? []).map((f) => ({ id: f.id, name: f.name, amount: Number(f.amount) }));
+}
+
 export function totals(n: Negotiation) {
-  const list = (n.course?.course_fees ?? []).reduce((t, f) => t + Number(f.amount), 0);
+  // admitted: the full fee kept at admission (a fee added to the course later is not a discount)
+  const list = n.status === 'locked' && n.list_total != null ? Number(n.list_total) : courseListTotal(n);
   const discount = n.fee_discounts.filter((d) => isActive(d, n)).reduce((t, d) => t + Number(d.amount), 0);
   const pending = n.fee_discounts.filter((d) => d.status === 'pending').reduce((t, d) => t + Number(d.amount), 0);
   const locked = n.status === 'locked' && n.final_total != null;
@@ -301,7 +315,11 @@ export function totals(n: Negotiation) {
 
 /** 💰 The admitted student's fee as the list shows it (for the Change fee sheet) */
 export async function getStudentFee(leadId: string): Promise<{ full: number; final: number; paid: number }> {
-  const { data, error } = await supabase.from('leads').select('fee_full, fee_final, fee_paid').eq('id', leadId).maybeSingle();
+  const { data, error } = await supabase
+    .from('leads')
+    .select('fee_full, fee_final, fee_paid')
+    .eq('id', leadId)
+    .maybeSingle();
   if (error) throw toError(error);
   return { full: Number(data?.fee_full ?? 0), final: Number(data?.fee_final ?? 0), paid: Number(data?.fee_paid ?? 0) };
 }
@@ -315,10 +333,28 @@ export async function setFinalFee(
   finalFee: number,
   reason: string,
 ): Promise<{ changed: boolean; installmentsOff: boolean }> {
-  const { data, error } = await supabase.rpc('set_final_fee', { p_lead: leadId, p_final: finalFee, p_reason: reason.trim() });
+  const { data, error } = await supabase.rpc('set_final_fee', {
+    p_lead: leadId,
+    p_final: finalFee,
+    p_reason: reason.trim(),
+  });
   if (error) throw toError(error);
   const r = (data ?? {}) as { changed?: boolean; installments_off?: boolean };
   return { changed: !!r.changed, installmentsOff: !!r.installments_off };
+}
+
+/** 💰 Admission Officer / admin: put an admitted student on the course's new fee list (the discount stays) */
+export async function applyCourseList(
+  leadId: string,
+): Promise<{ changed: boolean; full?: number; final?: number; installments_off?: boolean }> {
+  const { data, error } = await supabase.rpc('fee_apply_course_list' as never, { p_lead: leadId } as never);
+  if (error) throw toError(error);
+  return (data ?? { changed: false }) as {
+    changed: boolean;
+    full?: number;
+    final?: number;
+    installments_off?: boolean;
+  };
 }
 
 export async function startNegotiation(leadId: string, courseId: string): Promise<string> {
@@ -461,8 +497,7 @@ export function installmentStates(items: Installment[], paid: number): Installme
     .map((i) => {
       const covered = Math.min(Number(i.amount), Math.max(left, 0));
       left -= Number(i.amount);
-      const state =
-        covered >= Number(i.amount) ? 'paid' : covered > 0 ? 'part' : i.due_date < today ? 'late' : 'due';
+      const state = covered >= Number(i.amount) ? 'paid' : covered > 0 ? 'part' : i.due_date < today ? 'late' : 'due';
       return { ...i, covered, state: covered > 0 && covered < Number(i.amount) && i.due_date < today ? 'late' : state };
     });
 }
@@ -525,7 +560,10 @@ export async function recordPayment(input: {
 
 /** 🧾 Add or change the college receipt no. of a payment (empty = remove) */
 export async function setCollegeReceipt(paymentId: string, no: string): Promise<void> {
-  const { error } = await supabase.rpc('set_college_receipt' as never, { p_payment_id: paymentId, p_no: no.trim() } as never);
+  const { error } = await supabase.rpc(
+    'set_college_receipt' as never,
+    { p_payment_id: paymentId, p_no: no.trim() } as never,
+  );
   if (error) throw toError(error);
 }
 
@@ -544,7 +582,10 @@ export async function getAdmissionFee(
   leadId: string,
   courseId: string,
 ): Promise<{ full: number; discount: number; final: number; negotiated: boolean }> {
-  const [neg, fees] = await Promise.all([listNegotiations(leadId), supabase.from('course_fees').select('amount').eq('course_id', courseId)]);
+  const [neg, fees] = await Promise.all([
+    listNegotiations(leadId),
+    supabase.from('course_fees').select('amount').eq('course_id', courseId),
+  ]);
   const n = neg.find((x) => x.course_id === courseId);
   if (n) {
     const t = totals(n);
@@ -581,7 +622,9 @@ export async function loadReceiptData(
       )
       .eq('id', payment.lead_id)
       .maybeSingle(),
-    getSetting<{ institute?: { name?: string; address?: string; phone?: string } }>('message_templates').catch(() => null),
+    getSetting<{ institute?: { name?: string; address?: string; phone?: string } }>('message_templates').catch(
+      () => null,
+    ),
     getSetting<string>('institution_name').catch(() => null),
   ]);
   const l = lead.data as unknown as {
