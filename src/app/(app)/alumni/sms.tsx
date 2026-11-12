@@ -14,8 +14,10 @@ import {
 
 import { Chip, s as ui, when } from '@/features/alumni/ui';
 import {
+  batchLeadIds,
   cancelBatch,
   getBatch,
+  GROUP_LABEL,
   KIND_LABEL,
   listBatches,
   retryBatch,
@@ -107,6 +109,10 @@ function BatchList() {
                 </Text>
                 <Text style={ui.muted}>{when(b.created_at)}</Text>
               </View>
+              <Text style={ui.muted} numberOfLines={1}>
+                {who(b)}
+                {b.scheduled_at && new Date(b.scheduled_at) > new Date() ? ` · ⏰ ${when(b.scheduled_at)}` : ''}
+              </Text>
               {!!b.name && (
                 <Text style={ui.muted} numberOfLines={2}>
                   {b.message}
@@ -228,6 +234,13 @@ function BatchDetail({ id }: { id: string }) {
             <View style={ui.card}>
               <Text style={styles.text}>{b.message}</Text>
               <Text style={ui.muted}>
+                {who(b)}
+                {b.filter_label && b.audience === 'leads' ? ` · ${b.filter_label}` : ''}
+              </Text>
+              {b.scheduled_at && new Date(b.scheduled_at) > new Date() && (
+                <Text style={styles.wait}>⏰ Goes out {when(b.scheduled_at)}</Text>
+              )}
+              <Text style={ui.muted}>
                 From {b.sender_text ?? '?'}
                 {b.sender_kind ? ` (${KIND_LABEL[b.sender_kind]})` : ''} · {when(b.created_at)}
                 {b.by_name ? ` · by ${b.by_name}` : ''}
@@ -284,6 +297,12 @@ function BatchDetail({ id }: { id: string }) {
                 />
               ))}
             </View>
+            {b.audience === 'leads' && (
+              <View style={styles.buttons}>
+                <Button title="✅ Who got it → lead list" variant="ghost" onPress={() => openLeads(id, true)} />
+                <Button title="❌ Who didn’t → lead list" variant="ghost" onPress={() => openLeads(id, false)} />
+              </View>
+            )}
             {b.audience === 'alumni' && (
               <Text style={ui.muted}>
                 On Alumni → Filter → SMS you can list who got this send and who didn’t (e.g. to send them another way).
@@ -298,12 +317,34 @@ function BatchDetail({ id }: { id: string }) {
   );
 }
 
+/** Alumni / Active leads / Not Now / Admitted / Test */
+function who(b: { audience: string; group_key?: string | null }): string {
+  if (b.audience === 'test') return '🧪 Test';
+  if (b.audience === 'alumni') return '🎓 Alumni';
+  return `👥 ${GROUP_LABEL[(b.group_key ?? 'active') as keyof typeof GROUP_LABEL] ?? 'Leads'}`;
+}
+
+/** These leads in the lead list (at most 1,000 in a link) */
+async function openLeads(batchId: string, got: boolean) {
+  try {
+    const ids = await batchLeadIds(batchId, got);
+    if (ids.length === 0) return say('Nobody', got ? 'Nobody got this SMS yet.' : 'Everyone got this SMS.');
+    router.push({ pathname: '/leads', params: { ids: ids.slice(0, 1000).join(',') } } as unknown as Href);
+  } catch (e) {
+    say('Could not open', errText(e));
+  }
+}
+
 function Row({ m }: { m: SmsMessage }) {
   const icon = m.status === 'sent' ? '✅' : m.status === 'failed' ? '❌' : m.status === 'cancelled' ? '⏹' : '⏳';
   return (
     <Pressable
-      disabled={!m.alumni_id}
-      onPress={() => m.alumni_id && router.push(`/alumni/${m.alumni_id}` as Href)}
+      disabled={!m.alumni_id && !m.lead_id}
+      onPress={() =>
+        m.lead_id
+          ? router.push(`/leads/${m.lead_id}` as Href)
+          : m.alumni_id && router.push(`/alumni/${m.alumni_id}` as Href)
+      }
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       <Text style={styles.icon}>{icon}</Text>

@@ -698,6 +698,8 @@ export function LeadDetailView({
         return `↩ Registration sent back${d.reason ? `: ${d.reason}` : ''}`;
       case 'registration_resubmitted':
         return `📝 Registration sent again${d.note ? ` · ${d.note}` : ''}`;
+      case 'sms_sent':
+        return `📨 SMS from ${d.sender ?? 'SMS'}: “${String(d.body ?? '').slice(0, 300)}”`;
       case 'final_fee_changed':
         return `💰 Final fee changed: ${money(Number(d.from ?? 0))} → ${money(Number(d.to ?? 0))} (discount ${money(Number(d.discount_from ?? 0))} → ${money(Number(d.discount_to ?? 0))})${d.reason ? ` · ${d.reason}` : ''}`;
       case 'student_ref_changed':

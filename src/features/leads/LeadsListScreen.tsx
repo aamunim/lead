@@ -13,6 +13,7 @@ import {
 } from '@/features/leads/find';
 import { useCanSeeAiChance, requestManyChances } from '@/features/aiChance/api';
 import { ask } from '@/features/aiChance/ask';
+import { canSendSms, smsDraft } from '@/features/sms/api';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation, type Href } from 'expo-router';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -144,7 +145,7 @@ import { MIcon, md } from '@/features/home/md';
 import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 
 // The floating buttons shown while leads are marked ("lost" opens the Lost sheet)
-type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received' | 'course' | 'ai' | 'bank';
+type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received' | 'course' | 'ai' | 'bank' | 'sms';
 
 const ACTIONS: {
   field: FloatAction;
@@ -179,6 +180,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   const { profile, hasPermission, assignmentOn, sharedMode, assignment, refreshProfile } = useAuth();
   // 🔮 the AI Hot chip (only for people who may see AI chance)
   const aiChanceOn = useCanSeeAiChance();
+  // 📨 may I send SMS (SMS Center)
+  const [smsOk, setSmsOk] = useState(false);
+  useEffect(() => {
+    canSendSms().then(setSmsOk);
+  }, []);
   // Everyone may give leads to someone (Settings → Lead assignment → Hand over)
   const mayHandOver = canHandOver(assignment, hasPermission);
 
@@ -1588,9 +1594,11 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       { key: 'received', field: 'received', label: 'ITTC', icon: 'account-balance' },
       { key: 'course', field: 'course', label: 'Course', icon: 'school' },
       { key: 'ai', field: 'ai', label: 'AI', icon: 'auto-awesome' },
+      { key: 'sms', field: 'sms', label: 'SMS', icon: 'sms' },
     ].filter(
       (a) =>
         a.field === 'rating' ||
+        (a.field === 'sms' && smsOk) ||
         (a.field === 'ai' && aiChanceOn && !students) ||
         actions.some((x) => x.field === a.field),
     ) as (ModernAction & {
@@ -1626,6 +1634,12 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
     };
     const runAction = (field: FloatAction) => {
       if (field === 'ai') return runAiMany();
+      if (field === 'sms') {
+        // 📨 to SMS Center with these leads (students → Admitted)
+        smsDraft.set([...selected], students ? 'admitted' : 'active');
+        setSelected(new Set());
+        return router.push('/sms' as Href);
+      }
       if (field === 'lost') return setLostVisible(true);
       if (field === 'bank') return setBankOpen(true);
       if (field === 'placement') return setMoveOpen(true);
@@ -2599,7 +2613,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                         courseIds: one.lead_courses.map((c) => c.course?.id ?? '').filter(Boolean),
                       });
                     }
-                    if (a.field === 'ai') return;
+                    if (a.field === 'ai' || a.field === 'sms') return;
                     setSheetField(a.field);
                   }}
                   disabled={markingAll}

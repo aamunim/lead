@@ -427,6 +427,10 @@ verify_jwt = false
 [functions.ai-alumni]
 verify_jwt = false
 
+# 📨🤖 SMS Center: AI drafts of an SMS (the function checks the signed-in user itself)
+[functions.ai-sms]
+verify_jwt = false
+
 # 🧑‍💼🤖 Supervisor AI: the 15-minute job (x-cron-secret) or a signed-in user (checked inside)
 [functions.ai-supervisor]
 verify_jwt = false
