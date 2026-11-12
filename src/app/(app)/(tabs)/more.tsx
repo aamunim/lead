@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { canSendSms } from '@/features/sms/api';
 import { Redirect, router, useFocusEffect, type Href } from 'expo-router';
 import { Children, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -64,6 +65,11 @@ function PhoneMore() {
   const [reportsAllowed, setReportsAllowed] = useState(false);
   // 🤝 Admission Contribution (Settings → AI → who sees the shares)
   const [contribOk, setContribOk] = useState(false);
+  // 📨 SMS Center (Settings → SMS → who may send)
+  const [smsOk, setSmsOk] = useState(false);
+  useEffect(() => {
+    canSendSms().then(setSmsOk);
+  }, []);
   useEffect(() => {
     canSeeContribution()
       .then(setContribOk)
@@ -358,6 +364,15 @@ function PhoneMore() {
 
         {/* 🧰 Tools */}
         <Section title="TOOLS">
+          {smsOk && (
+            <Row
+              icon="sms"
+              tone="purple"
+              title="SMS Center"
+              subtitle="SMS to Active, Not Now or Admitted (every filter), with AI"
+              onPress={go('/sms')}
+            />
+          )}
           {callSyncAllowed && (
             <Row
               icon="phone-callback"

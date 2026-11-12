@@ -201,9 +201,15 @@ export async function sendAlumniSms(opts: {
 // ---------------------------------------------------------------------
 // The sends
 // ---------------------------------------------------------------------
+export type SmsGroup = 'active' | 'not_now' | 'admitted';
+export const GROUP_LABEL: Record<SmsGroup, string> = { active: 'Active', not_now: 'Not Now', admitted: 'Admitted' };
+
 export type SmsBatch = {
   id: string;
-  audience: 'alumni' | 'test';
+  audience: 'alumni' | 'test' | 'leads';
+  group_key?: SmsGroup | null;
+  filter_label?: string | null;
+  scheduled_at?: string | null;
   name: string | null;
   message: string;
   sender_text: string | null;
@@ -227,6 +233,7 @@ export type SmsStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'cancelled';
 export type SmsMessage = {
   id: string;
   alumni_id: string | null;
+  lead_id?: string | null;
   name: string | null;
   phone: string;
   status: SmsStatus;
@@ -289,4 +296,128 @@ export const STATUS_LABEL: Record<SmsStatus, string> = {
   sent: 'Sent',
   failed: 'Failed',
   cancelled: 'Stopped',
+};
+
+// ---------------------------------------------------------------------
+// 📨 SMS Center: leads (Active / Not Now / Admitted)
+// ---------------------------------------------------------------------
+export type LeadSmsPreview = {
+  selected: number;
+  visible: number;
+  other_group: number;
+  no_number: number;
+  same_number: number;
+  got_sms_before: number;
+  will_get: number;
+};
+export async function previewLeadSms(ids: string[], group: SmsGroup): Promise<LeadSmsPreview> {
+  return rpc<LeadSmsPreview>('lead_sms_preview', { p_ids: ids, p_group: group });
+}
+
+export async function sendLeadSms(opts: {
+  ids: string[];
+  group: SmsGroup;
+  message: string;
+  senderId: string;
+  name?: string | null;
+  filterLabel?: string | null;
+  at?: Date | null;
+}): Promise<{ batch_id: string; queued: number; parts: number; scheduled_at: string | null }> {
+  return rpc('lead_sms_send', {
+    p_ids: opts.ids,
+    p_group: opts.group,
+    p_message: opts.message,
+    p_sender: opts.senderId,
+    p_name: opts.name ?? null,
+    p_filter_label: opts.filterLabel ?? null,
+    p_at: opts.at ? opts.at.toISOString() : null,
+  });
+}
+
+/** Who got this send (true) / who didn't (false): lead ids, to open in the lead list */
+export async function batchLeadIds(batchId: string, got: boolean): Promise<string[]> {
+  return rpc<string[]>('sms_batch_lead_ids', { p_batch: batchId, p_got: got });
+}
+
+export async function leadSms(leadId: string): Promise<AlumnusSms[]> {
+  return rpc<AlumnusSms[]>('lead_sms_list', { p_lead: leadId });
+}
+
+/** The placeholders an SMS to leads can use */
+export const LEAD_PLACEHOLDERS = [
+  '{first_name}',
+  '{name}',
+  '{course}',
+  '{stage}',
+  '{student_id}',
+  '{fee_due}',
+  '{owner}',
+  '{owner_phone}',
+] as const;
+
+/** One lead's values, for the preview */
+export function fillLeadSms(
+  text: string,
+  v: {
+    name: string;
+    course?: string | null;
+    stage?: string | null;
+    student_id?: string | null;
+    fee_due?: number | null;
+    owner?: string | null;
+    owner_phone?: string | null;
+  },
+): string {
+  return fillSms(text, v.name)
+    .replaceAll('{course}', v.course ?? '')
+    .replaceAll('{stage}', v.stage ?? '')
+    .replaceAll('{student_id}', v.student_id ?? '')
+    .replaceAll('{fee_due}', Math.round(v.fee_due ?? 0).toLocaleString('en-US'))
+    .replaceAll('{owner_phone}', v.owner_phone ?? '')
+    .replaceAll('{owner}', v.owner ?? '');
+}
+
+// 🤖 three drafts from the AI (Edge Function ai-sms)
+export type AiSmsInput = {
+  group: SmsGroup | 'alumni';
+  goal: string;
+  hint?: string;
+  tone?: string;
+  language: 'bn' | 'en';
+  length: number;
+  current?: string;
+  audience?: { count?: number; filter?: string };
+};
+export async function aiSmsDrafts(input: AiSmsInput): Promise<string[]> {
+  const { data, error } = await supabase.functions.invoke('ai-sms', { body: input });
+  if (error) {
+    let msg = error.message;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = await (error as any).context?.json?.();
+      if (body?.error) msg = body.error;
+    } catch {
+      /* keep the first message */
+    }
+    if (/not found|404|failed to send a request/i.test(msg)) {
+      msg = 'AI SMS is not ready on the server yet (Edge Function ai-sms). Please ask the admin to deploy it.';
+    }
+    throw new Error(msg);
+  }
+  const d = data as { options?: string[]; error?: string };
+  if (d?.error) throw new Error(d.error);
+  return d?.options ?? [];
+}
+
+// A choice handed from the lead list to SMS Center (too many ids for a link)
+let draftIds: { ids: string[]; group: SmsGroup } | null = null;
+export const smsDraft = {
+  set(ids: string[], group: SmsGroup) {
+    draftIds = { ids, group };
+  },
+  take(): { ids: string[]; group: SmsGroup } | null {
+    const d = draftIds;
+    draftIds = null;
+    return d;
+  },
 };

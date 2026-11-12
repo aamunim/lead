@@ -514,6 +514,8 @@ export function describeChange(
       return { text: `↩ Registration sent back${d.reason ? `: ${q(d.reason)}` : ''}`, warn: true };
     case 'registration_resubmitted':
       return { text: '📝 Registration sent again', warn: false };
+    case 'sms_sent':
+      return { text: `📨 SMS: ${q(String(d.body ?? '').slice(0, 120))}`, warn: false };
     case 'final_fee_changed':
       return {
         text: `💰 Final fee ৳${Math.round(Number(d.from ?? 0)).toLocaleString('en-IN')} → ৳${Math.round(Number(d.to ?? 0)).toLocaleString('en-IN')}${d.reason ? ` · ${q(d.reason)}` : ''}`,

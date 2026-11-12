@@ -6,6 +6,8 @@ import { Chip, s as ui } from '@/features/alumni/ui';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
+import { AiSmsSheet } from './AiSmsSheet';
+
 import {
   fillSms,
   KIND_LABEL,
@@ -57,6 +59,7 @@ export function SmsComposeSheet({
   const [preview, setPreview] = useState<SmsPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     mySenders()
@@ -112,6 +115,21 @@ export function SmsComposeSheet({
     }
   };
 
+  if (aiOpen) {
+    return (
+      <AiSmsSheet
+        group="alumni"
+        count={preview?.will_get}
+        current={text}
+        onClose={() => setAiOpen(false)}
+        onPick={(t) => {
+          setText(t);
+          setAiOpen(false);
+        }}
+      />
+    );
+  }
+
   return (
     <Sheet title={`📨 SMS · ${ids.length} marked`} onClose={onClose}>
       {senders === null ? (
@@ -134,6 +152,7 @@ export function SmsComposeSheet({
             ))}
           </View>
 
+          <Button title="🤖 Write with AI" variant="secondary" onPress={() => setAiOpen(true)} />
           <Text style={ui.label}>
             MESSAGE · {len.chars} letters · {len.parts} SMS each{len.unicode ? ' (Bangla: 70 letters a SMS)' : ''}
           </Text>
