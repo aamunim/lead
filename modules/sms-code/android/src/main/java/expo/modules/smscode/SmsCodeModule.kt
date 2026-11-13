@@ -51,9 +51,9 @@ class SmsCodeModule : Module() {
         @Suppress("DEPRECATION")
         val status = extras.get(SmsRetriever.EXTRA_STATUS) as? Status
         if (status?.statusCode == CommonStatusCodes.SUCCESS) {
-          finish(extras.getString(SmsRetriever.EXTRA_SMS_MESSAGE))
+          finishIf(this, extras.getString(SmsRetriever.EXTRA_SMS_MESSAGE))
         } else {
-          finish(null) // 5 minutes passed
+          finishIf(this, null) // 5 minutes passed
         }
       }
     }
@@ -70,10 +70,17 @@ class SmsCodeModule : Module() {
         null,
         ContextCompat.RECEIVER_EXPORTED,
       )
-      SmsRetriever.getClient(ctx).startSmsRetriever().addOnFailureListener { finish(null) }
+      // a late failure of an earlier wait must not end a newer one
+      SmsRetriever.getClient(ctx).startSmsRetriever().addOnFailureListener { finishIf(r, null) }
     } catch (e: Exception) {
-      finish(null)
+      finishIf(r, null)
     }
+  }
+
+  /** Ends the wait only if it is still the one this listener belongs to */
+  private fun finishIf(owner: BroadcastReceiver, message: String?) {
+    val mine = synchronized(this) { receiver === owner }
+    if (mine) finish(message)
   }
 
   private fun finish(message: String?) {

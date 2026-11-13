@@ -56,16 +56,22 @@ function PhoneLogin() {
 
   const passwordRef = useRef<TextInput>(null);
 
-  // 📱 Mobile + SMS code, when an admin has it on (the choice from last time is kept)
+  // 📱 Mobile + SMS code, when an admin has it on (the choice from last time is kept;
+  //    it never switches by itself once you have started typing)
   const [otpOn, setOtpOn] = useState(false);
   const [mode, setMode] = useState<'otp' | 'email'>('email');
+  const typed = useRef(false);
   useEffect(() => {
     let live = true;
-    Promise.all([otpLoginReady(), AsyncStorage.getItem(MODE_KEY).catch(() => null)]).then(([on, saved]) => {
-      if (!live) return;
-      setOtpOn(on);
-      if (on && saved !== 'email') setMode('otp');
-    });
+    AsyncStorage.getItem(MODE_KEY)
+      .catch(() => null)
+      .then((saved) => {
+        otpLoginReady().then((on) => {
+          if (!live) return;
+          setOtpOn(on);
+          if (on && saved !== 'email' && !typed.current) setMode('otp');
+        });
+      });
     return () => {
       live = false;
     };
@@ -225,6 +231,7 @@ function PhoneLogin() {
                   label="Email"
                   value={email}
                   onChangeText={(v) => {
+                    typed.current = true;
                     setEmail(v);
                     if (errors.email) setErrors((e) => ({ ...e, email: undefined }));
                   }}
@@ -244,6 +251,7 @@ function PhoneLogin() {
                   label="Password"
                   value={password}
                   onChangeText={(v) => {
+                    typed.current = true;
                     setPassword(v);
                     if (errors.password) setErrors((e) => ({ ...e, password: undefined }));
                   }}

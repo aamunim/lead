@@ -3,9 +3,10 @@
 //   POST { action: 'send', phone, app_hash? }  → { ok, hint } | { error, wait? }
 //   POST { action: 'verify', phone, code }     → { access_token, refresh_token } | { error }
 //   Open to anyone (it is the sign-in page): the limits, the code and the
-//   number checks are in the database (otp_login_start / _check). The SMS
-//   goes straight to the SMS company in use, from its non-masking sender,
-//   so the person gets it in seconds and a failure is shown at once.
+//   number checks are in the database (otp_login_start / _check). The
+//   database sends the SMS (pg_net, from the non-masking sender, like all
+//   other SMS); this waits a few seconds for the company's answer so a
+//   failure is shown at once. The API key and the code never come here.
 //   A right code gives a normal Supabase session for that user's account
 //   (a sign-in link is made on the server and used at once; no email).
 // =====================================================================
@@ -15,49 +16,47 @@ import { admin, cors, json, SUPABASE_URL } from '../_shared/drive.ts';
 
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-type Start = { id?: string; url?: string; method?: string; hint?: string; error?: string; wait?: number };
+type Start = { id?: string; hint?: string; error?: string; wait?: number };
 type Check = { user_id?: string; email?: string; error?: string };
+type Status = { done?: boolean; problem?: string | null };
 
-/** The caller's internet address (for the per-network limit) */
+/**
+ * The caller's internet address (for the per-network limit). The gateway adds
+ * the real address at the END of x-forwarded-for; the start can be written by
+ * the caller, so it is not trusted.
+ */
 function callerIp(req: Request): string | null {
-  const f = req.headers.get('x-forwarded-for');
-  if (f) return f.split(',')[0].trim() || null;
-  return req.headers.get('x-real-ip') ?? req.headers.get('cf-connecting-ip');
+  const real = req.headers.get('x-real-ip')?.trim();
+  if (real) return real;
+  const parts = (req.headers.get('x-forwarded-for') ?? '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : null;
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function send(phone: string, appHash: string, ip: string | null): Promise<Response> {
   const { data, error } = await admin.rpc('otp_login_start', { p_phone: phone, p_ip: ip, p_app_hash: appHash || null });
   if (error) throw new Error(error.message);
   const s = (data ?? {}) as Start;
-  if (s.error || !s.id || !s.url) return json({ error: s.error ?? 'Could not make a code.', wait: s.wait }, 400);
+  if (s.error || !s.id) return json({ error: s.error ?? 'Could not make a code.', wait: s.wait }, 400);
 
-  // to the SMS company (it answers in a second or two)
-  let status: number | null = null;
-  let content: string | null = null;
-  let failure: string | null = null;
-  try {
-    const res = await fetch(s.url, {
-      method: s.method === 'POST' ? 'POST' : 'GET',
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(15000),
-    });
-    status = res.status;
-    content = (await res.text()).slice(0, 2000);
-  } catch (e) {
-    failure = e instanceof Error && e.name === 'TimeoutError' ? 'No answer from the SMS company (timed out)' : String(e);
+  // the database sends the SMS (pg_net); wait a few seconds for the company's answer
+  for (let i = 0; i < 12; i++) {
+    await sleep(i === 0 ? 400 : 700);
+    const { data: st, error: e2 } = await admin.rpc('otp_login_status', { p_id: s.id });
+    if (e2) break;
+    const status = (st ?? {}) as Status;
+    if (!status.done) continue;
+    if (status.problem) {
+      console.error('otp sms failed:', status.problem.slice(0, 200));
+      return json({ error: 'The SMS could not be sent. Sign in with email, or try again later.' }, 502);
+    }
+    break;
   }
-
-  const { data: problem, error: e2 } = await admin.rpc('otp_login_sent', {
-    p_id: s.id,
-    p_status: status,
-    p_content: content,
-    p_error: failure,
-  });
-  if (e2) throw new Error(e2.message);
-  if (problem) {
-    console.error('otp sms failed', problem);
-    return json({ error: 'The SMS could not be sent. Sign in with email, or try again later.' }, 502);
-  }
+  // sent (or no answer yet: it usually still arrives)
   return json({ ok: true, hint: s.hint });
 }
 

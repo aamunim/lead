@@ -33,6 +33,8 @@ import {
   type SmsSettings,
 } from '@/features/sms/api';
 import { supabase } from '@/shared/lib/supabase';
+
+import { smsAppHash } from '../../../../modules/sms-code';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
@@ -223,6 +225,7 @@ export default function SmsSettingsScreen() {
           </View>
           <Switch value={settings.otp_login} onValueChange={(v) => set({ ...settings, otp_login: v })} />
         </View>
+        {settings.otp_login && <AppCodes settings={settings} set={set} />}
       </View>
 
       <RuleCard
@@ -851,6 +854,15 @@ function TestCard({ provider }: { provider: SmsProvider }) {
 }
 
 const styles = StyleSheet.create({
+  codes: {
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  codeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  codeText: { fontSize: fontSize.body, color: colors.text, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  codeRemove: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.danger },
   screen: { flex: 1, backgroundColor: colors.background },
   content: {
     padding: spacing.lg,
@@ -901,3 +913,42 @@ const styles = StyleSheet.create({
   bannerText: { fontSize: fontSize.small, color: colors.text },
   result: { gap: 4, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.background },
 });
+
+/**
+ * 📲 The phone reads the code SMS by itself only when the SMS ends with the
+ * app's code. The code differs for the Play Store app and an APK installed
+ * by hand, so an admin allows each one here from a phone with that app.
+ * (Only allowed codes are used: another app's code would let it read the SMS.)
+ */
+function AppCodes({ settings, set }: { settings: SmsSettings; set: (s: SmsSettings) => void }) {
+  const mine = smsAppHash();
+  const list = settings.otp_app_hashes ?? [];
+  const save = (next: string[]) => set({ ...settings, otp_app_hashes: next });
+  return (
+    <View style={styles.codes}>
+      <Text style={styles.title}>📲 Code read by the phone itself</Text>
+      <Text style={ui.muted}>
+        Android fills in the code by itself only for the app codes allowed here. Open this page once on a phone with the
+        Play Store app (and once with the APK, if you use one) and tap Allow. Without it, the keyboard still offers the
+        code in one tap.
+      </Text>
+      {list.map((h) => (
+        <View key={h} style={styles.codeRow}>
+          <Text style={styles.codeText}>
+            {h}
+            {h === mine ? '  (this phone)' : ''}
+          </Text>
+          <Pressable onPress={() => save(list.filter((x) => x !== h))} hitSlop={8} accessibilityRole="button">
+            <Text style={styles.codeRemove}>Remove</Text>
+          </Pressable>
+        </View>
+      ))}
+      {!!mine && !list.includes(mine) && (
+        <Button title={`Allow this phone's app (${mine})`} variant="secondary" onPress={() => save([...list, mine])} />
+      )}
+      {!mine && list.length === 0 && (
+        <Text style={ui.muted}>Open this page on an Android phone with app 2.8.6 or newer to allow it.</Text>
+      )}
+    </View>
+  );
+}

@@ -36,12 +36,15 @@ export function OtpLogin({ onFail }: { onFail: () => void }) {
   const codeRef = useRef<ComponentRef<typeof TextField>>(null);
   const focusCode = () => (codeRef.current as unknown as { focus?: () => void } | null)?.focus?.();
   const checking = useRef(false);
+  const sending = useRef(false);
   const alive = useRef(true);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // which send the SMS reader belongs to (a new send or leaving the page ends it)
   const round = useRef(0);
 
   // the number from last time
   useEffect(() => {
+    alive.current = true;
     AsyncStorage.getItem(PHONE_KEY)
       .then((saved) => {
         if (saved) setPhone((now) => now || saved);
@@ -50,6 +53,7 @@ export function OtpLogin({ onFail }: { onFail: () => void }) {
     return () => {
       alive.current = false;
       round.current += 1;
+      if (focusTimer.current) clearTimeout(focusTimer.current);
       stopSmsCode();
     };
   }, []);
@@ -84,12 +88,14 @@ export function OtpLogin({ onFail }: { onFail: () => void }) {
   };
 
   const send = async () => {
+    if (sending.current || wait > 0) return;
     const mobile = bdMobile(phone);
     if (!mobile) {
       setError('Write your mobile number, like 01711-000000.');
       onFail();
       return;
     }
+    sending.current = true;
     setBusy(true);
     setError(null);
 
@@ -116,7 +122,7 @@ export function OtpLogin({ onFail }: { onFail: () => void }) {
       setCode('');
       setStep('code');
       setWait(RESEND_AFTER);
-      setTimeout(() => focusCode(), 300);
+      focusTimer.current = setTimeout(() => focusCode(), 300);
     } catch (e) {
       if (!alive.current) return;
       round.current += 1;
@@ -126,6 +132,7 @@ export function OtpLogin({ onFail }: { onFail: () => void }) {
       if (e instanceof OtpError && e.wait) setWait(e.wait);
       onFail();
     } finally {
+      sending.current = false;
       if (alive.current) setBusy(false);
     }
   };

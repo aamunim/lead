@@ -38,6 +38,8 @@ export type SmsSettings = {
   max_per_send: number;
   /** 🔐 the login page offers "mobile + SMS code" (non-masking sender) */
   otp_login: boolean;
+  /** 📲 app codes that may go on the code SMS (Android reads it then); others are ignored */
+  otp_app_hashes: string[];
 };
 export const DEFAULT_SMS_SETTINGS: SmsSettings = {
   enabled: false,
@@ -45,6 +47,7 @@ export const DEFAULT_SMS_SETTINGS: SmsSettings = {
   per_minute: 60,
   max_per_send: 5000,
   otp_login: true,
+  otp_app_hashes: [],
 };
 
 export async function getSmsSettings(): Promise<SmsSettings> {
