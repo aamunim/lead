@@ -113,6 +113,7 @@ const styles = StyleSheet.create({
   row: { gap: spacing.xs },
   input: {
     minHeight: 140,
+    maxHeight: 220,
     padding: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,

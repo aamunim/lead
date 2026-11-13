@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: fontSize.body,
   },
-  multi: { minHeight: 110, textAlignVertical: 'top' },
+  multi: { minHeight: 110, maxHeight: 160, textAlignVertical: 'top' },
   text: { fontSize: fontSize.body, color: colors.text },
   big: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
   preview: { gap: 4, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.background },

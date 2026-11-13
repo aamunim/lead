@@ -75,7 +75,7 @@ function PickAlumnus({
   onClose: () => void;
   onPick: (id: string | null) => Promise<void>;
 }) {
-  const inputRef = useSheetFocus();
+  const focus = useSheetFocus();
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<Awaited<ReturnType<typeof searchAlumni>>>([]);
   const [loading, setLoading] = useState(false);
@@ -104,7 +104,7 @@ function PickAlumnus({
   };
 
   return (
-    <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose} onShow={focus.onShow}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
       <View style={styles.sheet}>
         <Text style={styles.title}>🎓 Who referred this lead?</Text>
@@ -114,7 +114,7 @@ function PickAlumnus({
           placeholder="Search alumni: name, phone, school"
           placeholderTextColor={colors.textMuted}
           style={styles.input}
-          ref={inputRef}
+          ref={focus.ref}
           accessibilityLabel="Search alumni"
         />
         {error && <Text style={ui.error}>{error}</Text>}

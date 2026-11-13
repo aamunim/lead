@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -488,7 +489,7 @@ export function LeadFilterSheet({
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.content}>
             {fields.map(renderField)}
 
             {/* Save as a named filter */}
@@ -552,7 +553,7 @@ export function LeadFilterSheet({
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             )}
-          </ScrollView>
+          </SheetScroll>
         )}
 
         {/* Footer: stays above the phone's navigation bar */}
