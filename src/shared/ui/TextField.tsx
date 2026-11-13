@@ -19,6 +19,8 @@ type TextFieldProps = TextInputProps & {
   hint?: string;
   required?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
+  /** 📞 a student's number: a soft note when it is not a Bangladesh mobile (gets no SMS) */
+  smsCheck?: boolean;
 };
 
 export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField(
@@ -28,6 +30,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
     hint,
     required = false,
     containerStyle,
+    smsCheck = false,
     secureTextEntry,
     editable = true,
     onFocus,
@@ -48,7 +51,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
   //    a soft note when it is not a Bangladesh mobile number (saving still works)
   const isPhone = keyboardType === 'phone-pad';
   const phoneNote =
-    isPhone && !focused && typeof value === 'string' && value.replace(/\D/g, '').length >= 5
+    smsCheck && !focused && typeof value === 'string' && value.replace(/\D/g, '').length >= 5
       ? bdPhoneProblem(value)
       : null;
 

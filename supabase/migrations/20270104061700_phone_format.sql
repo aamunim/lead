@@ -12,8 +12,10 @@
 --   saved as before, it just gets no SMS.
 --   SMS: a lead with no good mobile in Phone gets it on Alt phone (the
 --   student's own; never the guardian's).
---   Old data is NOT changed here: phone_format_report() lists what is
---   wrong and what could be fixed (a later step, after a look).
+--   Old data is not changed in bulk: phone_format_report() lists what is
+--   wrong and what could be fixed. A saved lead is tidied when it is saved
+--   again (its phone hash follows), and no number is ever dropped: a second
+--   one goes to Alt phone, any more to the notes ("Other number: …").
 -- =====================================================================
 
 -- one run of digits → 01XXXXXXXXX, or null
@@ -54,11 +56,18 @@ begin
     -- two numbers run together (22 digits)
     if length(d) = 22 and substr(d, 1, 2) = '01' and substr(d, 12, 2) = '01' then
       res := res || public.bd_mobile_one(substr(d, 1, 11)) || public.bd_mobile_one(substr(d, 12, 11));
+    elsif length(d) = 26 and substr(d, 1, 4) = '8801' and substr(d, 14, 4) = '8801' then
+      res := res || public.bd_mobile_one(substr(d, 1, 13)) || public.bd_mobile_one(substr(d, 14, 13));
     else
       res := res || public.bd_mobile_one(d);
     end if;
   end loop;
-  return array_remove(res, null);
+  res := array_remove(res, null);
+  -- no number in the parts: one number with a mark inside ("01711/549594")
+  if cardinality(res) = 0 then
+    res := array_remove(array[public.bd_mobile_one(regexp_replace(t, '[^0-9]', '', 'g'))], null);
+  end if;
+  return res;
 end;
 $$;
 
@@ -92,7 +101,7 @@ as $$
   from (select regexp_replace(
                  regexp_replace(regexp_replace(translate(coalesce(p, ''), '০১২৩৪৫৬৭৮৯', '0123456789'), '[^0-9]', '', 'g'),
                                 '^00', ''),
-                 '^880?', '0') as d) x;
+                 '^880?(?=1[3-9])', '0') as d) x;
 $$;
 grant execute on function public.bd_phone_problem(text) to authenticated;
 
@@ -147,27 +156,116 @@ begin
 end;
 $$;
 
--- a lead: two numbers in Phone → the second to Alt phone (when empty)
---   (named to run before leads_before_write, which then tidies both)
+-- the other numbers written in a box besides the first mobile (more mobiles,
+-- landlines…), each tidied; [] when there is only one number
+create or replace function public.phone_extras(p text)
+returns text[]
+language plpgsql
+immutable
+as $$
+declare
+  first text := public.bd_mobile(p);
+  part  text;
+  m     text[];
+  res   text[] := '{}';
+begin
+  if p is null or first is null or p ~ '^01[3-9][0-9]{8}$' then return res; end if;
+  for part in
+    select x from regexp_split_to_table(translate(p, '০১২৩৪৫৬৭৮৯', '0123456789'),
+                                        '\s*(,|/|;|\||\n|\s+or\s+|\s+বা\s+)\s*', 'i') x
+  loop
+    m := public.bd_mobiles(part);
+    if cardinality(m) > 0 then
+      res := res || m;
+    elsif length(regexp_replace(part, '[^0-9]', '', 'g')) >= 5 then
+      res := res || public.normalize_bd_phone(part);
+    end if;
+  end loop;
+  -- the first mobile stays in Phone; the rest, once each
+  return array(select distinct on (x) x from unnest(array_remove(res, first)) with ordinality t(x, i)
+               where x is not null order by x, i);
+end;
+$$;
+
+-- a lead: Phone keeps the first mobile; the next number goes to Alt phone (when
+-- empty) and any more to the notes — nothing is dropped. Runs before
+-- leads_before_write (which then tidies both) on every save of a Phone that
+-- is not already a clean 01XXXXXXXXX (so old rows saved again are covered too).
 create or replace function public.leads_split_phone()
 returns trigger
 language plpgsql
 as $$
 declare
-  m text[];
+  extra text[];
 begin
-  if new.phone is not null and (tg_op = 'INSERT' or new.phone is distinct from old.phone) then
-    m := public.bd_mobiles(new.phone);
-    if cardinality(m) >= 2 and nullif(trim(coalesce(new.alt_phone, '')), '') is null and m[2] <> m[1] then
-      new.alt_phone := m[2];
-    end if;
+  if new.phone is null or new.phone ~ '^01[3-9][0-9]{8}$' then return new; end if;
+  extra := public.phone_extras(new.phone);
+  if cardinality(extra) = 0 then return new; end if;
+  new.phone := public.bd_mobile(new.phone);
+  if nullif(trim(coalesce(new.alt_phone, '')), '') is null then
+    new.alt_phone := extra[1];
+    extra := extra[2:];
+  else
+    extra := array_remove(extra, public.normalize_bd_phone(new.alt_phone));
+  end if;
+  if cardinality(extra) > 0 then
+    new.notes := concat_ws(E'\n', nullif(trim(coalesce(new.notes, '')), ''),
+                           'Other number: ' || array_to_string(extra, ', '));
   end if;
   return new;
 end;
 $$;
 drop trigger if exists leads_0_split_phone on public.leads;
-create trigger leads_0_split_phone before insert or update of phone on public.leads
+create trigger leads_0_split_phone before insert or update on public.leads
   for each row execute function public.leads_split_phone();
+
+-- the phone hashes follow the saved numbers even when a trigger (not the
+-- SET list) changed them
+create or replace function public.leads_phone_hashes()
+returns trigger
+language plpgsql
+set search_path = public, extensions
+as $$
+begin
+  if tg_op = 'INSERT' or new.phone is distinct from old.phone or new.phone_hash is null then
+    new.phone_hash := case when new.phone is null then null else encode(digest(new.phone, 'sha256'), 'hex') end;
+  end if;
+  if tg_op = 'INSERT' or new.alt_phone is distinct from old.alt_phone or new.alt_phone_hash is null then
+    new.alt_phone_hash := case when new.alt_phone is null then null else encode(digest(new.alt_phone, 'sha256'), 'hex') end;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists leads_phone_hashes on public.leads;
+create trigger leads_phone_hashes before insert or update on public.leads
+  for each row execute function public.leads_phone_hashes();
+
+-- import and "save phone contacts as leads": the number goes in as it was
+-- written, so the trigger above keeps a second number (it used to be dropped)
+do $$
+declare
+  src text;
+begin
+  src := pg_get_functiondef('public.import_leads'::regproc);
+  if position('      v_name, v_phone,' in src) = 0 or position('        phone             = coalesce(phone, v_phone),' in src) = 0 then
+    raise exception 'import_leads is not as expected; update this migration';
+  end if;
+  src := replace(src, '      v_name, v_phone,',
+                 '      v_name, case when cardinality(public.phone_extras(r ->> ''phone'')) > 0 then r ->> ''phone'' else v_phone end,');
+  src := replace(src, '        phone             = coalesce(phone, v_phone),',
+                 '        phone             = coalesce(phone, case when cardinality(public.phone_extras(r ->> ''phone'')) > 0 then r ->> ''phone'' else v_phone end),');
+  execute src;
+
+  src := pg_get_functiondef('public.save_contacts_as_leads'::regproc);
+  if position('      coalesce(v_name, v_phone),
+      v_phone,' in src) = 0 then
+    raise exception 'save_contacts_as_leads is not as expected; update this migration';
+  end if;
+  src := replace(src, '      coalesce(v_name, v_phone),
+      v_phone,', '      coalesce(v_name, v_phone),
+      case when cardinality(public.phone_extras(v_row ->> ''phone'')) > 0 then v_row ->> ''phone'' else v_phone end,');
+  execute src;
+end $$;
 
 -- 📨 SMS: the same rule
 create or replace function public.sms_number(p_phone text, p_format text default '0')
@@ -350,7 +448,8 @@ set jit = off
 as $$
   select coalesce(jsonb_agg(jsonb_build_object(
            'id', b.id, 'name', b.name, 'phone', b.phone, 'alt_phone', b.alt_phone,
-           'why', public.bd_phone_problem(b.phone)) order by b.name), '[]'::jsonb)
+           'why', public.bd_phone_problem(coalesce(nullif(trim(coalesce(b.phone, '')), ''), b.alt_phone)))
+           order by b.name), '[]'::jsonb)
   from (
     select l.id, l.name, l.phone, l.alt_phone
     from public.leads l
@@ -388,7 +487,10 @@ begin
     select 'lead_bank.phone', id, name, phone from public.lead_bank where phone is not null
   ),
   y as (
-    select x.*, public.bd_mobiles(val) as mobs, public.bd_phone_problem(val) as why from x
+    select x.*,
+           case when val ~ '^01[3-9][0-9]{8}$' then array[val] else public.bd_mobiles(val) end as mobs,
+           case when val ~ '^01[3-9][0-9]{8}$' then null else public.bd_phone_problem(val) end as why
+    from x
   ),
   z as (
     select y.*, mobs[1] as good,

@@ -215,7 +215,13 @@ export default function AlumnusEditScreen() {
       <View style={ui.card}>
         <Text style={ui.label}>CONTACT</Text>
         <TextField label="Name *" value={form.name} onChangeText={(v) => set('name', v)} autoCapitalize="words" />
-        <TextField label="Phone" value={form.phone} onChangeText={(v) => set('phone', v)} keyboardType="phone-pad" />
+        <TextField
+          label="Phone"
+          value={form.phone}
+          onChangeText={(v) => set('phone', v)}
+          keyboardType="phone-pad"
+          smsCheck
+        />
         <TextField
           label="WhatsApp (if different)"
           value={form.whatsapp_number}

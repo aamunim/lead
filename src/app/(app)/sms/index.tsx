@@ -123,7 +123,7 @@ export default function SmsCenterScreen() {
       // the ones taken out by hand are not listed
       setBad(await leadSmsBadNumbers(ids, group));
     } catch (e) {
-      setSheet(null);
+      setSheet((now) => (now === 'bad' ? null : now));
       say('Could not load', errText(e));
     }
   };

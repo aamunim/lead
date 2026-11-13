@@ -445,6 +445,7 @@ export default function LeadFormScreen() {
         <TextField
           label="Phone"
           value={form.phone}
+          smsCheck
           onChangeText={(v) => set('phone', v)}
           error={phoneLive}
           keyboardType="phone-pad"
@@ -625,6 +626,7 @@ export default function LeadFormScreen() {
         <TextField
           label="Alternative phone"
           value={form.altPhone}
+          smsCheck
           onChangeText={(v) => set('altPhone', v)}
           error={errors.altPhone}
           keyboardType="phone-pad"

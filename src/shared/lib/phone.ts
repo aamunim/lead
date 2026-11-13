@@ -28,10 +28,18 @@ export function bdMobiles(text: string | null | undefined): string[] {
     if (!d) continue;
     if (d.length === 22 && d.startsWith('01') && d.slice(11, 13) === '01') {
       [one(d.slice(0, 11)), one(d.slice(11))].forEach((m) => m && out.push(m));
+    } else if (d.length === 26 && d.startsWith('8801') && d.slice(13, 17) === '8801') {
+      // +880… +880… run together
+      [one(d.slice(0, 13)), one(d.slice(13))].forEach((m) => m && out.push(m));
     } else {
       const m = one(d);
       if (m) out.push(m);
     }
+  }
+  // no number in the parts: one number with a mark inside ("01711/549594")
+  if (out.length === 0) {
+    const m = one(toEnglishDigits(text));
+    if (m) out.push(m);
   }
   return out;
 }
@@ -45,7 +53,10 @@ export function bdMobile(text: string | null | undefined): string | null {
 export function bdPhoneProblem(text: string | null | undefined): string | null {
   if (!text?.trim()) return 'No number';
   if (bdMobile(text)) return null;
-  const d = toEnglishDigits(text).replace(/\D/g, '').replace(/^00/, '').replace(/^880?/, '0');
+  const d = toEnglishDigits(text)
+    .replace(/\D/g, '')
+    .replace(/^00/, '')
+    .replace(/^880?(?=1[3-9])/, '0');
   if (!d) return 'No digits';
   if (!/^0?1/.test(d) && d.length >= 6 && d.length <= 10) return 'Landline (no SMS)';
   if (/^0?1[0-2]/.test(d)) return 'Wrong operator code';
