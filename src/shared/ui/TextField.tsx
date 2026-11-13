@@ -1,15 +1,16 @@
 import { forwardRef, useState } from 'react';
 import {
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
-    type StyleProp,
-    type TextInputProps,
-    type ViewStyle,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type StyleProp,
+  type TextInputProps,
+  type ViewStyle,
 } from 'react-native';
 
+import { bdPhoneProblem, toEnglishDigits } from '@/shared/lib/phone';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 type TextFieldProps = TextInputProps & {
@@ -31,6 +32,9 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
     editable = true,
     onFocus,
     onBlur,
+    onChangeText,
+    keyboardType,
+    value,
     ...rest
   },
   ref,
@@ -40,6 +44,13 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
 
   const isPassword = !!secureTextEntry;
   const hasError = !!error;
+  // 📞 a phone box: Bangla digits become 0-9 as you type; after leaving the box,
+  //    a soft note when it is not a Bangladesh mobile number (saving still works)
+  const isPhone = keyboardType === 'phone-pad';
+  const phoneNote =
+    isPhone && !focused && typeof value === 'string' && value.replace(/\D/g, '').length >= 5
+      ? bdPhoneProblem(value)
+      : null;
 
   return (
     <View style={[styles.container, containerStyle]}>
@@ -71,6 +82,9 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
             setFocused(false);
             onBlur?.(e);
           }}
+          keyboardType={keyboardType}
+          value={value}
+          onChangeText={isPhone && onChangeText ? (t) => onChangeText(toEnglishDigits(t)) : onChangeText}
           {...rest}
         />
 
@@ -88,6 +102,8 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
 
       {hasError ? (
         <Text style={styles.error}>{error}</Text>
+      ) : phoneNote ? (
+        <Text style={styles.warn}>⚠️ {phoneNote} — no SMS to this number</Text>
       ) : hint ? (
         <Text style={styles.hint}>{hint}</Text>
       ) : null}
@@ -145,5 +161,9 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: fontSize.caption,
     color: colors.textMuted,
+  },
+  warn: {
+    fontSize: fontSize.caption,
+    color: colors.warning,
   },
 });

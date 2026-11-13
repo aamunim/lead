@@ -323,6 +323,8 @@ export type LeadSmsPreview = {
   no_number: number;
   same_number: number;
   got_sms_before: number;
+  /** no good mobile in Phone, so it goes to Alt phone */
+  alt_used?: number;
   will_get: number;
 };
 export async function previewLeadSms(ids: string[], group: SmsGroup): Promise<LeadSmsPreview> {
@@ -482,4 +484,26 @@ export async function aiSmsPlan(opts: {
 /** One AI group's lead ids (asked when "Use" is tapped; the AI answer carries none) */
 export async function aiSegmentIds(key: string, skipDays: number): Promise<string[]> {
   return rpc<string[]>('sms_ai_segment_ids', { p_key: key, p_skip_days: skipDays });
+}
+
+/** 📵 The leads of a send that get no SMS, and why (at most 200) */
+export type BadNumber = {
+  id: string;
+  name: string;
+  phone: string | null;
+  alt_phone: string | null;
+  why: string | null;
+};
+export async function leadSmsBadNumbers(ids: string[], group: SmsGroup): Promise<BadNumber[]> {
+  return rpc<BadNumber[]>('lead_sms_bad_numbers', { p_ids: ids, p_group: group });
+}
+
+/** 🔎 Settings → SMS: numbers not written as a good mobile (old data; nothing is changed) */
+export type PhoneReport = {
+  boxes: { box: string; total: number; ok: number; can_fix: number; cannot_fix: number; two_numbers: number }[];
+  can_fix_sample: { box: string; id: string; name: string; now: string; would_be: string; second: string | null }[];
+  cannot_fix_sample: { box: string; id: string; name: string; now: string; why: string | null }[];
+};
+export async function phoneFormatReport(): Promise<PhoneReport> {
+  return rpc<PhoneReport>('phone_format_report');
 }
