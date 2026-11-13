@@ -22,11 +22,8 @@
 --   • A profile's mobile number now belongs to one active person only, and
 --     only a Super Admin may change a Super Admin's number (the number is a
 --     way in now).
---   • Everyone, the Super Admin too, may sign in with a code. So that no
---     other admin can catch a code: only a Super Admin may change where SMS
---     go (the SMS company's address, method, number format, API key, which
---     company is in use, adding or removing one) and which app codes are
---     allowed.
+--   • A Super Admin never signs in with a code (other admins can change the
+--     SMS settings, so the code must not be a way into the top account).
 -- =====================================================================
 
 create table if not exists public.login_otps (
@@ -137,6 +134,14 @@ begin
      and (select count(*) from public.login_otps
           where ip = v_ip and user_id is null and created_at > now() - interval '1 hour') >= 30 then
     return jsonb_build_object('error', 'Too many tries from this network. Try again later.');
+  end if;
+
+  -- 🛡️ a Super Admin signs in with email and password only (the SMS settings can be
+  --    changed by other admins, so the code must never be the way into a Super Admin)
+  if coalesce(array_length(v_users, 1), 0) = 1
+     and exists (select 1 from public.profiles where id = v_users[1] and role_key = 'super_admin') then
+    insert into public.login_otps (id, phone, ip, sent, error) values (v_id, v_phone, v_ip, false, 'super admin');
+    return jsonb_build_object('error', 'A Super Admin signs in with email and password.');
   end if;
 
   if coalesce(array_length(v_users, 1), 0) <> 1 then
@@ -271,7 +276,7 @@ begin
 
   select u.email into v_email
   from auth.users u join public.profiles p on p.id = u.id
-  where u.id = r.user_id and p.is_active and p.deleted_at is null;
+  where u.id = r.user_id and p.is_active and p.deleted_at is null and p.role_key <> 'super_admin';
   if v_email is null then
     return jsonb_build_object('error', 'This account cannot sign in. Ask an admin.');
   end if;
@@ -334,60 +339,6 @@ drop trigger if exists profiles_phone_guard on public.profiles;
 create trigger profiles_phone_guard
   before update of phone, is_active, deleted_at on public.profiles
   for each row execute function public.profiles_phone_guard();
-
--- ---------------------------------------------------------------------
--- 5. Where SMS go carries sign-in codes now: only a Super Admin changes it
---    (the server itself, with no signed-in user, still may)
--- ---------------------------------------------------------------------
-create or replace function public.sms_providers_guard()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if auth.uid() is null or public.current_role_key() = 'super_admin' then
-    return coalesce(new, old);
-  end if;
-  if tg_op = 'INSERT' or tg_op = 'DELETE'
-     or new.send_url is distinct from old.send_url
-     or new.method is distinct from old.method
-     or new.number_format is distinct from old.number_format
-     or new.is_active is distinct from old.is_active
-     -- another account's key would show the codes in that account's SMS log
-     or new.api_key is distinct from old.api_key then
-    raise exception 'Only a Super Admin can change where SMS are sent (the SMS company, its address, its API key or which one is in use), because sign-in codes go this way too.';
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists sms_providers_guard on public.sms_providers;
-create trigger sms_providers_guard
-  before insert or update or delete on public.sms_providers
-  for each row execute function public.sms_providers_guard();
-
-create or replace function public.sms_setting_guard()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if new.key = 'sms'
-     and auth.uid() is not null
-     and public.current_role_key() is distinct from 'super_admin'
-     and coalesce(new.value -> 'otp_app_hashes', '[]'::jsonb) is distinct from coalesce(old.value -> 'otp_app_hashes', '[]'::jsonb) then
-    raise exception 'Only a Super Admin can allow app codes for the sign-in SMS.';
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists sms_setting_guard on public.app_settings;
-create trigger sms_setting_guard
-  before update on public.app_settings
-  for each row execute function public.sms_setting_guard();
 
 -- old codes are not kept (a week is enough for the limits and for checking)
 create or replace function public.otp_login_purge()
