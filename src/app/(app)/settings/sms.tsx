@@ -1,17 +1,7 @@
 import { router, Stack, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { Chip, s as ui } from '@/features/alumni/ui';
 import { Sheet } from '@/features/alumni/sheets';
@@ -45,6 +35,8 @@ import {
 import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
+
+import { smsAppHash } from '../../../../modules/sms-code';
 
 // =====================================================================
 // ⚙️ Settings → SMS
@@ -166,7 +158,12 @@ export default function SmsSettingsScreen() {
   const ready = settings.enabled && !!active?.key_set && (active?.senders.some((s) => s.is_active) ?? false);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'SMS' }} />
 
       {/* status */}
@@ -211,6 +208,24 @@ export default function SmsSettingsScreen() {
           value={settings.max_per_send}
           onChange={(v) => set({ ...settings, max_per_send: v })}
         />
+      </View>
+
+      {/* sign in with a code */}
+      <View style={ui.card}>
+        <View style={styles.switchRow}>
+          <View style={styles.flex}>
+            <Text style={styles.title}>🔐 Sign in with mobile + SMS code</Text>
+            <Text style={ui.muted}>
+              {!settings.otp_login
+                ? 'Off. Everyone signs in with email and password.'
+                : active?.senders.some((s) => s.is_active && s.kind === 'non_masking') && active.key_set
+                  ? 'On. The login page offers “Mobile + code”; the code comes from the non-masking sender. The number must be on the person’s profile (Users → Phone), one person per number. Email sign-in stays. A Super Admin always signs in with email and password.'
+                  : '⚠️ On, but it needs an active non-masking sender ID in the SMS company in use.'}
+            </Text>
+          </View>
+          <Switch value={settings.otp_login} onValueChange={(v) => set({ ...settings, otp_login: v })} />
+        </View>
+        {settings.otp_login && <AppCodes settings={settings} set={set} />}
       </View>
 
       <RuleCard
@@ -350,7 +365,7 @@ export default function SmsSettingsScreen() {
           }}
         />
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -839,6 +854,15 @@ function TestCard({ provider }: { provider: SmsProvider }) {
 }
 
 const styles = StyleSheet.create({
+  codes: {
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  codeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  codeText: { fontSize: fontSize.body, color: colors.text, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  codeRemove: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.danger },
   screen: { flex: 1, backgroundColor: colors.background },
   content: {
     padding: spacing.lg,
@@ -889,3 +913,42 @@ const styles = StyleSheet.create({
   bannerText: { fontSize: fontSize.small, color: colors.text },
   result: { gap: 4, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.background },
 });
+
+/**
+ * 📲 The phone reads the code SMS by itself only when the SMS ends with the
+ * app's code. The code differs for the Play Store app and an APK installed
+ * by hand, so an admin allows each one here from a phone with that app.
+ * (Only allowed codes are used: another app's code would let it read the SMS.)
+ */
+function AppCodes({ settings, set }: { settings: SmsSettings; set: (s: SmsSettings) => void }) {
+  const mine = smsAppHash();
+  const list = settings.otp_app_hashes ?? [];
+  const save = (next: string[]) => set({ ...settings, otp_app_hashes: next });
+  return (
+    <View style={styles.codes}>
+      <Text style={styles.title}>📲 Code read by the phone itself</Text>
+      <Text style={ui.muted}>
+        Android fills in the code by itself only for the app codes allowed here. Open this page once on a phone with the
+        Play Store app (and once with the APK, if you use one) and tap Allow. Without it, the keyboard still offers the
+        code in one tap.
+      </Text>
+      {list.map((h) => (
+        <View key={h} style={styles.codeRow}>
+          <Text style={styles.codeText}>
+            {h}
+            {h === mine ? '  (this phone)' : ''}
+          </Text>
+          <Pressable onPress={() => save(list.filter((x) => x !== h))} hitSlop={8} accessibilityRole="button">
+            <Text style={styles.codeRemove}>Remove</Text>
+          </Pressable>
+        </View>
+      ))}
+      {!!mine && !list.includes(mine) && (
+        <Button title={`Allow this phone's app (${mine})`} variant="secondary" onPress={() => save([...list, mine])} />
+      )}
+      {!mine && list.length === 0 && (
+        <Text style={ui.muted}>Open this page on an Android phone with app 2.8.6 or newer to allow it.</Text>
+      )}
+    </View>
+  );
+}

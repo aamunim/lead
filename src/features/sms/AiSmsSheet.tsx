@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: fontSize.body,
   },
-  multi: { minHeight: 64, textAlignVertical: 'top' },
+  multi: { minHeight: 64, maxHeight: 160, textAlignVertical: 'top' },
   text: { fontSize: fontSize.body, color: colors.text },
   option: {
     gap: spacing.xs,

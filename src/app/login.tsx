@@ -16,7 +16,8 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { signIn } from '@/features/auth/api';
+import { otpLoginReady, signIn } from '@/features/auth/api';
+import { OtpLogin } from '@/features/auth/OtpLogin';
 import { isWeb } from '@/features/web/api';
 import { APP_COLLEGE, APP_PRODUCT } from '@/features/web/brand';
 import { WebLogin } from '@/features/web/WebLogin';
@@ -33,6 +34,7 @@ import { TextField } from '@/shared/ui/TextField';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const LOGO = require('../../assets/web/ittc-logo-192.png');
 const EMAIL_KEY = 'login_email';
+const MODE_KEY = 'login_mode';
 const VERSION = Constants.expoConfig?.version ?? '';
 
 type Errors = { email?: string; password?: string };
@@ -53,6 +55,28 @@ function PhoneLogin() {
   const [loading, setLoading] = useState(false);
 
   const passwordRef = useRef<TextInput>(null);
+
+  // 📱 Mobile + SMS code, when an admin has it on (the choice from last time is kept;
+  //    it never switches by itself once you have started typing)
+  const [otpOn, setOtpOn] = useState(false);
+  const [mode, setMode] = useState<'otp' | 'email'>('email');
+  const typed = useRef(false);
+  useEffect(() => {
+    let live = true;
+    Promise.all([otpLoginReady(), AsyncStorage.getItem(MODE_KEY).catch(() => null)]).then(([on, saved]) => {
+      if (!live) return;
+      setOtpOn(on);
+      if (on && saved !== 'email' && !typed.current) setMode('otp');
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const pickMode = (m: 'otp' | 'email') => {
+    setMode(m);
+    setFormError(null);
+    AsyncStorage.setItem(MODE_KEY, m).catch(() => undefined);
+  };
 
   // The email from last time
   useEffect(() => {
@@ -169,67 +193,98 @@ function PhoneLogin() {
           <Animated.View style={[styles.card, { transform: [{ translateX: shake }] }]}>
             <View style={styles.cardHead}>
               <Text style={styles.title}>Welcome back 👋</Text>
-              <Text style={styles.subtitle}>Sign in with your work email.</Text>
+              <Text style={styles.subtitle}>
+                {mode === 'otp' ? 'Sign in with your mobile number.' : 'Sign in with your work email.'}
+              </Text>
             </View>
 
-            <TextField
-              label="Email"
-              value={email}
-              onChangeText={(v) => {
-                setEmail(v);
-                if (errors.email) setErrors((e) => ({ ...e, email: undefined }));
-              }}
-              error={errors.email}
-              placeholder="you@example.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="email"
-              textContentType="emailAddress"
-              returnKeyType="next"
-              onSubmitEditing={() => passwordRef.current?.focus()}
-            />
-
-            <TextField
-              ref={passwordRef}
-              label="Password"
-              value={password}
-              onChangeText={(v) => {
-                setPassword(v);
-                if (errors.password) setErrors((e) => ({ ...e, password: undefined }));
-              }}
-              error={errors.password}
-              placeholder="••••••••"
-              secureTextEntry
-              autoCapitalize="none"
-              autoComplete="current-password"
-              textContentType="password"
-              returnKeyType="done"
-              onSubmitEditing={handleLogin}
-            />
-
-            <Pressable
-              onPress={() => setRemember(!remember)}
-              style={styles.remember}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: remember }}
-              hitSlop={8}
-            >
-              <View style={[styles.box, remember && styles.boxOn]}>
-                {remember && <Text style={styles.tick}>✓</Text>}
-              </View>
-              <Text style={styles.rememberText}>Remember my email</Text>
-            </Pressable>
-
-            {formError && (
-              <View style={styles.formError}>
-                <Text style={styles.formErrorText}>⚠ {formError}</Text>
+            {otpOn && (
+              <View style={styles.modes} accessibilityRole="tablist">
+                {(
+                  [
+                    ['otp', '📱 Mobile + code'],
+                    ['email', '✉️ Email + password'],
+                  ] as const
+                ).map(([m, label]) => (
+                  <Pressable
+                    key={m}
+                    onPress={() => pickMode(m)}
+                    style={[styles.mode, mode === m && styles.modeOn]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: mode === m }}
+                  >
+                    <Text style={[styles.modeText, mode === m && styles.modeTextOn]}>{label}</Text>
+                  </Pressable>
+                ))}
               </View>
             )}
 
-            <Button title="Sign in" onPress={handleLogin} loading={loading} fullWidth />
+            {mode === 'otp' ? (
+              <OtpLogin onFail={doShake} />
+            ) : (
+              <>
+                <TextField
+                  label="Email"
+                  value={email}
+                  onChangeText={(v) => {
+                    typed.current = true;
+                    setEmail(v);
+                    if (errors.email) setErrors((e) => ({ ...e, email: undefined }));
+                  }}
+                  error={errors.email}
+                  placeholder="you@example.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  returnKeyType="next"
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                />
 
-            <Text style={styles.forgot}>Forgot your password? Ask your admin to reset it.</Text>
+                <TextField
+                  ref={passwordRef}
+                  label="Password"
+                  value={password}
+                  onChangeText={(v) => {
+                    typed.current = true;
+                    setPassword(v);
+                    if (errors.password) setErrors((e) => ({ ...e, password: undefined }));
+                  }}
+                  error={errors.password}
+                  placeholder="••••••••"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoComplete="current-password"
+                  textContentType="password"
+                  returnKeyType="done"
+                  onSubmitEditing={handleLogin}
+                />
+
+                <Pressable
+                  onPress={() => setRemember(!remember)}
+                  style={styles.remember}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: remember }}
+                  hitSlop={8}
+                >
+                  <View style={[styles.box, remember && styles.boxOn]}>
+                    {remember && <Text style={styles.tick}>✓</Text>}
+                  </View>
+                  <Text style={styles.rememberText}>Remember my email</Text>
+                </Pressable>
+
+                {formError && (
+                  <View style={styles.formError}>
+                    <Text style={styles.formErrorText}>⚠ {formError}</Text>
+                  </View>
+                )}
+
+                <Button title="Sign in" onPress={handleLogin} loading={loading} fullWidth />
+
+                <Text style={styles.forgot}>Forgot your password? Ask your admin to reset it.</Text>
+              </>
+            )}
           </Animated.View>
 
           <View style={styles.footer}>
@@ -330,6 +385,11 @@ const styles = StyleSheet.create({
   rememberText: { fontSize: fontSize.small, color: colors.text },
   formError: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
   formErrorText: { fontSize: fontSize.small, color: colors.danger },
+  modes: { flexDirection: 'row', padding: 4, gap: 4, borderRadius: radius.pill, backgroundColor: colors.background },
+  mode: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.pill, alignItems: 'center' },
+  modeOn: { backgroundColor: colors.surface, elevation: 2, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4 },
+  modeText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.textMuted },
+  modeTextOn: { color: colors.primary },
   forgot: { fontSize: fontSize.caption, color: colors.textMuted, textAlign: 'center' },
   footer: { alignItems: 'center' },
   footerText: { fontSize: fontSize.small, color: colors.textMuted },

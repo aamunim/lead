@@ -99,6 +99,61 @@ export async function signIn(input: SignInInput) {
   return data;
 }
 
+// ---------------------------------------------------------------------
+// 📱 Sign in with mobile + SMS code (Edge Function otp-login)
+// ---------------------------------------------------------------------
+/** Is "sign in with a code" on (an SMS company and a non-masking sender in use)? */
+export async function otpLoginReady(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('otp_login_ready' as never);
+  if (error) return false;
+  return data === true;
+}
+
+export class OtpError extends Error {
+  constructor(
+    message: string,
+    public wait?: number,
+  ) {
+    super(message);
+  }
+}
+
+async function otpCall<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('otp-login', { body });
+  if (error) {
+    let msg = error.message;
+    let wait: number | undefined;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const b = await (error as any).context?.json?.();
+      if (b?.error) msg = b.error;
+      if (typeof b?.wait === 'number') wait = b.wait;
+    } catch {
+      /* keep the first message */
+    }
+    if (/failed to send a request|network request failed|fetch/i.test(msg))
+      msg = 'No internet connection. Please try again.';
+    else if (/not found|404/i.test(msg))
+      msg = 'Sign in with a code is not ready on the server yet. Sign in with email.';
+    throw new OtpError(msg, wait);
+  }
+  return data as T;
+}
+
+/** Sends the code by SMS; gives the number with dots ("017•••••594") */
+export async function sendLoginCode(phone: string, appHash: string): Promise<string> {
+  const d = await otpCall<{ ok?: boolean; hint?: string }>({ action: 'send', phone, app_hash: appHash });
+  return d?.hint ?? phone;
+}
+
+/** Checks the code and signs in (the app moves on by itself) */
+export async function verifyLoginCode(phone: string, code: string): Promise<void> {
+  const d = await otpCall<{ access_token?: string; refresh_token?: string }>({ action: 'verify', phone, code });
+  if (!d?.access_token || !d.refresh_token) throw new Error('Could not sign in. Please try again.');
+  const { error } = await supabase.auth.setSession({ access_token: d.access_token, refresh_token: d.refresh_token });
+  if (error) throw new Error(friendlyAuthError(error.message));
+}
+
 /** 🔐 The signed-in user sets a new password of their own (also after an admin reset) */
 export async function changeMyPassword(password: string): Promise<void> {
   const { error } = await supabase.auth.updateUser({ password });

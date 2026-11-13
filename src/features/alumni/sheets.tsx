@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Chip, s as ui } from '@/features/alumni/ui';
 import { MIcon, md, Tap } from '@/features/home/md';
@@ -9,6 +9,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll, useSheetFocus } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // 🎓 Small sheets for alumni: next contact, a text (note / tag),
@@ -162,6 +163,7 @@ export function TextSheet({
   onSave: (text: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const focus = useSheetFocus();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,7 +181,7 @@ export function TextSheet({
     }
   };
   return (
-    <Sheet title={title} onClose={onClose}>
+    <Sheet title={title} onClose={onClose} onShow={focus.onShow}>
       <TextInput
         value={text}
         onChangeText={setText}
@@ -188,7 +190,7 @@ export function TextSheet({
         maxLength={maxLength}
         multiline={multiline}
         style={[styles.input, multiline && styles.multi]}
-        autoFocus
+        ref={focus.ref}
       />
       {list.length > 0 && (
         <View style={ui.chips}>
@@ -284,16 +286,25 @@ function Option({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Sheet({
+  title,
+  onClose,
+  onShow,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  /** Runs once the sheet is on screen (e.g. to open the keyboard) */
+  onShow?: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose} onShow={onShow}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
       <View style={styles.sheet}>
         <View style={styles.handle} />
         <Text style={styles.title}>{title}</Text>
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-          {children}
-        </ScrollView>
+        <SheetScroll contentContainerStyle={styles.body}>{children}</SheetScroll>
       </View>
     </Modal>
   );
@@ -338,7 +349,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: fontSize.body,
   },
-  multi: { minHeight: 96, paddingTop: spacing.sm, textAlignVertical: 'top' },
+  multi: { minHeight: 96, maxHeight: 160, paddingTop: spacing.sm, textAlignVertical: 'top' },
   buttons: { flexDirection: 'row', gap: spacing.sm, paddingTop: spacing.sm },
   options: { gap: 2 },
   option: {

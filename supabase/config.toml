@@ -434,3 +434,8 @@ verify_jwt = false
 # 🧑‍💼🤖 Supervisor AI: the 15-minute job (x-cron-secret) or a signed-in user (checked inside)
 [functions.ai-supervisor]
 verify_jwt = false
+
+# 🔐 Sign in with a mobile number + SMS code: called from the login page
+# before anyone is signed in (limits and checks are in the database)
+[functions.otp-login]
+verify_jwt = false

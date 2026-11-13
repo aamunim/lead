@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import {
   alumniFilterValues,
@@ -20,6 +20,7 @@ import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // 🔍 Alumni: every filter in one sheet (the order and which ones show:
@@ -370,9 +371,7 @@ export function AlumniFilterSheet(p: Props) {
         {!values ? (
           <ActivityIndicator color={colors.primary} style={styles.loader} />
         ) : (
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            {p.order.map(section)}
-          </ScrollView>
+          <SheetScroll contentContainerStyle={styles.body}>{p.order.map(section)}</SheetScroll>
         )}
 
         {saving ? (

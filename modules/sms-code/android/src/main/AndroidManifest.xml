@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- No permission: Google's SMS Retriever hands over only the SMS that ends
+       with this app's own code (the sign-in code), nothing else is read. -->
+</manifest>
