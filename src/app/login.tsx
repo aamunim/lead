@@ -63,15 +63,11 @@ function PhoneLogin() {
   const typed = useRef(false);
   useEffect(() => {
     let live = true;
-    AsyncStorage.getItem(MODE_KEY)
-      .catch(() => null)
-      .then((saved) => {
-        otpLoginReady().then((on) => {
-          if (!live) return;
-          setOtpOn(on);
-          if (on && saved !== 'email' && !typed.current) setMode('otp');
-        });
-      });
+    Promise.all([otpLoginReady(), AsyncStorage.getItem(MODE_KEY).catch(() => null)]).then(([on, saved]) => {
+      if (!live) return;
+      setOtpOn(on);
+      if (on && saved !== 'email' && !typed.current) setMode('otp');
+    });
     return () => {
       live = false;
     };

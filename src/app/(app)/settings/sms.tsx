@@ -33,10 +33,10 @@ import {
   type SmsSettings,
 } from '@/features/sms/api';
 import { supabase } from '@/shared/lib/supabase';
-
-import { smsAppHash } from '../../../../modules/sms-code';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
+
+import { smsAppHash } from '../../../../modules/sms-code';
 
 // =====================================================================
 // ⚙️ Settings → SMS
@@ -219,7 +219,7 @@ export default function SmsSettingsScreen() {
               {!settings.otp_login
                 ? 'Off. Everyone signs in with email and password.'
                 : active?.senders.some((s) => s.is_active && s.kind === 'non_masking') && active.key_set
-                  ? 'On. The login page offers “Mobile + code”; the code comes from the non-masking sender. The number must be on the person’s profile (Users → Phone). Email sign-in stays.'
+                  ? 'On. The login page offers “Mobile + code”; the code comes from the non-masking sender. The number must be on the person’s profile (Users → Phone), one person per number. Email sign-in stays. A Super Admin always signs in with email and password.'
                   : '⚠️ On, but it needs an active non-masking sender ID in the SMS company in use.'}
             </Text>
           </View>

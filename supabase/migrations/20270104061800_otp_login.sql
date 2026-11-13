@@ -7,7 +7,8 @@
 --   • A code works for 5 minutes, once, with 5 tries.
 --   • Limits (an SMS costs money and the page is open to anyone):
 --     one code per number per 30 seconds, 3 per 10 minutes, 10 a day;
---     20 an hour from one internet address; 300 an hour in all.
+--     30 tries of unknown numbers an hour from one internet address;
+--     300 SMS an hour in all.
 --   • Only the server (the otp-login Edge Function, service role) calls
 --     these functions; the app only asks whether the option is on.
 --   • The SMS goes out the same way as all other SMS (pg_net from the
@@ -21,6 +22,8 @@
 --   • A profile's mobile number now belongs to one active person only, and
 --     only a Super Admin may change a Super Admin's number (the number is a
 --     way in now).
+--   • A Super Admin never signs in with a code (other admins can change the
+--     SMS settings, so the code must not be a way into the top account).
 -- =====================================================================
 
 create table if not exists public.login_otps (
@@ -111,10 +114,6 @@ begin
      or (select count(*) from public.login_otps where phone = v_phone and created_at > now() - interval '1 day') >= 10 then
     return jsonb_build_object('error', 'Too many codes for this number. Try again later, or sign in with email.');
   end if;
-  if v_ip is not null
-     and (select count(*) from public.login_otps where ip = v_ip and created_at > now() - interval '1 hour') >= 30 then
-    return jsonb_build_object('error', 'Too many codes from this network. Try again later.');
-  end if;
   -- all SMS sent in the last hour (unknown numbers send nothing, so they don't count)
   if (select count(*) from public.login_otps where user_id is not null and created_at > now() - interval '1 hour') >= 300 then
     return jsonb_build_object('error', 'Too many codes right now. Try again later, or sign in with email.');
@@ -127,6 +126,23 @@ begin
   where p.is_active and p.deleted_at is null
     and p.phone is not null
     and public.bd_mobile(p.phone) = v_phone;
+
+  -- a number that is on no single account: limited per network (trying many numbers);
+  -- a real user's number is not, so junk from a shared network never blocks them
+  if coalesce(array_length(v_users, 1), 0) <> 1
+     and v_ip is not null
+     and (select count(*) from public.login_otps
+          where ip = v_ip and user_id is null and created_at > now() - interval '1 hour') >= 30 then
+    return jsonb_build_object('error', 'Too many tries from this network. Try again later.');
+  end if;
+
+  -- 🛡️ a Super Admin signs in with email and password only (the SMS settings can be
+  --    changed by other admins, so the code must never be the way into a Super Admin)
+  if coalesce(array_length(v_users, 1), 0) = 1
+     and exists (select 1 from public.profiles where id = v_users[1] and role_key = 'super_admin') then
+    insert into public.login_otps (id, phone, ip, sent, error) values (v_id, v_phone, v_ip, false, 'super admin');
+    return jsonb_build_object('error', 'A Super Admin signs in with email and password.');
+  end if;
 
   if coalesce(array_length(v_users, 1), 0) <> 1 then
     -- counted too, so nobody can try numbers without limit
@@ -198,6 +214,9 @@ begin
     into r using o.req_id;
   if r is null then return jsonb_build_object('done', false); end if;
 
+  -- no answer in time: the SMS may still arrive, so the code keeps working
+  if coalesce(r.timed_out, false) then return jsonb_build_object('done', true, 'problem', null); end if;
+
   select p.success_match into v_match from public.sms_providers p where p.is_active limit 1;
   v_prob := public.sms_answer_problem(r.status_code, r.content, r.timed_out, r.error_msg);
   if v_prob is null and v_match is not null and coalesce(r.content, '') !~* v_match then
@@ -257,7 +276,7 @@ begin
 
   select u.email into v_email
   from auth.users u join public.profiles p on p.id = u.id
-  where u.id = r.user_id and p.is_active and p.deleted_at is null;
+  where u.id = r.user_id and p.is_active and p.deleted_at is null and p.role_key <> 'super_admin';
   if v_email is null then
     return jsonb_build_object('error', 'This account cannot sign in. Ask an admin.');
   end if;
@@ -288,7 +307,8 @@ begin
   end if;
 
   if new.phone is distinct from old.phone then
-    if new.id is distinct from auth.uid()
+    if auth.uid() is not null
+       and new.id is distinct from auth.uid()
        and old.role_key = 'super_admin'
        and public.current_role_key() is distinct from 'super_admin' then
       raise exception 'Only a Super Admin can change a Super Admin''s mobile number';
@@ -301,13 +321,13 @@ begin
      and (new.phone is distinct from old.phone or not old.is_active or old.deleted_at is not null) then
     v_mob := public.bd_mobile(new.phone);
     if v_mob is not null then
-      select coalesce(nullif(trim(p.full_name), ''), 'another user') into v_other
+      select 'x' into v_other
       from public.profiles p
       where p.id <> new.id and p.is_active and p.deleted_at is null
         and p.phone is not null and public.bd_mobile(p.phone) = v_mob
       limit 1;
       if v_other is not null then
-        raise exception 'The mobile number % is already on %''s profile. Each person needs their own number (it is used to sign in with an SMS code).', v_mob, v_other;
+        raise exception 'The mobile number % is already on another user''s profile. Each person needs their own number (it is used to sign in with an SMS code).', v_mob;
       end if;
     end if;
   end if;
