@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-13-keyboard',
+    date: '13 Nov 2026',
+    title: '⌨️ কিবোর্ড আর লেখার ঘর ঢাকে না',
+    items: [
+      '📨 SMS Center আর Settings → SMS: লেখার ঘরে চাপলে পাতা নিজে সরে ঘরটা কিবোর্ডের ওপরে আনে',
+      '🎓 Alumni-র সব শিট (নোট, কল, ফিল্টার, রেফারেল, SMS): কিবোর্ড খুললে শিট ওপরে ওঠে, যে ঘরে লিখছেন সেটা দেখা যায়',
+      '✍️ যেসব শিট খুলেই লিখতে দেয়, সেগুলোতে কিবোর্ড শিট খোলার পরে আসে — তাই ঢাকা পড়ে না',
+    ],
+  },
+  {
     key: '2026-11-13-phone-format',
     date: '13 Nov 2026',
     title: '📞 যেকোনো ভাবে লেখা নম্বরে SMS',

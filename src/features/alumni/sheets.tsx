@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Chip, s as ui } from '@/features/alumni/ui';
 import { MIcon, md, Tap } from '@/features/home/md';
@@ -9,6 +9,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { DateTimePickerButton } from '@/shared/ui/DateTimePickerButton';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll, useSheetFocus } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // 🎓 Small sheets for alumni: next contact, a text (note / tag),
@@ -162,6 +163,7 @@ export function TextSheet({
   onSave: (text: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const inputRef = useSheetFocus();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,7 +190,7 @@ export function TextSheet({
         maxLength={maxLength}
         multiline={multiline}
         style={[styles.input, multiline && styles.multi]}
-        autoFocus
+        ref={inputRef}
       />
       {list.length > 0 && (
         <View style={ui.chips}>
@@ -291,9 +293,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
       <View style={styles.sheet}>
         <View style={styles.handle} />
         <Text style={styles.title}>{title}</Text>
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-          {children}
-        </ScrollView>
+        <SheetScroll contentContainerStyle={styles.body}>{children}</SheetScroll>
       </View>
     </Modal>
   );

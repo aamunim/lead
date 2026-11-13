@@ -7,7 +7,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -28,6 +27,7 @@ import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // 📨 Referral inbox: import as a lead (course + person chosen here),
@@ -306,7 +306,7 @@ function ImportSheet({
     <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
       <View style={styles.sheet}>
-        <ScrollView contentContainerStyle={styles.sheetBody}>
+        <SheetScroll contentContainerStyle={styles.sheetBody}>
           <Text style={styles.sheetTitle}>🎯 {referral.name} → new lead</Text>
           <Text style={ui.muted}>Source: Alumni referral · Referred by {referral.alumni?.name ?? 'the alumnus'}</Text>
           {courses.length > 0 && (
@@ -341,7 +341,7 @@ function ImportSheet({
           {error && <Text style={ui.error}>{error}</Text>}
           <Button title="Import as lead" onPress={run} loading={busy} fullWidth />
           <Button title="Cancel" variant="ghost" onPress={onClose} fullWidth />
-        </ScrollView>
+        </SheetScroll>
       </View>
     </Modal>
   );

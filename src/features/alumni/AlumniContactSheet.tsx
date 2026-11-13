@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { logAlumniContact } from '@/features/alumni/api';
 import { NextContactPicker } from '@/features/alumni/sheets';
@@ -26,6 +26,7 @@ import { isWeb } from '@/features/web/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // 📞 After a call / WhatsApp with an alumnus: what happened, a note, and
@@ -173,7 +174,7 @@ export function AlumniContactSheet(p: Props) {
       <View style={styles.sheet}>
         <View style={styles.handle} />
         <Text style={styles.title}>{title}</Text>
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <SheetScroll contentContainerStyle={styles.body}>
           {p.manual && (
             <View style={ui.chips}>
               <Chip text="📞 Phone call" on={channel === 'phone'} onPress={() => setChannel('phone')} />
@@ -257,7 +258,7 @@ export function AlumniContactSheet(p: Props) {
             />
           )}
           {error && <Text style={ui.error}>{error}</Text>}
-        </ScrollView>
+        </SheetScroll>
         <View style={styles.buttons}>
           <View style={styles.flex}>
             <Button title="Skip" variant="ghost" onPress={p.onClose} fullWidth />

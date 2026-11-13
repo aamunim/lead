@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { listCourses, type CourseWithDetails } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { TextField } from '@/shared/ui/TextField';
 
 import { addReferral, hintId } from './api';
@@ -74,7 +75,7 @@ export function AddReferralSheet({
     <Modal visible transparent keyboard animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
       <View style={styles.sheet}>
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <SheetScroll contentContainerStyle={styles.body}>
           <Text style={styles.title}>📨 Referral from {alumniName}</Text>
           {added > 0 && <Text style={styles.ok}>✓ {added} added to the inbox</Text>}
           <TextField label="Name" value={name} onChangeText={setName} autoCapitalize="words" />
@@ -106,7 +107,7 @@ export function AddReferralSheet({
             fullWidth
           />
           <Button title="Close" variant="ghost" onPress={onClose} fullWidth />
-        </ScrollView>
+        </SheetScroll>
       </View>
     </Modal>
   );

@@ -5,6 +5,7 @@ import { ActivityIndicator, FlatList, Platform, Pressable, StyleSheet, Text, Tex
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { Modal } from '@/shared/ui/Modal';
+import { useSheetFocus } from '@/shared/ui/SheetScroll';
 
 import { getLeadReferrer, searchAlumni, setLeadReferrer } from './api';
 import { alumniChanged, s as ui, useAlumniAccess, useAlumniVersion } from './ui';
@@ -74,6 +75,7 @@ function PickAlumnus({
   onClose: () => void;
   onPick: (id: string | null) => Promise<void>;
 }) {
+  const inputRef = useSheetFocus();
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<Awaited<ReturnType<typeof searchAlumni>>>([]);
   const [loading, setLoading] = useState(false);
@@ -112,7 +114,7 @@ function PickAlumnus({
           placeholder="Search alumni: name, phone, school"
           placeholderTextColor={colors.textMuted}
           style={styles.input}
-          autoFocus
+          ref={inputRef}
           accessibilityLabel="Search alumni"
         />
         {error && <Text style={ui.error}>{error}</Text>}

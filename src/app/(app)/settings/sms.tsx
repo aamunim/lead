@@ -1,17 +1,7 @@
 import { router, Stack, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { Chip, s as ui } from '@/features/alumni/ui';
 import { Sheet } from '@/features/alumni/sheets';
@@ -166,7 +156,12 @@ export default function SmsSettingsScreen() {
   const ready = settings.enabled && !!active?.key_set && (active?.senders.some((s) => s.is_active) ?? false);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'SMS' }} />
 
       {/* status */}
@@ -350,7 +345,7 @@ export default function SmsSettingsScreen() {
           }}
         />
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

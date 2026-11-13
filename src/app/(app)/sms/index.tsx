@@ -1,16 +1,7 @@
 import { router, Stack, useFocusEffect, type Href } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MenuSheet, NextContactPicker, Sheet } from '@/features/alumni/sheets';
@@ -93,7 +84,7 @@ export default function SmsCenterScreen() {
   // 📌 chosen on the lead list or by an AI suggestion (instead of the filters)
   const [chosen, setChosen] = useState<string[] | null>(null);
   const [chosenLabel, setChosenLabel] = useState<string | null>(null);
-  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   const whoY = useRef(0);
 
   const [count, setCount] = useState<number | null>(null);
@@ -394,8 +385,9 @@ export default function SmsCenterScreen() {
   return (
     <View style={styles.screen}>
       {header}
-      <ScrollView
+      <KeyboardAwareScrollView
         ref={scrollRef}
+        bottomOffset={spacing.xl}
         contentContainerStyle={[styles.content, group && { paddingBottom: 120 + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
       >
@@ -705,7 +697,7 @@ export default function SmsCenterScreen() {
             {error && <Text style={ui.error}>{error}</Text>}
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* the bar: how many, and Send */}
       {group && (
