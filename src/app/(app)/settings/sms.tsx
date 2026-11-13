@@ -67,7 +67,8 @@ const FORMATS: { key: NumberFormat; label: string }[] = [
 ];
 
 export default function SmsSettingsScreen() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, profile } = useAuth();
+  const isSuper = profile?.role_key === 'super_admin';
   const [settings, setSettings] = useState<SmsSettings>(DEFAULT_SMS_SETTINGS);
   const [providers, setProviders] = useState<SmsProvider[]>([]);
   const [pgNet, setPgNet] = useState(true);
@@ -219,13 +220,13 @@ export default function SmsSettingsScreen() {
               {!settings.otp_login
                 ? 'Off. Everyone signs in with email and password.'
                 : active?.senders.some((s) => s.is_active && s.kind === 'non_masking') && active.key_set
-                  ? 'On. The login page offers “Mobile + code”; the code comes from the non-masking sender. The number must be on the person’s profile (Users → Phone), one person per number. Email sign-in stays. A Super Admin always signs in with email and password.'
+                  ? 'On. The login page offers “Mobile + code”; the code comes from the non-masking sender. The number must be on the person’s profile (Users → Phone), one person per number. Email sign-in stays. Only a Super Admin can change the SMS company (address, API key, which one is in use), because the codes go that way.'
                   : '⚠️ On, but it needs an active non-masking sender ID in the SMS company in use.'}
             </Text>
           </View>
           <Switch value={settings.otp_login} onValueChange={(v) => set({ ...settings, otp_login: v })} />
         </View>
-        {settings.otp_login && <AppCodes settings={settings} set={set} />}
+        {settings.otp_login && <AppCodes settings={settings} set={set} canEdit={isSuper} />}
       </View>
 
       <RuleCard
@@ -920,7 +921,15 @@ const styles = StyleSheet.create({
  * by hand, so an admin allows each one here from a phone with that app.
  * (Only allowed codes are used: another app's code would let it read the SMS.)
  */
-function AppCodes({ settings, set }: { settings: SmsSettings; set: (s: SmsSettings) => void }) {
+function AppCodes({
+  settings,
+  set,
+  canEdit,
+}: {
+  settings: SmsSettings;
+  set: (s: SmsSettings) => void;
+  canEdit: boolean;
+}) {
   const mine = smsAppHash();
   const list = settings.otp_app_hashes ?? [];
   const save = (next: string[]) => set({ ...settings, otp_app_hashes: next });
@@ -938,15 +947,18 @@ function AppCodes({ settings, set }: { settings: SmsSettings; set: (s: SmsSettin
             {h}
             {h === mine ? '  (this phone)' : ''}
           </Text>
-          <Pressable onPress={() => save(list.filter((x) => x !== h))} hitSlop={8} accessibilityRole="button">
-            <Text style={styles.codeRemove}>Remove</Text>
-          </Pressable>
+          {canEdit && (
+            <Pressable onPress={() => save(list.filter((x) => x !== h))} hitSlop={8} accessibilityRole="button">
+              <Text style={styles.codeRemove}>Remove</Text>
+            </Pressable>
+          )}
         </View>
       ))}
-      {!!mine && !list.includes(mine) && (
+      {canEdit && !!mine && !list.includes(mine) && (
         <Button title={`Allow this phone's app (${mine})`} variant="secondary" onPress={() => save([...list, mine])} />
       )}
-      {!mine && list.length === 0 && (
+      {!canEdit && <Text style={ui.muted}>Only a Super Admin can allow or remove app codes.</Text>}
+      {canEdit && !mine && list.length === 0 && (
         <Text style={ui.muted}>Open this page on an Android phone with app 2.8.6 or newer to allow it.</Text>
       )}
     </View>
