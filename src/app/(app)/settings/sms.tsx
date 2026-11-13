@@ -208,6 +208,23 @@ export default function SmsSettingsScreen() {
         />
       </View>
 
+      {/* sign in with a code */}
+      <View style={ui.card}>
+        <View style={styles.switchRow}>
+          <View style={styles.flex}>
+            <Text style={styles.title}>🔐 Sign in with mobile + SMS code</Text>
+            <Text style={ui.muted}>
+              {!settings.otp_login
+                ? 'Off. Everyone signs in with email and password.'
+                : active?.senders.some((s) => s.is_active && s.kind === 'non_masking') && active.key_set
+                  ? 'On. The login page offers “Mobile + code”; the code comes from the non-masking sender. The number must be on the person’s profile (Users → Phone). Email sign-in stays.'
+                  : '⚠️ On, but it needs an active non-masking sender ID in the SMS company in use.'}
+            </Text>
+          </View>
+          <Switch value={settings.otp_login} onValueChange={(v) => set({ ...settings, otp_login: v })} />
+        </View>
+      </View>
+
       <RuleCard
         title="👤 Who may send SMS"
         hint="They can send SMS to the alumni they see. Admins always can."

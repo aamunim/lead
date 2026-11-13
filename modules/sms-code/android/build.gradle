@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.smscode'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.smscode"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  // Google's SMS Retriever: reads one sign-in SMS meant for this app, no SMS permission
+  implementation "com.google.android.gms:play-services-auth-api-phone:18.1.0"
+  implementation "androidx.core:core-ktx:1.13.1"
+}
