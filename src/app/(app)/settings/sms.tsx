@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
@@ -23,6 +24,7 @@ import {
   deleteSender,
   getSmsAdmin,
   KIND_LABEL,
+  phoneFormatReport,
   removeProviderKey,
   saveProvider,
   saveSender,
@@ -31,6 +33,7 @@ import {
   smsLength,
   STATUS_LABEL,
   type NumberFormat,
+  type PhoneReport,
   type ProviderInput,
   type SenderKind,
   type SmsBatchDetail,
@@ -321,6 +324,8 @@ export default function SmsSettingsScreen() {
       <Button title="＋ Add an SMS company" variant="secondary" onPress={() => setEditProvider('new')} />
 
       {active && <TestCard provider={active} />}
+
+      <NumbersCard />
 
       <Button title="📋 SMS sent so far" variant="ghost" onPress={() => router.push('/alumni/sms' as Href)} />
 
@@ -643,6 +648,100 @@ function SenderSheet({
   );
 }
 
+const BOX_LABEL: Record<string, string> = {
+  'leads.phone': 'Leads · Phone',
+  'leads.alt_phone': 'Leads · Alt phone',
+  'alumni.phone': 'Alumni · Phone',
+  'lead_bank.phone': 'Lead Bank',
+};
+
+// 📞 Numbers that get no SMS (old data; nothing is changed here)
+function NumbersCard() {
+  const [busy, setBusy] = useState(false);
+  const [r, setR] = useState<PhoneReport | null>(null);
+  const load = async () => {
+    setBusy(true);
+    try {
+      setR(await phoneFormatReport());
+    } catch (e) {
+      say('Could not check', errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const open = (box: string, id: string) => {
+    if (box.startsWith('leads.')) router.push(`/leads/${id}` as Href);
+    else if (box.startsWith('alumni.')) router.push(`/alumni/${id}` as Href);
+  };
+  return (
+    <View style={ui.card}>
+      <Text style={styles.title}>📞 Number check</Text>
+      <Text style={ui.muted}>
+        Numbers written any way (Bangla digits, +880, 0088, two numbers in one box…) are read the same now. This lists
+        the saved numbers that still get no SMS. Nothing is changed.
+      </Text>
+      <Button title={r ? '↻ Check again' : 'Check the numbers'} variant="secondary" onPress={load} loading={busy} />
+      {r && (
+        <>
+          {r.boxes.map((b) => (
+            <View key={b.box} style={styles.senderRow}>
+              <Text style={[styles.text, styles.flex]}>{BOX_LABEL[b.box] ?? b.box}</Text>
+              <Text style={ui.muted}>
+                ✅ {b.ok}
+                {b.can_fix ? ` · 🔧 ${b.can_fix} can be fixed` : ''}
+                {b.cannot_fix ? ` · ❌ ${b.cannot_fix} wrong` : ''}
+                {b.two_numbers ? ` · 👥 ${b.two_numbers} two numbers` : ''}
+              </Text>
+            </View>
+          ))}
+          {r.can_fix_sample.length > 0 && (
+            <>
+              <Text style={ui.label}>🔧 CAN BE FIXED (ASK TO FIX THEM ALL AT ONCE)</Text>
+              {r.can_fix_sample.slice(0, 30).map((x) => (
+                <Tap2 key={x.box + x.id} onPress={() => open(x.box, x.id)}>
+                  <Text style={styles.text} numberOfLines={1}>
+                    {x.name}
+                  </Text>
+                  <Text style={ui.muted} numberOfLines={2}>
+                    {x.now} → {x.would_be}
+                    {x.second ? ` (+ ${x.second})` : ''}
+                  </Text>
+                </Tap2>
+              ))}
+            </>
+          )}
+          {r.cannot_fix_sample.length > 0 && (
+            <>
+              <Text style={ui.label}>❌ WRONG — FIX BY HAND (TAP TO OPEN)</Text>
+              {r.cannot_fix_sample.slice(0, 30).map((x) => (
+                <Tap2 key={x.box + x.id} onPress={() => open(x.box, x.id)}>
+                  <Text style={styles.text} numberOfLines={1}>
+                    {x.name} · {BOX_LABEL[x.box] ?? x.box}
+                  </Text>
+                  <Text style={ui.muted} numberOfLines={1}>
+                    {x.now} — {x.why}
+                  </Text>
+                </Tap2>
+              ))}
+            </>
+          )}
+          {r.can_fix_sample.length === 0 && r.cannot_fix_sample.length === 0 && (
+            <Text style={ui.muted}>All saved numbers are good mobile numbers. 🎉</Text>
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+
+function Tap2({ onPress, children }: { onPress: () => void; children: React.ReactNode }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.reportRow, pressed && { opacity: 0.6 }]}>
+      {children}
+    </Pressable>
+  );
+}
+
 function TestCard({ provider }: { provider: SmsProvider }) {
   const senders = provider.senders.filter((s) => s.is_active);
   const [phone, setPhone] = useState('');
@@ -768,6 +867,7 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   rowTop: { flexDirection: 'row', gap: spacing.md },
   buttons: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap', alignItems: 'center' },
+  reportRow: { gap: 2, paddingVertical: 6 },
   senderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   activeCard: { borderWidth: 2, borderColor: colors.primary },
   field: { gap: 4 },

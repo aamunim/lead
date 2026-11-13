@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MenuSheet, NextContactPicker } from '@/features/alumni/sheets';
+import { MenuSheet, NextContactPicker, Sheet } from '@/features/alumni/sheets';
 import { s as ui } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { card, MIcon, md, Tap, type MIconName } from '@/features/home/md';
@@ -36,11 +36,13 @@ import {
   GROUP_LABEL,
   KIND_LABEL,
   LEAD_PLACEHOLDERS,
+  leadSmsBadNumbers,
   mySenders,
   previewLeadSms,
   sendLeadSms,
   smsDraft,
   smsLength,
+  type BadNumber,
   type LeadSmsPreview,
   type MySender,
   type SmsGroup,
@@ -110,7 +112,21 @@ export default function SmsCenterScreen() {
   const [at, setAt] = useState<Date | null>(null);
   const [later, setLater] = useState(false);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
-  const [sheet, setSheet] = useState<null | 'ai' | 'templates'>(null);
+  const [sheet, setSheet] = useState<null | 'ai' | 'templates' | 'bad'>(null);
+  // 📵 who gets no SMS, and why
+  const [bad, setBad] = useState<BadNumber[] | null>(null);
+  const openBad = async () => {
+    if (!ids || !group) return;
+    setBad(null);
+    setSheet('bad');
+    try {
+      // the ones taken out by hand are not listed
+      setBad(await leadSmsBadNumbers(ids, group));
+    } catch (e) {
+      setSheet((now) => (now === 'bad' ? null : now));
+      say('Could not load', errText(e));
+    }
+  };
   const [showFields, setShowFields] = useState(false);
   const [busy, setBusy] = useState(false);
   // one send at a time (a double tap opens one dialog)
@@ -503,7 +519,10 @@ export default function SmsCenterScreen() {
               )}
               {preview && (
                 <View style={styles.pills}>
-                  {preview.no_number > 0 && <Pill icon="phone-disabled" text={`${preview.no_number} no number`} />}
+                  {preview.no_number > 0 && (
+                    <Pill icon="phone-disabled" text={`${preview.no_number} no good number ›`} onPress={openBad} warn />
+                  )}
+                  {!!preview.alt_used && <Pill icon="phone-forwarded" text={`${preview.alt_used} on Alt phone`} />}
                   {preview.same_number > 0 && <Pill icon="people" text={`${preview.same_number} same number`} />}
                   {preview.other_group > 0 && (
                     <Pill icon="swap-horiz" text={`${preview.other_group} not ${GROUP_LABEL[group!]}`} />
@@ -747,6 +766,39 @@ export default function SmsCenterScreen() {
           }}
         />
       )}
+      {sheet === 'bad' && (
+        <Sheet title="📵 No SMS to these" onClose={() => setSheet(null)}>
+          <Text style={ui.muted}>
+            Fix the number on the lead (tap a name). A second number in Phone moves to Alt phone by itself.
+          </Text>
+          {bad === null ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : (
+            bad.map((b) => (
+              <Pressable
+                key={b.id}
+                onPress={() => {
+                  setSheet(null);
+                  router.push(`/leads/${b.id}` as Href);
+                }}
+                style={styles.badRow}
+              >
+                <View style={styles.flex}>
+                  <Text style={styles.personName} numberOfLines={1}>
+                    {b.name}
+                  </Text>
+                  <Text style={ui.muted} numberOfLines={1}>
+                    {b.phone || '—'}
+                    {b.alt_phone ? ` · Alt ${b.alt_phone}` : ''}
+                  </Text>
+                </View>
+                <Text style={styles.badWhy}>{b.why ?? 'No number'}</Text>
+              </Pressable>
+            ))
+          )}
+          {bad !== null && bad.length >= 200 && <Text style={ui.muted}>The first 200 are shown.</Text>}
+        </Sheet>
+      )}
       {sheet === 'templates' && (
         <MenuSheet
           title="Templates"
@@ -776,12 +828,19 @@ function StepHead({ n, title }: { n: number; title: string }) {
   );
 }
 
-function Pill({ icon, text }: { icon: MIconName; text: string }) {
-  return (
-    <View style={styles.pill}>
-      <MIcon name={icon} size={14} color={colors.textMuted} />
-      <Text style={styles.pillText}>{text}</Text>
-    </View>
+function Pill({ icon, text, onPress, warn }: { icon: MIconName; text: string; onPress?: () => void; warn?: boolean }) {
+  const body = (
+    <>
+      <MIcon name={icon} size={14} color={warn ? colors.warning : colors.textMuted} />
+      <Text style={[styles.pillText, warn && styles.pillWarn]}>{text}</Text>
+    </>
+  );
+  return onPress ? (
+    <Tap onPress={onPress} style={styles.pill} label={text}>
+      {body}
+    </Tap>
+  ) : (
+    <View style={styles.pill}>{body}</View>
   );
 }
 
@@ -912,6 +971,16 @@ const styles = StyleSheet.create({
     backgroundColor: md.surface1,
   },
   pillText: { fontSize: fontSize.caption, color: colors.textMuted },
+  pillWarn: { color: colors.warning, fontWeight: fontWeight.semibold },
+  badRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: md.outline,
+  },
+  badWhy: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.warning, maxWidth: '45%' },
   warn: { fontSize: fontSize.small, color: colors.warning },
   namesToggle: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 2, paddingVertical: 4 },
   link: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.primary },
