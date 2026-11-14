@@ -1,18 +1,12 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
-import {
-  DEFAULT_BRAND,
-  DEFAULT_WEB_POINTS,
-  getBrandSaved,
-  saveBrand,
-  uploadLogo,
-  type BrandSaved,
-  type WebPoint,
-} from '@/features/brand/brand';
+import { DEFAULT_BRAND, DEFAULT_WEB_POINTS, logoUrl, type BrandSaved, type WebPoint } from '@/features/brand/brand';
+import { BrandLogo } from '@/features/brand/BrandLogo';
+import { getBrandSaved, LOGO_MAX, LOGO_TYPES, removeLogos, saveBrand, uploadLogo } from '@/features/brand/brandAdmin';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
@@ -28,12 +22,21 @@ import { TextField } from '@/shared/ui/TextField';
 const OWN_LOGO = require('../../../../assets/web/ittc-logo-192.png');
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
+const LINE_LABEL = 'Line colour (under the college name)';
 const SWATCHES = ['#1D3FA8', '#0B2A4A', '#0F766E', '#7C3AED', '#B91C1C', '#C2410C', '#15803D', '#111827'];
 
-function say(title: string, text: string) {
-  // eslint-disable-next-line no-alert
-  if (Platform.OS === 'web') window.alert(`${title}\n\n${text}`);
-  else Alert.alert(title, text);
+// (the website shows Alert.alert as the app's own dialog)
+const say = (title: string, text: string) => Alert.alert(title, text);
+
+/** Is white text hard to read on this colour? */
+function tooLight(hex: string): boolean {
+  if (!HEX.test(hex)) return false;
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return 1.05 / (lum + 0.05) < 3;
 }
 
 function ask(title: string, text: string, ok: string, run: () => void) {
@@ -52,18 +55,28 @@ export default function BrandingScreen() {
   const { profile } = useAuth();
   const superAdmin = profile?.role_key === 'super_admin';
   const [b, setB] = useState<BrandSaved>({});
+  // the saved copy (to tidy up pictures that were picked but not kept)
+  const [savedLogo, setSavedLogo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
+    setLoadError(null);
     getBrandSaved()
-      .then(setB)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Could not load.'))
+      .then((v) => {
+        setB(v);
+        setSavedLogo(v.logo_path ?? null);
+        setDirty(false);
+      })
+      .catch((e) => setLoadError(e instanceof Error ? e.message : 'Could not load.'))
       .finally(() => setLoading(false));
-  }, []);
+  };
+  useEffect(load, []);
 
   const put = (patch: BrandSaved) => {
     setB((cur) => ({ ...cur, ...patch }));
@@ -76,6 +89,11 @@ export default function BrandingScreen() {
   const badColor = (['hero_color', 'web_color', 'accent_color'] as const).find(
     (k) => text(k).trim() !== '' && !HEX.test(text(k).trim()),
   );
+  // a picture picked here and not saved yet (removed again if replaced)
+  const setLogo = (path: string | null) => {
+    if (b.logo_path && b.logo_path !== savedLogo) removeLogos([b.logo_path]);
+    put({ logo_path: path });
+  };
 
   const pickLogo = async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -83,10 +101,12 @@ export default function BrandingScreen() {
     const res = await ip.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.9 });
     if (res.canceled || !res.assets[0]) return;
     const a = res.assets[0];
-    if (a.fileSize && a.fileSize > 1024 * 1024) return say('Too big', 'Choose a picture of 1 MB at most.');
+    const mime = (a.mimeType ?? '').toLowerCase().replace('image/jpg', 'image/jpeg');
+    if (!LOGO_TYPES.includes(mime)) return say('Not this kind', 'Choose a PNG, JPG or WEBP picture.');
+    if (a.fileSize && a.fileSize > LOGO_MAX) return say('Too big', 'Choose a picture of 1 MB at most.');
     setUploading(true);
     try {
-      put({ logo_url: await uploadLogo(a.uri, a.mimeType ?? 'image/png') });
+      setLogo(await uploadLogo(a.uri, mime));
     } catch (e) {
       say('Could not upload', e instanceof Error ? e.message : 'Please try again.');
     } finally {
@@ -114,6 +134,8 @@ export default function BrandingScreen() {
         }
       }
       await saveBrand(clean);
+      if (savedLogo && savedLogo !== (clean.logo_path ?? null)) removeLogos([savedLogo]);
+      setSavedLogo(clean.logo_path ?? null);
       setB(clean);
       setDirty(false);
       say('Saved', 'Everyone sees it the next time the app or website opens.');
@@ -130,6 +152,8 @@ export default function BrandingScreen() {
       setError(null);
       try {
         await saveBrand({});
+        removeLogos([savedLogo, b.logo_path]);
+        setSavedLogo(null);
         setB({});
         setDirty(false);
       } catch (e) {
@@ -148,10 +172,23 @@ export default function BrandingScreen() {
     );
   }
 
-  const heroColor = HEX.test(text('hero_color')) ? text('hero_color') : DEFAULT_BRAND.hero_color;
-  const webColor = HEX.test(text('web_color')) ? text('web_color') : DEFAULT_BRAND.web_color;
-  const accent = HEX.test(text('accent_color')) ? text('accent_color') : DEFAULT_BRAND.accent_color;
-  const logo = b.logo_url ? { uri: b.logo_url } : OWN_LOGO;
+  // no form when it could not load (a save would wipe what is there)
+  if (loadError) {
+    return (
+      <View style={[styles.center, styles.content]}>
+        <Stack.Screen options={{ title: 'Branding' }} />
+        <Text style={styles.error}>{loadError}</Text>
+        <Button title="Try again" onPress={load} />
+      </View>
+    );
+  }
+
+  const shown = (k: 'hero_color' | 'web_color' | 'accent_color') =>
+    HEX.test(text(k).trim()) ? text(k).trim() : DEFAULT_BRAND[k];
+  const heroColor = shown('hero_color');
+  const webColor = shown('web_color');
+  const accent = shown('accent_color');
+  const logoUri = logoUrl(b.logo_path);
   const ph = (k: keyof typeof DEFAULT_BRAND) => String(DEFAULT_BRAND[k]);
 
   return (
@@ -172,7 +209,7 @@ export default function BrandingScreen() {
       <View style={styles.previews}>
         <View style={[styles.phoneHero, { backgroundColor: heroColor }]}>
           <View style={styles.logoRing}>
-            <Image source={logo} style={styles.logoSmall} accessibilityLabel="Logo" />
+            <BrandLogo own={OWN_LOGO} uri={logoUri} style={styles.logoSmall} />
           </View>
           <Text style={styles.heroCollege} numberOfLines={2}>
             {text('college') || ph('college')}
@@ -183,7 +220,7 @@ export default function BrandingScreen() {
           <Text style={styles.heroCaption}>Phone sign-in</Text>
         </View>
         <View style={[styles.phoneHero, { backgroundColor: webColor }]}>
-          <Image source={logo} style={styles.logoSmall} accessibilityLabel="Logo" />
+          <BrandLogo own={OWN_LOGO} uri={logoUri} style={styles.logoSmall} />
           <Text style={styles.heroCollege} numberOfLines={2}>
             {text('college') || ph('college')}
           </Text>
@@ -200,11 +237,11 @@ export default function BrandingScreen() {
       <View style={styles.card}>
         <View style={styles.logoRow}>
           <View style={styles.logoBox}>
-            <Image source={logo} style={styles.logoBig} accessibilityLabel="Logo" />
+            <BrandLogo own={OWN_LOGO} uri={logoUri} style={styles.logoBig} />
           </View>
           <View style={styles.flex}>
             <Text style={styles.muted}>
-              {b.logo_url ? 'Your own logo.' : 'The ITTC logo (the app’s own).'} A square PNG with a clear background
+              {b.logo_path ? 'Your own logo.' : 'The ITTC logo (the app’s own).'} A square PNG with a clear background
               looks best (1 MB at most).
             </Text>
           </View>
@@ -219,9 +256,15 @@ export default function BrandingScreen() {
                 fullWidth
               />
             </View>
-            {!!b.logo_url && (
+            {!!b.logo_path && (
               <View style={styles.flex}>
-                <Button title="Use the ITTC logo" variant="ghost" onPress={() => put({ logo_url: null })} fullWidth />
+                <Button
+                  title="Use the ITTC logo"
+                  variant="ghost"
+                  onPress={() => setLogo(null)}
+                  disabled={uploading}
+                  fullWidth
+                />
               </View>
             )}
           </View>
@@ -355,6 +398,18 @@ export default function BrandingScreen() {
             fullWidth
           />
         )}
+        {superAdmin && Array.isArray(b.web_points) && (
+          <Button
+            title="↩ The original points"
+            variant="ghost"
+            onPress={() => {
+              const { web_points: _drop, ...rest } = b;
+              setB(rest);
+              setDirty(true);
+            }}
+            fullWidth
+          />
+        )}
         <TextField
           label="Copyright line"
           value={text('copyright')}
@@ -371,7 +426,7 @@ export default function BrandingScreen() {
           editable={superAdmin}
         />
         <ColorField
-          label="Line colour (under the college name)"
+          label={LINE_LABEL}
           value={text('accent_color')}
           fallback={DEFAULT_BRAND.accent_color}
           onChange={(v) => put({ accent_color: v })}
@@ -410,7 +465,13 @@ export default function BrandingScreen() {
             disabled={saving || uploading || !dirty}
             fullWidth
           />
-          <Button title="Reset to the original" variant="ghost" onPress={reset} disabled={saving} fullWidth />
+          <Button
+            title="Reset to the original"
+            variant="ghost"
+            onPress={reset}
+            disabled={saving || uploading}
+            fullWidth
+          />
         </View>
       )}
     </KeyboardAwareScrollView>
@@ -431,6 +492,7 @@ function ColorField({
   editable: boolean;
 }) {
   const shown = HEX.test(value.trim()) ? value.trim() : fallback;
+  const light = label !== LINE_LABEL && tooLight(shown);
   return (
     <View style={styles.colorBlock}>
       <View style={styles.colorRow}>
@@ -464,6 +526,7 @@ function ColorField({
           </Pressable>
         </View>
       )}
+      {light && <Text style={styles.error}>⚠ This colour is light: the white words on it will be hard to read.</Text>}
     </View>
   );
 }

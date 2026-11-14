@@ -10,6 +10,26 @@ insert into public.app_settings (key, value)
 values ('branding', '{}'::jsonb)
 on conflict (key) do nothing;
 
+-- A setting's name never changes from the app (else one setting could be
+-- renamed into another, e.g. into the branding or the SMS sign-in codes)
+create or replace function public.app_settings_key_guard()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.key is distinct from old.key and auth.uid() is not null then
+    raise exception 'A setting''s name can''t be changed.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists app_settings_key_guard on public.app_settings;
+create trigger app_settings_key_guard
+  before update on public.app_settings
+  for each row execute function public.app_settings_key_guard();
+
 -- Only the Super Admin changes the branding (Settings managers can read it)
 create or replace function public.brand_setting_guard()
 returns trigger
@@ -18,10 +38,10 @@ security definer
 set search_path = public
 as $$
 begin
-  if new.key = 'branding'
+  if (new.key = 'branding' or old.key = 'branding')
      and auth.uid() is not null
      and public.current_role_key() is distinct from 'super_admin'
-     and new.value is distinct from old.value then
+     and (new.value is distinct from old.value or new.key is distinct from old.key) then
     raise exception 'Only a Super Admin can change the branding.';
   end if;
   return new;
@@ -66,10 +86,11 @@ begin
     if t ~ '^#[0-9A-Fa-f]{6}$' then r := r || jsonb_build_object(k, upper(t)); end if;
   end loop;
 
-  -- the logo: only a picture in our public branding folder
-  t := btrim(coalesce(v ->> 'logo_url', ''));
-  if t ~ '^https://[^/?#]+/storage/v1/object/public/branding/[A-Za-z0-9._/-]+$' then
-    r := r || jsonb_build_object('logo_url', t);
+  -- the logo: only the name of a picture in our own public branding folder
+  -- (the app makes the link to this project; never another website)
+  t := btrim(coalesce(v ->> 'logo_path', ''));
+  if t ~ '^logo/[A-Za-z0-9_-]+\.(png|jpe?g|webp)$' then
+    r := r || jsonb_build_object('logo_path', t);
   end if;
 
   -- website points (icon + text), at most 5
@@ -111,7 +132,8 @@ begin
       with check (bucket_id = 'branding' and public.is_super_admin())$p$;
     execute 'drop policy if exists "branding: super admin change" on storage.objects';
     execute $p$create policy "branding: super admin change" on storage.objects for update to authenticated
-      using (bucket_id = 'branding' and public.is_super_admin())$p$;
+      using (bucket_id = 'branding' and public.is_super_admin())
+      with check (bucket_id = 'branding' and public.is_super_admin())$p$;
     execute 'drop policy if exists "branding: super admin remove" on storage.objects';
     execute $p$create policy "branding: super admin remove" on storage.objects for delete to authenticated
       using (bucket_id = 'branding' and public.is_super_admin())$p$;

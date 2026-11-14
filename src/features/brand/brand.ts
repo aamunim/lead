@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { File, UploadType } from 'expo-file-system';
 import { useSyncExternalStore } from 'react';
-import { Platform, type ImageSourcePropType } from 'react-native';
+import { Platform } from 'react-native';
 
 import { supabase } from '@/shared/lib/supabase';
 import { APP_COLLEGE, APP_PRODUCT, SYSTEM } from '@/features/web/brand';
@@ -61,7 +60,14 @@ export const DEFAULT_BRAND: Brand = {
 };
 
 /** What is saved (only what differs from the app's own; empty = default) */
-export type BrandSaved = Partial<Omit<Brand, 'logo_url'>> & { logo_url?: string | null };
+export type BrandSaved = Partial<Omit<Brand, 'logo_url'>> & { logo_path?: string | null };
+
+/** Only a picture in our own public "branding" folder (never another website) */
+export const LOGO_PATH = /^logo\/[A-Za-z0-9_-]+\.(png|jpe?g|webp)$/;
+export function logoUrl(path: string | null | undefined): string | null {
+  if (!path || !LOGO_PATH.test(path)) return null;
+  return `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/branding/${path}`;
+}
 
 const KEY = 'brand_v1';
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -69,7 +75,7 @@ const HEX = /^#[0-9A-Fa-f]{6}$/;
 function merge(saved: BrandSaved | null | undefined): Brand {
   const s = saved ?? {};
   const text = (v: unknown, d: string) => (typeof v === 'string' && v.trim() ? v.trim() : d);
-  const color = (v: unknown, d: string) => (typeof v === 'string' && HEX.test(v) ? v.toUpperCase() : d);
+  const color = (v: unknown, d: string) => (typeof v === 'string' && HEX.test(v.trim()) ? v.trim().toUpperCase() : d);
   const points = Array.isArray(s.web_points)
     ? s.web_points
         .filter((p) => p && typeof p.text === 'string' && p.text.trim())
@@ -77,7 +83,7 @@ function merge(saved: BrandSaved | null | undefined): Brand {
         .map((p) => ({ icon: String(p.icon ?? '').slice(0, 8), text: p.text.trim() }))
     : null;
   return {
-    logo_url: typeof s.logo_url === 'string' && s.logo_url ? s.logo_url : null,
+    logo_url: logoUrl(s.logo_path),
     short_name: text(s.short_name, DEFAULT_BRAND.short_name),
     college: text(s.college, DEFAULT_BRAND.college),
     product: text(s.product, DEFAULT_BRAND.product),
@@ -101,13 +107,13 @@ let raw: BrandSaved = {};
 let current: Brand = DEFAULT_BRAND;
 const listeners = new Set<() => void>();
 
-function set(next: BrandSaved) {
+function set(next: BrandSaved, keep = true) {
   const json = JSON.stringify(next ?? {});
   if (json === JSON.stringify(raw)) return;
   raw = next ?? {};
   current = merge(raw);
   listeners.forEach((l) => l());
-  AsyncStorage.setItem(KEY, json).catch(() => undefined);
+  if (keep) AsyncStorage.setItem(KEY, json).catch(() => undefined);
 }
 
 // the website can read its copy at once (no flash of the old logo)
@@ -123,19 +129,29 @@ if (Platform.OS === 'web') {
   }
 }
 
+// 📱 The phone's kept copy (read at start; the splash waits for it, at most a moment)
+let keptRead: Promise<void> | null = null;
+function readKept(): Promise<void> {
+  if (Platform.OS === 'web') return Promise.resolve();
+  keptRead ??= AsyncStorage.getItem(KEY)
+    .then((s) => {
+      if (s) set(JSON.parse(s) as BrandSaved, false);
+    })
+    .catch(() => undefined);
+  return keptRead;
+}
+
+/** Resolves when the kept copy is in (never waits more than 300 ms) */
+export function brandKept(): Promise<void> {
+  return Promise.race([readKept(), new Promise<void>((r) => setTimeout(r, 300))]);
+}
+
 let started = false;
 /** Read the kept copy, then ask for a fresh one (once per app start; again with force) */
 export async function loadBrand(force = false): Promise<void> {
   if (started && !force) return;
   started = true;
-  if (!force && Platform.OS !== 'web') {
-    try {
-      const s = await AsyncStorage.getItem(KEY);
-      if (s) set(JSON.parse(s) as BrandSaved);
-    } catch {
-      // nothing kept
-    }
-  }
+  await readKept();
   try {
     const { data, error } = await supabase.rpc('app_brand' as never);
     // an old database without branding: keep the app's own
@@ -158,68 +174,7 @@ export function useBrand(): Brand {
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
-/** The logo picture: the uploaded one, or the app's own */
-export function logoSource(b: Brand, own: ImageSourcePropType): ImageSourcePropType {
-  return b.logo_url ? { uri: b.logo_url } : own;
-}
-
 /** "© 2026 College" unless a line of its own is set */
 export function copyrightLine(b: Brand): string {
   return b.copyright || `© ${new Date().getFullYear()} ${b.college}`;
-}
-
-// --- Settings → Branding (Super Admin) ----------------------------------
-
-/** What is saved now (for the Settings page; empty fields = the app's own) */
-export async function getBrandSaved(): Promise<BrandSaved> {
-  const { data, error } = await supabase.from('app_settings').select('value').eq('key', 'branding').maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error('The database is not updated yet (Branding).');
-  return ((data as { value: BrandSaved }).value ?? {}) as BrandSaved;
-}
-
-export async function saveBrand(next: BrandSaved): Promise<void> {
-  const { data, error } = await supabase
-    .from('app_settings')
-    .update({ value: next as never })
-    .eq('key', 'branding')
-    .select('key');
-  if (error) throw new Error(error.message);
-  if (!data?.length) throw new Error('Could not save. Only a Super Admin can change the branding.');
-  await loadBrand(true);
-}
-
-/** 🖼 A new logo picture → its public link (saved with the rest on Save) */
-export async function uploadLogo(uri: string, mime = 'image/png'): Promise<string> {
-  const { data } = await supabase.auth.getSession();
-  const session = data.session;
-  if (!session) throw new Error('Please sign in again.');
-  const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
-  const path = `logo/${Date.now()}.${ext}`;
-  if (Platform.OS === 'web') {
-    const blob = await (await fetch(uri)).blob();
-    if (blob.size > 1024 * 1024) throw new Error('The picture is too big (1 MB at most).');
-    const { error } = await supabase.storage.from('branding').upload(path, blob, { contentType: mime });
-    if (error) throw new Error(/bucket/i.test(error.message) ? 'The database is not updated yet.' : error.message);
-  } else {
-    const res = await new File(uri).upload(
-      `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/branding/${path}`,
-      {
-        httpMethod: 'POST',
-        uploadType: UploadType.BINARY_CONTENT,
-        mimeType: mime,
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
-          'Content-Type': mime,
-        },
-      },
-    );
-    if (res.status < 200 || res.status >= 300) {
-      if (/bucket not found/i.test(res.body)) throw new Error('The database is not updated yet.');
-      if (/too large|exceeded|size/i.test(res.body)) throw new Error('The picture is too big (1 MB at most).');
-      throw new Error('Could not upload the picture.');
-    }
-  }
-  return supabase.storage.from('branding').getPublicUrl(path).data.publicUrl;
 }

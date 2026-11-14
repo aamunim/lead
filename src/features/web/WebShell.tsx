@@ -14,7 +14,8 @@ import { chatUnread } from '@/features/feedback/chat';
 import { canUseWeb, getWebSettings } from '@/features/web/api';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
-import { copyrightLine, logoSource, useBrand } from '@/features/brand/brand';
+import { copyrightLine, useBrand } from '@/features/brand/brand';
+import { BrandLogo } from '@/features/brand/BrandLogo';
 import { loadPref, onKey, savePref, typingInField } from '@/features/web/prefs';
 import { installWebCss } from '@/shared/web/webCss';
 import {
@@ -108,6 +109,8 @@ function pageTitle(path: string): string {
 export function WebShell({ children }: { children: React.ReactNode }) {
   const { profile, hasPermission } = useAuth();
   const brand = useBrand();
+  // 📷 My photo; initials when it can't load
+  const [photoFailed, setPhotoFailed] = useState<string | null>(null);
   const isAdmin = hasPermission('settings.manage');
   const path = usePathname();
   const params = useGlobalSearchParams<{ q?: string }>();
@@ -373,7 +376,7 @@ export function WebShell({ children }: { children: React.ReactNode }) {
       {/* ── Menu ─────────────────────────────────────────── */}
       <View style={[styles.side, small && styles.sideSmall]}>
         <View style={[styles.brandRow, small && styles.brandRowSmall]}>
-          <Image source={logoSource(brand, LOGO)} style={styles.logo} accessibilityLabel={brand.short_name} />
+          <BrandLogo own={LOGO} style={styles.logo} />
           {!small && (
             <View style={styles.flex}>
               <Text style={styles.brand} numberOfLines={1}>
@@ -532,8 +535,13 @@ export function WebShell({ children }: { children: React.ReactNode }) {
               accessibilityLabel="My account"
             >
               <View style={styles.avatar}>
-                {profile?.avatar_url ? (
-                  <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} accessibilityLabel="My photo" />
+                {profile?.avatar_url && photoFailed !== profile.avatar_url ? (
+                  <Image
+                    source={{ uri: profile.avatar_url }}
+                    style={styles.avatarImg}
+                    accessibilityLabel="My photo"
+                    onError={() => setPhotoFailed(profile.avatar_url ?? null)}
+                  />
                 ) : (
                   <Text style={styles.avatarText}>{initials || '?'}</Text>
                 )}

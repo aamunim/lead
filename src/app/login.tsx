@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -19,7 +18,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { otpLoginReady, signIn } from '@/features/auth/api';
 import { OtpLogin } from '@/features/auth/OtpLogin';
 import { isWeb } from '@/features/web/api';
-import { logoSource, useBrand } from '@/features/brand/brand';
+import { useBrand } from '@/features/brand/brand';
+import { BrandLogo } from '@/features/brand/BrandLogo';
 import { WebLogin } from '@/features/web/WebLogin';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -179,7 +179,7 @@ function PhoneLogin() {
           <SafeAreaView edges={['top']} style={styles.heroInner}>
             <Animated.View style={[styles.brand, rise(-16)]}>
               <View style={styles.logoRing}>
-                <Image source={logoSource(brand, LOGO)} style={styles.logo} accessibilityLabel="Logo" />
+                <BrandLogo own={LOGO} style={styles.logo} />
               </View>
               <Text style={styles.college}>{brand.college}</Text>
               <View style={styles.productPill}>

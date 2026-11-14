@@ -1,9 +1,10 @@
 import { router, type Href } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { signIn } from '@/features/auth/api';
-import { copyrightLine, logoSource, useBrand } from '@/features/brand/brand';
+import { copyrightLine, useBrand } from '@/features/brand/brand';
+import { BrandLogo } from '@/features/brand/BrandLogo';
 import { loadPref, savePref } from '@/features/web/prefs';
 import { colors, fontSize, fontWeight, isDark, radius, spacing } from '@/shared/theme';
 import { installWebCss } from '@/shared/web/webCss';
@@ -33,6 +34,9 @@ export function WebLogin() {
 
   useEffect(() => {
     document.title = `Sign in · ${brand.system}`;
+  }, [brand.system]);
+
+  useEffect(() => {
     // Start where there is something to type
     setTimeout(() => (email ? passwordRef.current?.focus() : emailRef.current?.focus()), 50);
     // ⚠ Caps Lock (the browser tells it on every key)
@@ -70,13 +74,13 @@ export function WebLogin() {
         <View style={styles.glowA} />
         <View style={styles.glowB} />
         <View style={styles.brandInner}>
-          <Image source={logoSource(brand, LOGO)} style={styles.bigLogo} accessibilityLabel="Logo" />
+          <BrandLogo own={LOGO} style={styles.bigLogo} />
           <Text style={styles.college}>{brand.college}</Text>
           <View style={[styles.rule, { backgroundColor: brand.accent_color }]} />
           <Text style={styles.system}>{brand.web_title || brand.system}</Text>
           <View style={styles.points}>
-            {brand.web_points.map(({ icon, text }) => (
-              <View key={text} style={styles.point}>
+            {brand.web_points.map(({ icon, text }, i) => (
+              <View key={i} style={styles.point}>
                 <Text style={styles.pointIcon}>{icon}</Text>
                 <Text style={styles.pointText}>{text}</Text>
               </View>

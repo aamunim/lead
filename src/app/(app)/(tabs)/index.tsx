@@ -23,7 +23,8 @@ import { addedRange, getLeadsAdded } from '@/features/leads/added';
 import { StudentsHomeCard } from '@/features/students/StudentsHomeCard';
 import { TodayVisits } from '@/features/visits/TodayVisits';
 import { isWeb } from '@/features/web/api';
-import { logoSource, useBrand } from '@/features/brand/brand';
+import { useBrand } from '@/features/brand/brand';
+import { BrandLogo } from '@/features/brand/BrandLogo';
 import { takeBootUrl } from '@/shared/web/bootUrl';
 import { countPendingUsers } from '@/features/users/api';
 import { MIcon, Tap, md, type MIconName } from '@/features/home/md';
@@ -202,7 +203,7 @@ function PhoneHome() {
       <SafeAreaView edges={['top']} style={[styles.bar, scrolled && styles.barScrolled]}>
         <View style={styles.barRow}>
           <View style={styles.barLogo}>
-            <Image source={logoSource(brand, LOGO)} style={styles.barLogoImg} accessibilityLabel="Logo" />
+            <BrandLogo own={LOGO} style={styles.barLogoImg} />
           </View>
           <View style={styles.flex}>
             {brand.home_names && (

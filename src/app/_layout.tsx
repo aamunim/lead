@@ -13,7 +13,7 @@ import { clearNativeCallLock } from '@/features/calls/callLock';
 import { colors, isDark } from '@/shared/theme';
 import { DisclosureHost } from '@/shared/ui/Disclosure';
 import { ThemeFollower } from '@/features/settings/appearance';
-import { loadBrand } from '@/features/brand/brand';
+import { brandKept, loadBrand } from '@/features/brand/brand';
 import { UpdateBanner } from '@/features/updates/UpdateBanner';
 import { OfflineBanner } from '@/shared/ui/OfflineBanner';
 import { WebAlertHost, installWebAlert } from '@/shared/web/WebAlert';
@@ -96,7 +96,8 @@ function RootNavigator() {
   }, [status]);
 
   useEffect(() => {
-    if (status !== 'loading') SplashScreen.hideAsync();
+    // (the kept logo and colours are in first, so the sign-in page doesn't change under you)
+    if (status !== 'loading') brandKept().then(() => SplashScreen.hideAsync());
   }, [status]);
 
   useEffect(() => {
