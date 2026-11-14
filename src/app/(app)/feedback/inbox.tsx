@@ -12,6 +12,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
@@ -124,7 +125,8 @@ export default function FeedbackInboxScreen() {
     );
 
   const list = (
-    <ScrollView
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
       style={styles.screen}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
@@ -297,7 +299,7 @@ export default function FeedbackInboxScreen() {
           )}
         </>
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 
   if (!wide) {

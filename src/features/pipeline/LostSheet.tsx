@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { bulkMarkLost, listLostReasons, markLost, reviveChoices, type Named } from '@/features/pipeline/api';
@@ -106,7 +107,7 @@ export function LostSheet({ visible, leads, onClose, onSaved }: Props) {
 
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <View>
               <Text style={styles.title}>✕ Not Now</Text>
               <Text style={styles.subtitle} numberOfLines={2}>
@@ -222,7 +223,7 @@ export function LostSheet({ visible, leads, onClose, onSaved }: Props) {
               fullWidth
             />
             <Button title="Cancel" variant="ghost" onPress={onClose} disabled={saving} fullWidth />
-          </ScrollView>
+          </SheetScroll>
         </View>
       </KeyboardAvoidingView>
     </Modal>

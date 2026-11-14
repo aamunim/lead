@@ -32,6 +32,7 @@ import {
 import { copyAnswer, pdfAnswer, shareAnswer } from '@/features/supervisor/chatExport';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
+import { useSheetFocus } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // 💬 Supervisor → Chat with the AI supervisor (super admins only)
@@ -331,7 +332,7 @@ export default function SupervisorChatScreen() {
   // scrolled down only when a message comes (not when a "📎" is opened higher up)
   const count = shown.length + (pending ? 1 : 0) + (pending?.error ? 1 : 0);
   const conversation = (
-    <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={90}>
+    <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
       <View style={styles.chatHead}>
         {!wide && (
           <Tap onPress={() => setOpen(null)} label="সব চ্যাট" style={styles.iconBtn}>
@@ -624,16 +625,17 @@ const Bubble = memo(function Bubble({
 });
 
 function RenameSheet({ title, onClose, onSave }: { title: string; onClose: () => void; onSave: (t: string) => void }) {
+  const focus = useSheetFocus();
   const [t, setT] = useState(title);
   return (
-    <Sheet title="চ্যাটের নাম" onClose={onClose}>
+    <Sheet title="চ্যাটের নাম" onClose={onClose} onShow={focus.onShow}>
       <TextInput
         value={t}
         onChangeText={setT}
         maxLength={60}
         style={styles.renameInput}
         placeholderTextColor={colors.textMuted}
-        autoFocus
+        ref={focus.ref}
         accessibilityLabel="চ্যাটের নাম"
       />
       <Button title="রাখুন" onPress={() => onSave(t)} disabled={t.trim().length === 0} fullWidth />

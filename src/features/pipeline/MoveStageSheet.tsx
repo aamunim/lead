@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { formatDue } from '@/features/follow-ups/api';
@@ -181,9 +182,9 @@ function SmallSheet({
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             {children}
-          </ScrollView>
+          </SheetScroll>
         </View>
       </KeyboardAvoidingView>
     </Modal>

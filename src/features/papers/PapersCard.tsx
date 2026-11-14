@@ -1,31 +1,23 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll, lateFocus } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { formatDue, scheduleFollowUp } from '@/features/follow-ups/api';
 import {
-    copyLabel,
-    getLeadPapers,
-    paperPlaceSuggestions,
-    returnLeadPaper,
-    setLeadPaper,
-    setPaperFolder,
-    shortDay,
-    type CopyType,
-    type LeadPaper,
-    type LeadPapers,
-    type PaperStatus,
+  copyLabel,
+  getLeadPapers,
+  paperPlaceSuggestions,
+  returnLeadPaper,
+  setLeadPaper,
+  setPaperFolder,
+  shortDay,
+  type CopyType,
+  type LeadPaper,
+  type LeadPapers,
+  type PaperStatus,
 } from '@/features/papers/api';
 import { listPipelineStages, moveLeadStage } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -129,9 +121,7 @@ export function PapersCard({ leadId, stageKind, stageKey, onChanged, refreshKey 
 
   // Tap: not received → received; received / not needed → untick
   const quickToggle = (p: LeadPaper) =>
-    save(p.paperId, () =>
-      setLeadPaper(leadId, p.paperId, p.status ? { status: null } : { status: 'received' }),
-    );
+    save(p.paperId, () => setLeadPaper(leadId, p.paperId, p.status ? { status: null } : { status: 'received' }));
 
   // Ask the lead to bring the missing papers: a next call tomorrow 10 am
   const remind = () => {
@@ -206,7 +196,9 @@ export function PapersCard({ leadId, stageKind, stageKey, onChanged, refreshKey 
               {data.done} of {data.required} required{complete ? ' ✓' : ''}
             </Text>
           ) : (
-            <Text style={styles.hint}>{data.papers.length} {data.papers.length === 1 ? 'paper' : 'papers'}</Text>
+            <Text style={styles.hint}>
+              {data.papers.length} {data.papers.length === 1 ? 'paper' : 'papers'}
+            </Text>
           )}
           <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} />
         </View>
@@ -248,7 +240,12 @@ export function PapersCard({ leadId, stageKind, stageKey, onChanged, refreshKey 
           {error && <Text style={styles.errorText}>{error}</Text>}
 
           {missingCount > 0 && stageKind === 'open' && (
-            <Button title={`📞 Remind to bring ${missingCount} ${missingCount === 1 ? 'paper' : 'papers'}`} variant="ghost" onPress={remind} fullWidth />
+            <Button
+              title={`📞 Remind to bring ${missingCount} ${missingCount === 1 ? 'paper' : 'papers'}`}
+              variant="ghost"
+              onPress={remind}
+              fullWidth
+            />
           )}
           <Text style={styles.hint}>Tap to tick · ⋯ for original / copy, place, note, returned</Text>
         </>
@@ -317,7 +314,7 @@ function PaperRow({
         .join(' · ')
     : notNeeded
       ? `Not needed${p.receivedByName ? ` · ${p.receivedByName}` : ''}`
-      : p.description ?? (p.isRequired ? 'Required' : 'Optional');
+      : (p.description ?? (p.isRequired ? 'Required' : 'Optional'));
 
   return (
     <View style={styles.paperRow}>
@@ -342,7 +339,7 @@ function PaperRow({
         <View style={styles.flex}>
           <Text style={[styles.paperName, notNeeded && styles.paperSkipped]}>
             {p.name}
-            {p.isRequired && !p.status ? <Text style={styles.reqMark}>  required</Text> : null}
+            {p.isRequired && !p.status ? <Text style={styles.reqMark}>{'  required'}</Text> : null}
           </Text>
           <Text style={[styles.paperSub, p.returnedAt && styles.returned]} numberOfLines={2}>
             {sub}
@@ -350,7 +347,13 @@ function PaperRow({
           {p.note ? <Text style={styles.paperNote}>“{p.note}”</Text> : null}
         </View>
       </Pressable>
-      <Pressable onPress={onDetails} hitSlop={8} style={styles.more} accessibilityRole="button" accessibilityLabel="Details">
+      <Pressable
+        onPress={onDetails}
+        hitSlop={8}
+        style={styles.more}
+        accessibilityRole="button"
+        accessibilityLabel="Details"
+      >
         <Ionicons name="ellipsis-horizontal" size={18} color={colors.textMuted} />
       </Pressable>
     </View>
@@ -370,7 +373,12 @@ function PaperDetailSheet({
   leadId: string;
   paper: LeadPaper;
   onClose: () => void;
-  onSave: (value: { status: PaperStatus | null; copyType: CopyType | null; keptAt: string; note: string }) => Promise<void>;
+  onSave: (value: {
+    status: PaperStatus | null;
+    copyType: CopyType | null;
+    keptAt: string;
+    note: string;
+  }) => Promise<void>;
   onReturn: (undo: boolean) => Promise<void>;
 }) {
   const [status, setStatus] = useState<PaperStatus | null>(paper.status ?? 'received');
@@ -407,8 +415,18 @@ function PaperDetailSheet({
       <View style={styles.field}>
         <Text style={styles.label}>Status</Text>
         <View style={styles.chips}>
-          <Chip label="✓ Received" on={status === 'received'} color={colors.success} onPress={() => setStatus('received')} />
-          <Chip label="Not needed" on={status === 'not_needed'} color={colors.textMuted} onPress={() => setStatus('not_needed')} />
+          <Chip
+            label="✓ Received"
+            on={status === 'received'}
+            color={colors.success}
+            onPress={() => setStatus('received')}
+          />
+          <Chip
+            label="Not needed"
+            on={status === 'not_needed'}
+            color={colors.textMuted}
+            onPress={() => setStatus('not_needed')}
+          />
           <Chip label="Not received" on={status === null} color={colors.danger} onPress={() => setStatus(null)} />
         </View>
       </View>
@@ -419,8 +437,16 @@ function PaperDetailSheet({
           <View style={styles.field}>
             <Text style={styles.label}>Original or photocopy?</Text>
             <View style={styles.chips}>
-              <Chip label="Original" on={copyType === 'original'} onPress={() => setCopyType(copyType === 'original' ? null : 'original')} />
-              <Chip label="Photocopy" on={copyType === 'photocopy'} onPress={() => setCopyType(copyType === 'photocopy' ? null : 'photocopy')} />
+              <Chip
+                label="Original"
+                on={copyType === 'original'}
+                onPress={() => setCopyType(copyType === 'original' ? null : 'original')}
+              />
+              <Chip
+                label="Photocopy"
+                on={copyType === 'photocopy'}
+                onPress={() => setCopyType(copyType === 'photocopy' ? null : 'photocopy')}
+              />
             </View>
           </View>
 
@@ -544,7 +570,7 @@ function PlaceSheet({
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         maxLength={120}
-        autoFocus
+        ref={lateFocus}
         style={styles.input}
       />
       {places.length > 0 && (
@@ -563,7 +589,9 @@ function PlaceSheet({
         </View>
       )}
       <Button title="Save" onPress={() => save(place)} loading={saving} disabled={!place.trim()} fullWidth />
-      {initial ? <Button title="Remove place" variant="ghost" onPress={() => save('')} disabled={saving} fullWidth /> : null}
+      {initial ? (
+        <Button title="Remove place" variant="ghost" onPress={() => save('')} disabled={saving} fullWidth />
+      ) : null}
       <Button title="Cancel" variant="ghost" onPress={onClose} disabled={saving} fullWidth />
     </Sheet>
   );
@@ -579,9 +607,9 @@ function Sheet({ onClose, children }: { onClose?: () => void; children: React.Re
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             {children}
-          </ScrollView>
+          </SheetScroll>
         </View>
       </KeyboardAvoidingView>
     </Modal>

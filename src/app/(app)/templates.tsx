@@ -1,19 +1,9 @@
 import { Stack, useFocusEffect } from 'expo-router';
 import { roleLabelOf, useRoleChoices } from '@/features/roles/api';
 import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
-import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
@@ -46,7 +36,6 @@ import { Button } from '@/shared/ui/Button';
 // =====================================================================
 
 const WA = '#1F7A57';
-
 
 const CHANNELS: { value: TemplateInput['channels']; label: string }[] = [
   { value: 'both', label: 'WhatsApp + SMS' },
@@ -141,7 +130,12 @@ export default function TemplatesScreen() {
 
   return (
     <>
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <KeyboardAwareScrollView
+        bottomOffset={spacing.xl}
+        keyboardShouldPersistTaps="handled"
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+      >
         <Stack.Screen options={{ title: 'Message templates' }} />
 
         {!isAdmin && !allowed && (
@@ -233,10 +227,27 @@ export default function TemplatesScreen() {
 
             <Text style={styles.sectionLabel}>INSTITUTE DETAILS (for templates)</Text>
             <View style={styles.card}>
-              <Field label="Name {institute}" value={settings.institute.name} onChange={(v) => set('institute', { ...settings.institute, name: v })} />
-              <Field label="Address {address}" multiline value={settings.institute.address} onChange={(v) => set('institute', { ...settings.institute, address: v })} />
-              <Field label="Google Maps link {map_link}" value={settings.institute.map_link} onChange={(v) => set('institute', { ...settings.institute, map_link: v })} />
-              <Field label="Office phone {office_phone}" value={settings.institute.phone} onChange={(v) => set('institute', { ...settings.institute, phone: v })} />
+              <Field
+                label="Name {institute}"
+                value={settings.institute.name}
+                onChange={(v) => set('institute', { ...settings.institute, name: v })}
+              />
+              <Field
+                label="Address {address}"
+                multiline
+                value={settings.institute.address}
+                onChange={(v) => set('institute', { ...settings.institute, address: v })}
+              />
+              <Field
+                label="Google Maps link {map_link}"
+                value={settings.institute.map_link}
+                onChange={(v) => set('institute', { ...settings.institute, map_link: v })}
+              />
+              <Field
+                label="Office phone {office_phone}"
+                value={settings.institute.phone}
+                onChange={(v) => set('institute', { ...settings.institute, phone: v })}
+              />
             </View>
 
             {error && <Text style={styles.error}>{error}</Text>}
@@ -274,7 +285,7 @@ export default function TemplatesScreen() {
         ) : (
           mine.map((t) => <TemplateRow key={t.id} t={t} editable={canEdit(t)} onPress={() => setEditing(t)} />)
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {editing && (
         <TemplateEditor
@@ -308,13 +319,17 @@ function TemplateRow({ t, editable, onPress }: { t: MessageTemplate; editable: b
       <View style={styles.flex}>
         <Text style={styles.tName} numberOfLines={1}>
           {t.name}
-          {!t.is_active && <Text style={styles.tMeta}>  · off</Text>}
+          {!t.is_active && <Text style={styles.tMeta}>{'  · off'}</Text>}
         </Text>
         <Text style={styles.tBody} numberOfLines={2}>
           {t.body}
         </Text>
         <Text style={styles.tMeta}>
-          {[t.category, t.channels === 'both' ? 'WhatsApp + SMS' : t.channels === 'whatsapp' ? 'WhatsApp' : 'SMS', t.use_count ? `used ${t.use_count}×` : null]
+          {[
+            t.category,
+            t.channels === 'both' ? 'WhatsApp + SMS' : t.channels === 'whatsapp' ? 'WhatsApp' : 'SMS',
+            t.use_count ? `used ${t.use_count}×` : null,
+          ]
             .filter(Boolean)
             .join(' · ')}
         </Text>
@@ -427,7 +442,7 @@ function TemplateEditor({
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <View style={styles.flex}>
         <View style={styles.editorHead}>
           <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button">
             <Text style={styles.cancel}>Cancel</Text>
@@ -471,14 +486,24 @@ function TemplateEditor({
           <Text style={styles.label}>SEND BY</Text>
           <View style={styles.chips}>
             {CHANNELS.map((c) => (
-              <Chip key={c.value} text={c.label} on={form.channels === c.value} onPress={() => set('channels', c.value)} />
+              <Chip
+                key={c.value}
+                text={c.label}
+                on={form.channels === c.value}
+                onPress={() => set('channels', c.value)}
+              />
             ))}
           </View>
 
           <Text style={styles.label}>CATEGORY</Text>
           <View style={styles.chips}>
             {CATEGORIES.map((c) => (
-              <Chip key={c} text={c} on={form.category === c} onPress={() => set('category', form.category === c ? null : c)} />
+              <Chip
+                key={c}
+                text={c}
+                on={form.category === c}
+                onPress={() => set('category', form.category === c ? null : c)}
+              />
             ))}
           </View>
 
@@ -527,7 +552,7 @@ function TemplateEditor({
           <Button title="Save template" onPress={save} loading={saving} fullWidth />
           {template && <Button title="Delete template" variant="ghost" onPress={remove} fullWidth />}
         </KeyboardAwareScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -537,7 +562,12 @@ function TemplateEditor({
 // =====================================================================
 function Chip({ text, on, onPress }: { text: string; on: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, on && styles.chipOn]} accessibilityRole="button" accessibilityState={{ selected: on }}>
+    <Pressable
+      onPress={onPress}
+      style={[styles.chip, on && styles.chipOn]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+    >
       <Text style={[styles.chipText, on && styles.chipTextOn]}>{text}</Text>
     </Pressable>
   );

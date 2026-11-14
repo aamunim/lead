@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -229,8 +230,8 @@ export default function SyncHealthScreen() {
         )}
 
         <Text style={styles.hint}>
-          Each phone reports here after every sync. A phone that is switched off, or where the app hasn’t been
-          opened, won’t update. Press and hold a card to remove an old phone.
+          Each phone reports here after every sync. A phone that is switched off, or where the app hasn’t been opened,
+          won’t update. Press and hold a card to remove an old phone.
           {isSuperAdmin ? ' A reminder shows up in the app the next time the person opens it.' : ''}
         </Text>
       </ScrollView>
@@ -273,9 +274,7 @@ function HealthCard({
   onLongPress: () => void;
 }) {
   const info = STATUS_INFO[row.status];
-  const phoneLine = [row.deviceLabel, row.appVersion && `v${row.appVersion}`, row.simLabel]
-    .filter(Boolean)
-    .join(' · ');
+  const phoneLine = [row.deviceLabel, row.appVersion && `v${row.appVersion}`, row.simLabel].filter(Boolean).join(' · ');
   const reminded = reminderLine(row);
   const wait = cooldownLeft(row);
   const showRemind = canRemind && needsReminder(row);
@@ -284,7 +283,11 @@ function HealthCard({
     <Pressable
       onLongPress={row.deviceId ? onLongPress : undefined}
       delayLongPress={400}
-      style={({ pressed }) => [styles.card, { borderLeftColor: info.color, borderLeftWidth: 4 }, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.card,
+        { borderLeftColor: info.color, borderLeftWidth: 4 },
+        pressed && styles.pressed,
+      ]}
       accessibilityRole="summary"
       accessibilityLabel={`${row.userName}, ${info.label}`}
       accessibilityHint={row.deviceId ? 'Press and hold to remove this phone' : undefined}
@@ -293,7 +296,7 @@ function HealthCard({
       <View style={styles.cardTop}>
         <Text style={styles.name} numberOfLines={1}>
           {row.userName}
-          {required ? <Text style={styles.required}>  🔒 Required</Text> : null}
+          {required ? <Text style={styles.required}>{'  🔒 Required'}</Text> : null}
         </Text>
         <View style={[styles.statusPill, { backgroundColor: info.color + '1A' }]}>
           <Text style={[styles.statusText, { color: info.color }]}>
@@ -397,8 +400,7 @@ function RemindSheet({
   const [error, setError] = useState<string | null>(null);
 
   const names = recipients.map((r) => r.userName);
-  const who =
-    names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+  const who = names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
 
   const send = async () => {
     setSending(true);
@@ -422,7 +424,7 @@ function RemindSheet({
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetTitle}>🔔 Remind to set up call sync</Text>
             <Text style={styles.muted}>
               To: <Text style={styles.bold}>{who}</Text>
@@ -462,7 +464,7 @@ function RemindSheet({
               fullWidth
             />
             <Button title="Cancel" variant="ghost" onPress={onClose} fullWidth />
-          </ScrollView>
+          </SheetScroll>
         </View>
       </KeyboardAvoidingView>
     </Modal>

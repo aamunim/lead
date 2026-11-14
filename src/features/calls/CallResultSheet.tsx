@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import {
@@ -553,7 +554,7 @@ export function CallResultSheet({
 
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <View>
               <Text style={styles.title}>
                 {waEvent
@@ -758,7 +759,7 @@ export function CallResultSheet({
             ) : (
               <Button title="Close" variant="ghost" onPress={onClose} fullWidth />
             )}
-          </ScrollView>
+          </SheetScroll>
         </View>
       </KeyboardAvoidingView>
     </Modal>

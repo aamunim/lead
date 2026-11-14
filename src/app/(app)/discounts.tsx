@@ -1,16 +1,7 @@
 import { Stack, router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { decideDiscount, discountQueue, getMyDiscountLimit, money, type QueueItem } from '@/features/fees/api';
@@ -79,7 +70,8 @@ export default function DiscountsScreen() {
   const others = items.filter((i) => !toApprove.includes(i));
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
       style={styles.screen}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
@@ -127,7 +119,7 @@ export default function DiscountsScreen() {
           ))}
         </>
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

@@ -2,6 +2,7 @@ import { router, type Href } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -101,7 +102,11 @@ export function TemplateSheet({ visible, lead, channel, settings, onClose, onPla
     if (!lead || !picked || !text.trim()) return;
     setSending(true);
     const opened =
-      channel === 'whatsapp' ? await openWhatsApp(lead, text.trim()) : lead.phone ? await openSms(lead.phone, text.trim()) : false;
+      channel === 'whatsapp'
+        ? await openWhatsApp(lead, text.trim())
+        : lead.phone
+          ? await openSms(lead.phone, text.trim())
+          : false;
     if (opened) {
       // Saved on the lead; a failed save must not stop the message
       logTemplateSent(lead.id, picked.id, channel, text.trim() !== filled.trim()).catch(() => undefined);
@@ -144,7 +149,7 @@ export function TemplateSheet({ visible, lead, channel, settings, onClose, onPla
 
           {picked ? (
             // --- the message, filled in, to check and change -------------
-            <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            <SheetScroll contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
               <Text style={styles.label}>{picked.name}</Text>
               {missing.length > 0 && (
                 <Text style={styles.warn}>
@@ -171,10 +176,10 @@ export function TemplateSheet({ visible, lead, channel, settings, onClose, onPla
                 disabled={!text.trim()}
                 fullWidth
               />
-            </ScrollView>
+            </SheetScroll>
           ) : (
             // --- the list ------------------------------------------------
-            <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            <SheetScroll contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
               <TextInput
                 value={search}
                 onChangeText={setSearch}
@@ -208,7 +213,7 @@ export function TemplateSheet({ visible, lead, channel, settings, onClose, onPla
                     <View style={styles.flex}>
                       <Text style={styles.rowTitle} numberOfLines={1}>
                         {t.name}
-                        {!t.is_shared && <Text style={styles.mine}>  · mine</Text>}
+                        {!t.is_shared && <Text style={styles.mine}>{'  · mine'}</Text>}
                       </Text>
                       <Text style={styles.rowText} numberOfLines={2}>
                         {fillTemplate(t.body, ctx).text}
@@ -229,7 +234,7 @@ export function TemplateSheet({ visible, lead, channel, settings, onClose, onPla
               >
                 <Text style={styles.manage}>✏️ Manage templates</Text>
               </Pressable>
-            </ScrollView>
+            </SheetScroll>
           )}
         </View>
       </KeyboardAvoidingView>
@@ -312,7 +317,13 @@ const styles = StyleSheet.create({
   mine: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold, color: colors.textMuted },
   rowText: { fontSize: fontSize.small, color: colors.textMuted, marginTop: 2 },
   chevron: { fontSize: 22, color: colors.textMuted },
-  manage: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.primary, textAlign: 'center', marginTop: spacing.sm },
+  manage: {
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
   label: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.text },
   warn: { fontSize: fontSize.small, color: colors.warning },
   editor: {

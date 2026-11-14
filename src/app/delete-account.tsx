@@ -1,6 +1,7 @@
 import { router, Stack, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import { deleteAccountWithLogin, deleteMyAccount, requestAccountDeletion } from '@/features/auth/deleteAccount';
@@ -91,7 +92,12 @@ export default function DeleteAccountScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'Delete account', headerShown: true }} />
       <Text style={styles.h1}>🗑 Delete your account</Text>
       <Text style={styles.text}>{APP_NAME}</Text>
@@ -177,7 +183,7 @@ export default function DeleteAccountScreen() {
       <Text style={styles.privacy} onPress={() => router.push('/privacy' as Href)}>
         🔒 Privacy policy
       </Text>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

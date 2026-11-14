@@ -1,17 +1,7 @@
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import {
   DEFAULT_ALUMNI_SETTINGS,
@@ -132,7 +122,12 @@ export default function AlumniSettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'Alumni' }} />
 
       <RuleCard
@@ -344,7 +339,7 @@ export default function AlumniSettingsScreen() {
 
       {/* 🧩 Custom fields (saved one by one) */}
       <FieldsCard fields={fields} reload={() => loadFields().then(alumniChanged)} />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

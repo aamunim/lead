@@ -36,6 +36,7 @@ import { MIcon, md } from '@/features/home/md';
 import { isWeb } from '@/features/web/api';
 import { colors, fontWeight } from '@/shared/theme';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // 🏆 Leaderboard: everyone's credits for the period, the top three on a
@@ -410,7 +411,7 @@ function BreakdownSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal keyboard visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.backdrop}>
         <Pressable style={s.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={s.sheet}>
@@ -427,7 +428,7 @@ function BreakdownSheet({
               <MIcon name="close" size={22} color={colors.textMuted} />
             </Pressable>
           </View>
-          <ScrollView contentContainerStyle={s.sheetBody} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={s.sheetBody} keyboardShouldPersistTaps="handled">
             {/* 🏅 level (all-time credits) */}
             {!!badges?.level && <LevelBar l={badges.level} />}
             {/* 🔥 streak and 🎖 badges */}
@@ -549,7 +550,7 @@ function BreakdownSheet({
                 </Pressable>
               </View>
             )}
-          </ScrollView>
+          </SheetScroll>
         </View>
       </View>
     </Modal>

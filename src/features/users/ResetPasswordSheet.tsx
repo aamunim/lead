@@ -1,7 +1,8 @@
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 
 import { makePassword, resetUserPassword } from '@/features/users/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -56,7 +57,9 @@ export function ResetPasswordSheet({ user, onClose, onDone }: Props) {
   const sendWhatsApp = (password: string) => {
     const phone = (user.phone ?? '').replace(/\D/g, '').replace(/^0/, '880');
     const text = encodeURIComponent(message(password));
-    Linking.openURL(phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`).catch(() => undefined);
+    Linking.openURL(phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`).catch(
+      () => undefined,
+    );
   };
 
   const finish = () => {
@@ -65,12 +68,16 @@ export function ResetPasswordSheet({ user, onClose, onDone }: Props) {
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={done ? finish : onClose}>
+    <Modal keyboard visible transparent animationType="slide" onRequestClose={done ? finish : onClose}>
       <View style={styles.backdrop}>
-        <Pressable style={styles.flex} onPress={done ? finish : saving ? undefined : onClose} accessibilityLabel="Close" />
+        <Pressable
+          style={styles.flex}
+          onPress={done ? finish : saving ? undefined : onClose}
+          accessibilityLabel="Close"
+        />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <Text style={styles.title}>🔑 Reset password · {name}</Text>
 
             {done ? (
@@ -144,7 +151,7 @@ export function ResetPasswordSheet({ user, onClose, onDone }: Props) {
                 <Button title="Reset password" variant="danger" onPress={reset} loading={saving} fullWidth />
               </>
             )}
-          </ScrollView>
+          </SheetScroll>
         </View>
       </View>
     </Modal>

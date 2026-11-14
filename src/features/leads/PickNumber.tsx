@@ -96,7 +96,7 @@ function Sheet({
   children: React.ReactNode;
 }) {
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal keyboard visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.backdrop}>
         <Pressable style={s.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={s.sheet}>

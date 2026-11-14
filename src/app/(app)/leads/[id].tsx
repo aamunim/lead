@@ -11,7 +11,6 @@ import {
   Linking,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -19,6 +18,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -1659,7 +1659,8 @@ export function LeadDetailView({
         </View>
       </SafeAreaView>
 
-      <ScrollView
+      <KeyboardAwareScrollView
+        bottomOffset={spacing.xl}
         style={styles.flex}
         contentContainerStyle={p.content}
         scrollEventThrottle={32}
@@ -1878,7 +1879,7 @@ export function LeadDetailView({
 
           {deleteEl}
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* + Note · + Log call */}
       <View style={p.fabs} pointerEvents="box-none">

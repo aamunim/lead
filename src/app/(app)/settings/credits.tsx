@@ -1,6 +1,7 @@
 import { Stack, router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
@@ -94,7 +95,12 @@ export default function CreditSettingsScreen() {
     );
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'Credits & leaderboard' }} />
       <Text style={styles.intro}>
         Everyone earns credits for their work and sees their place on the leaderboard (More → Leaderboard). Credits are
@@ -307,7 +313,7 @@ export default function CreditSettingsScreen() {
 
       {!!error && <Text style={styles.error}>{error}</Text>}
       <Button title="Save" onPress={save} loading={saving} disabled={!dirty} fullWidth />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

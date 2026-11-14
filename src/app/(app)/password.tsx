@@ -1,5 +1,6 @@
 import { Stack, router } from 'expo-router';
-import { Alert, ScrollView, StyleSheet, Text } from 'react-native';
+import { Alert, StyleSheet, Text } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { ChangePasswordForm } from '@/features/auth/ChangePasswordForm';
 import { colors, fontSize, spacing } from '@/shared/theme';
@@ -7,7 +8,12 @@ import { colors, fontSize, spacing } from '@/shared/theme';
 // 🔐 More → Change password
 export default function ChangePasswordScreen() {
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'Change password' }} />
       <Text style={styles.text}>Your new password works on every phone and on the website from now on.</Text>
       <ChangePasswordForm
@@ -16,7 +22,7 @@ export default function ChangePasswordScreen() {
           router.back();
         }}
       />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

@@ -1,26 +1,12 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll, lateFocus } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-    createItem,
-    listCourses,
-    listItems,
-    reorderItems,
-    updateItem,
-    type ListItem,
-} from '@/features/settings/api';
+import { createItem, listCourses, listItems, reorderItems, updateItem, type ListItem } from '@/features/settings/api';
 import { COLOR_CHOICES, getListConfig, type FieldConfig } from '@/features/settings/lists';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -71,10 +57,7 @@ export default function ListEditorScreen() {
     load();
   }, [load]);
 
-  const visible = useMemo(
-    () => (showInactive ? items : items.filter((i) => i.is_active)),
-    [items, showInactive],
-  );
+  const visible = useMemo(() => (showInactive ? items : items.filter((i) => i.is_active)), [items, showInactive]);
   const inactiveCount = items.length - items.filter((i) => i.is_active).length;
 
   // --- reorder: move one row up or down ------------------------------
@@ -89,7 +72,10 @@ export default function ListEditorScreen() {
     setItems(next); // show the change at once
 
     try {
-      await reorderItems(config.table, next.map((i) => i.id));
+      await reorderItems(
+        config.table,
+        next.map((i) => i.id),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save the new order.');
       load();
@@ -340,10 +326,7 @@ function EditorModal({
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.sheetWrap}
-        >
+        <KeyboardAvoidingView behavior="padding" style={styles.sheetWrap}>
           <SafeAreaView edges={['bottom']} style={styles.sheet}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>{title}</Text>
@@ -352,13 +335,13 @@ function EditorModal({
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+            <SheetScroll contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
               <TextField
                 label="Name"
                 required
                 value={draft.name}
                 onChangeText={(v) => set('name', v)}
-                autoFocus={!draft.id}
+                ref={!draft.id ? lateFocus : undefined}
               />
 
               {fields.map((f) => (
@@ -395,7 +378,7 @@ function EditorModal({
               )}
 
               <Button title="Save" onPress={handleSave} loading={saving} fullWidth />
-            </ScrollView>
+            </SheetScroll>
           </SafeAreaView>
         </KeyboardAvoidingView>
       </View>
@@ -572,6 +555,8 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(11,19,40,0.45)', justifyContent: 'flex-end' },
   sheetWrap: { maxHeight: '90%' },
   sheet: {
+    // shrink inside the 90% box (and above the keyboard) so the form can scroll
+    flexShrink: 1,
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,

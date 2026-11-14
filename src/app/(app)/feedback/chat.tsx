@@ -40,7 +40,7 @@ export default function DeveloperChatScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={90}>
+    <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
       <Stack.Screen options={{ title: person.name }} />
       <ChatView
         chatUser={u}

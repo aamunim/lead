@@ -1,6 +1,7 @@
 import { Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import {
   DEFAULT_FILES_SETTINGS,
@@ -47,7 +48,9 @@ export default function DriveSettingsScreen() {
       ]);
       setStatus(st);
       setSettings(s);
-      setRoles(((r.data ?? []) as { key: string; name: string }[]).filter((x) => !['super_admin', 'admin'].includes(x.key)));
+      setRoles(
+        ((r.data ?? []) as { key: string; name: string }[]).filter((x) => !['super_admin', 'admin'].includes(x.key)),
+      );
       setUsers(u.filter((p) => p.role_key !== 'super_admin'));
       setDirty(false);
     } catch (e) {
@@ -140,7 +143,12 @@ export default function DriveSettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'Google Drive' }} />
 
       <View style={styles.card}>
@@ -156,9 +164,9 @@ export default function DriveSettingsScreen() {
         {(showForm || !status?.connected) && (
           <>
             <Text style={styles.hint}>
-              1. In the Drive owner’s Gmail, open script.google.com → New project, paste the script (docs/drive-script.gs),
-              change SECRET. 2. Deploy → New deployment → Web app · Execute as: Me · Who has access: Anyone. 3. Paste
-              the Web app URL and the same secret here.
+              1. In the Drive owner’s Gmail, open script.google.com → New project, paste the script
+              (docs/drive-script.gs), change SECRET. 2. Deploy → New deployment → Web app · Execute as: Me · Who has
+              access: Anyone. 3. Paste the Web app URL and the same secret here.
             </Text>
             <TextInput
               value={scriptUrl}
@@ -207,7 +215,9 @@ export default function DriveSettingsScreen() {
         <View style={styles.switchRow}>
           <View style={styles.flex}>
             <Text style={styles.rowTitle}>📎 Files on leads</Text>
-            <Text style={styles.rowText}>{settings.enabled ? 'On: the lead page shows Files.' : 'Off: Files are hidden.'}</Text>
+            <Text style={styles.rowText}>
+              {settings.enabled ? 'On: the lead page shows Files.' : 'Off: Files are hidden.'}
+            </Text>
           </View>
           <Switch value={settings.enabled} onValueChange={(v) => set({ ...settings, enabled: v })} />
         </View>
@@ -223,13 +233,23 @@ export default function DriveSettingsScreen() {
               ['all', 'Everyone'],
             ] as const
           ).map(([m, label]) => (
-            <Chip key={m} text={label} on={settings.view_all.mode === m} onPress={() => set({ ...settings, view_all: { ...settings.view_all, mode: m } })} />
+            <Chip
+              key={m}
+              text={label}
+              on={settings.view_all.mode === m}
+              onPress={() => set({ ...settings, view_all: { ...settings.view_all, mode: m } })}
+            />
           ))}
         </View>
         {settings.view_all.mode === 'roles' && (
           <View style={styles.chips}>
             {roles.map((r) => (
-              <Chip key={r.key} text={r.name} on={settings.view_all.roles.includes(r.key)} onPress={() => toggle('roles', r.key)} />
+              <Chip
+                key={r.key}
+                text={r.name}
+                on={settings.view_all.roles.includes(r.key)}
+                onPress={() => toggle('roles', r.key)}
+              />
             ))}
           </View>
         )}
@@ -249,13 +269,18 @@ export default function DriveSettingsScreen() {
 
       {error && <Text style={styles.error}>{error}</Text>}
       <Button title="Save" onPress={save} loading={busy && dirty} disabled={!dirty} fullWidth />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
 function Chip({ text, on, onPress }: { text: string; on: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, on && styles.chipOn]} accessibilityRole="button" accessibilityState={{ selected: on }}>
+    <Pressable
+      onPress={onPress}
+      style={[styles.chip, on && styles.chipOn]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+    >
       <Text style={[styles.chipText, on && styles.chipTextOn]}>{text}</Text>
     </Pressable>
   );

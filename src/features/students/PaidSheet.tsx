@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { PaidRange } from '@/features/leads/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // 💵 Students tab: who paid how much. One small sheet:
@@ -71,11 +72,11 @@ export function PaidSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal keyboard visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <Text style={styles.title}>💵 Paid</Text>
             <Text style={styles.small}>What each student paid so far (refunds taken off).</Text>
 
@@ -132,7 +133,7 @@ export function PaidSheet({
             {error && <Text style={styles.error}>{error}</Text>}
             <Button title="Show" onPress={apply} fullWidth />
             {value && <Button title="Clear" variant="ghost" onPress={() => onApply(null)} fullWidth />}
-          </ScrollView>
+          </SheetScroll>
         </View>
       </View>
     </Modal>

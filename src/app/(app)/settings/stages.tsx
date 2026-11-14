@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -381,7 +382,7 @@ function StageSheet({
         <Pressable style={styles.flex} onPress={saving ? undefined : onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetTitle}>{isNew ? 'Add stage' : isFinal ? 'Final stage' : 'Edit stage'}</Text>
 
             {/* Name */}
@@ -548,7 +549,7 @@ function StageSheet({
               <Button title="Remove stage" variant="ghost" onPress={remove} disabled={saving} fullWidth />
             )}
             <Button title="Cancel" variant="ghost" onPress={onClose} disabled={saving} fullWidth />
-          </ScrollView>
+          </SheetScroll>
         </View>
       </KeyboardAvoidingView>
     </Modal>

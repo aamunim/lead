@@ -117,3 +117,23 @@ export function useSheetFocus() {
   }, []);
   return { ref, onShow: focus };
 }
+
+/**
+ * Put as ref={lateFocus} on a text field (instead of autoFocus) that should get
+ * the keyboard when its sheet or popup opens. The keyboard then opens a moment
+ * after the sheet is on screen, so the sheet moves up above it (with autoFocus
+ * it could open too early and cover the field).
+ */
+export function lateFocus(node: unknown) {
+  if (!node) return;
+  setTimeout(
+    () => {
+      try {
+        (node as { focus?: () => void }).focus?.();
+      } catch {
+        // gone already
+      }
+    },
+    Platform.OS === 'web' ? 0 : 500,
+  );
+}
