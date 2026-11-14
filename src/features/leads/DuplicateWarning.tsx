@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { duplicatesOf, ignoreDuplicates, type DuplicateOf } from '@/features/leads/merge';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -52,9 +52,13 @@ export function DuplicateWarning({ leadId }: { leadId: string }) {
         </Pressable>
         <Pressable
           onPress={() => {
-            const ids = [leadId, ...dups.map((d) => d.id)];
+            // this lead and each of the others (not the others among themselves)
+            const shown = dups;
             setDups([]);
-            ignoreDuplicates(ids).catch(() => undefined);
+            Promise.all(shown.map((d) => ignoreDuplicates([leadId, d.id]))).catch((e) => {
+              setDups(shown);
+              Alert.alert('Could not save', e instanceof Error ? e.message : 'Please try again.');
+            });
           }}
           style={styles.btn}
           accessibilityRole="button"

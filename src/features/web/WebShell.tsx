@@ -246,7 +246,8 @@ export function WebShell({ children }: { children: React.ReactNode }) {
       label: 'Leads',
       icon: '📋',
       href: '/leads',
-      match: (p: string) => p === '/leads' || p.startsWith('/leads/') || p.startsWith('/import'),
+      match: (p: string) =>
+        p === '/leads' || (p.startsWith('/leads/') && !p.startsWith('/leads/duplicates')) || p.startsWith('/import'),
     },
     ...(students
       ? [

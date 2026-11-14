@@ -1,5 +1,5 @@
-import { router, Stack, type Href } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { router, Stack, useFocusEffect, type Href } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -63,9 +63,12 @@ export default function DuplicatesScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    if (allowed) load();
-  }, [allowed, load]);
+  // again each time the page shows (a merge done from here is gone when you come back)
+  useFocusEffect(
+    useCallback(() => {
+      if (allowed) load();
+    }, [allowed, load]),
+  );
 
   const notSame = (g: Group) =>
     ask('Not the same person?', 'These leads stop showing as duplicates. Nothing else changes.', 'Not the same', () => {

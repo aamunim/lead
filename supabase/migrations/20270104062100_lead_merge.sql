@@ -31,6 +31,7 @@ create table if not exists public.lead_merges (
   names       text[] not null default '{}',
   main_before jsonb not null,
   moved       jsonb not null default '[]',
+  main_after  jsonb,
   added       jsonb not null default '[]',
   merged_by   uuid references public.profiles (id) on delete set null default auth.uid(),
   merged_at   timestamptz not null default now(),
@@ -996,6 +997,45 @@ $function$;
 -- ---------------------------------------------------------------------
 -- 🔗 merge_leads: checks as the person (row security), then merges
 -- ---------------------------------------------------------------------
+-- the cached lines on a lead, from its own rows again (after rows moved in a merge or an undo)
+create or replace function public.lead_merge_refresh(p_lead uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+  v_status text;
+  v_at     timestamptz;
+begin
+  perform public.refresh_lead_fee(p_lead);
+  perform public.refresh_lead_payments(p_lead);
+  perform public.refresh_lead_papers(p_lead);
+  perform public.refresh_lead_last(p_lead);
+
+  select 'planned', planned_at into v_status, v_at
+  from public.lead_visits where lead_id = p_lead and status = 'planned' limit 1;
+  if v_status is null then
+    select 'visited', max(coalesce(visited_at, updated_at)) into v_status, v_at
+    from public.lead_visits where lead_id = p_lead and status = 'visited' having count(*) > 0;
+  end if;
+  if v_status is null then
+    select 'missed', planned_at into v_status, v_at
+    from public.lead_visits where lead_id = p_lead and status = 'missed' order by updated_at desc limit 1;
+  end if;
+
+  update public.leads l set
+    visit_status = v_status,
+    visit_at = v_at,
+    next_follow_up_at = (select f.due_at from public.follow_ups f
+                         where f.lead_id = p_lead and f.status = 'pending' order by f.due_at limit 1),
+    last_contacted_at = coalesce((select max(c.called_at) from public.call_logs c
+                                  where c.lead_id = p_lead and c.deleted_at is null), l.last_contacted_at)
+  where l.id = p_lead;
+end;
+$fn$;
+revoke all on function public.lead_merge_refresh(uuid) from public, anon, authenticated;
+
 create or replace function public.merge_leads(p_main uuid, p_others uuid[], p_fields jsonb default '{}')
 returns uuid
 language plpgsql
@@ -1068,6 +1108,9 @@ declare
   v_who     text := public.person_name(auth.uid());
   v_users   uuid[];
   u         uuid;
+  v_ref     uuid;
+  v_work    text;
+  v_custom  jsonb;
 begin
   if coalesce(current_setting('app.merge_ok', true), '') <> array_to_string(v_all, ',') then
     raise exception 'Use merge_leads.';
@@ -1122,6 +1165,10 @@ begin
     v_nums := v_nums || array[v_o.phone, v_o.alt_phone, v_o.whatsapp_number] || v_o.extra_phones;
     v_wa := coalesce(v_wa, v_o.whatsapp_number);
     v_un := coalesce(v_un, v_o.whatsapp_username);
+    -- 🎓 who referred, workplace, the extra fields: the main lead's, else the others'
+    v_ref := coalesce(v_ref, v_o.referred_by_alumni_id);
+    v_work := coalesce(v_work, nullif(trim(coalesce(v_o.workplace, '')), ''));
+    v_custom := coalesce(v_o.custom_fields, '{}'::jsonb) || coalesce(v_custom, '{}'::jsonb);
     if nullif(trim(coalesce(v_o.notes, '')), '') is not null then
       v_notes := concat_ws(E'\n', v_notes, '— ' || v_o.name || ': ' || trim(v_o.notes));
     end if;
@@ -1178,9 +1225,13 @@ begin
   end loop;
 
   -- ☎ All the numbers on one lead
+  -- (in the order they came: each lead's phone, alt phone, WhatsApp, more numbers)
   v_nums := array(
-    select distinct x from unnest(v_nums || v_main.extra_phones) x
-    where x ~ '^01[3-9][0-9]{8}$' and x is distinct from v_main.phone and x is distinct from v_main.alt_phone
+    select z.x from (
+      select x, min(o) as o from unnest(v_nums || v_main.extra_phones) with ordinality t(x, o) group by x
+    ) z
+    where z.x ~ '^01[3-9][0-9]{8}$' and z.x is distinct from v_main.phone and z.x is distinct from v_main.alt_phone
+    order by z.o
   );
   v_phone := coalesce(v_main.phone, v_nums[1]);
   v_nums := array(select x from unnest(v_nums) x where x is distinct from v_phone);
@@ -1231,7 +1282,10 @@ begin
     referred_by       = case when p_fields ? 'referred_by' then nullif(p_fields->>'referred_by', '') else referred_by end,
     lead_type_id      = case when p_fields ? 'lead_type_id' then nullif(p_fields->>'lead_type_id', '')::uuid else lead_type_id end,
     campaign_id       = case when p_fields ? 'campaign_id' then nullif(p_fields->>'campaign_id', '')::uuid else campaign_id end,
-    notes             = v_notes
+    notes             = v_notes,
+    referred_by_alumni_id = coalesce(referred_by_alumni_id, v_ref),
+    workplace         = coalesce(nullif(trim(coalesce(workplace, '')), ''), v_work),
+    custom_fields     = coalesce(v_custom, '{}'::jsonb) || coalesce(custom_fields, '{}'::jsonb)
   where id = p_main;
 
   -- The others: hidden, pointing to the main lead
@@ -1247,8 +1301,15 @@ begin
 
   update public.lead_merges set moved = v_moved, added = v_added, names = v_names where id = v_merge;
 
-  -- the last call / note line and the AI's chance follow the calls and notes that moved
-  perform public.refresh_lead_last(p_main);
+  -- the cached lines on the lead (fee, payments, papers, visit, next call, last call/note)
+  perform public.lead_merge_refresh(p_main);
+  -- the alumni who referred these leads: their counts again
+  perform public.alumni_recount(a) from (
+    select distinct referred_by_alumni_id a from public.leads
+    where id = any (v_all) and referred_by_alumni_id is not null) z;
+  -- what the merge wrote on the main lead (an undo only puts back what is still so)
+  update public.lead_merges set main_after = (select to_jsonb(l) from public.leads l where l.id = p_main)
+  where id = v_merge;
   if to_regproc('public.ai_chance_mark') is not null then
     begin
       perform public.ai_chance_mark(array[p_main], false);
@@ -1299,6 +1360,8 @@ declare
   v_before public.leads;
   v_open   boolean;
   v_vals   jsonb;
+  v_after  public.leads;
+  v_has_after boolean;
 begin
   if not public.has_permission('settings.manage') then
     raise exception 'Only an admin can undo a merge.';
@@ -1309,6 +1372,10 @@ begin
   end if;
   if m.merged_at < now() - interval '30 days' then
     raise exception 'A merge can be undone for 30 days only.';
+  end if;
+  -- the main lead was itself merged (or deleted) since: undo that first
+  if exists (select 1 from public.leads where id = m.main_id and (deleted_at is not null or merged_into is not null)) then
+    raise exception 'The main lead was merged into another lead (or deleted) since. Undo that first.';
   end if;
 
   perform set_config('app.merging', 'on', true);
@@ -1346,17 +1413,34 @@ begin
   v_before := jsonb_populate_record(null::public.leads, m.main_before);
   select s.kind = 'open' into v_open from public.leads l join public.pipeline_stages s on s.id = l.stage_id
   where l.id = m.main_id;
-  update public.leads set
-    name = v_before.name, phone = v_before.phone, alt_phone = v_before.alt_phone,
-    extra_phones = coalesce(v_before.extra_phones, '{}'),
-    whatsapp_number = v_before.whatsapp_number, whatsapp_username = v_before.whatsapp_username,
-    assigned_to = v_before.assigned_to, source_id = v_before.source_id,
-    stage_id = case when v_open then v_before.stage_id else stage_id end,
-    rating = v_before.rating, email = v_before.email, area = v_before.area,
-    guardian_name = v_before.guardian_name, guardian_phone = v_before.guardian_phone,
-    guardian_relation = v_before.guardian_relation, referred_by = v_before.referred_by,
-    lead_type_id = v_before.lead_type_id, campaign_id = v_before.campaign_id, notes = v_before.notes
-  where id = m.main_id;
+  -- a value someone changed after the merge stays as they set it
+  v_has_after := m.main_after is not null;
+  v_after := jsonb_populate_record(null::public.leads, coalesce(m.main_after, '{}'::jsonb));
+  update public.leads l set
+    name = case when not v_has_after or l.name is not distinct from v_after.name then v_before.name else l.name end,
+    phone = case when not v_has_after or l.phone is not distinct from v_after.phone then v_before.phone else l.phone end,
+    alt_phone = case when not v_has_after or l.alt_phone is not distinct from v_after.alt_phone then v_before.alt_phone else l.alt_phone end,
+    extra_phones = case when not v_has_after or l.extra_phones is not distinct from v_after.extra_phones
+                        then coalesce(v_before.extra_phones, '{}') else l.extra_phones end,
+    whatsapp_number = case when not v_has_after or l.whatsapp_number is not distinct from v_after.whatsapp_number then v_before.whatsapp_number else l.whatsapp_number end,
+    whatsapp_username = case when not v_has_after or l.whatsapp_username is not distinct from v_after.whatsapp_username then v_before.whatsapp_username else l.whatsapp_username end,
+    assigned_to = case when not v_has_after or l.assigned_to is not distinct from v_after.assigned_to then v_before.assigned_to else l.assigned_to end,
+    source_id = case when not v_has_after or l.source_id is not distinct from v_after.source_id then v_before.source_id else l.source_id end,
+    stage_id = case when v_open and (not v_has_after or l.stage_id is not distinct from v_after.stage_id) then v_before.stage_id else l.stage_id end,
+    rating = case when not v_has_after or l.rating is not distinct from v_after.rating then v_before.rating else l.rating end,
+    email = case when not v_has_after or l.email is not distinct from v_after.email then v_before.email else l.email end,
+    area = case when not v_has_after or l.area is not distinct from v_after.area then v_before.area else l.area end,
+    guardian_name = case when not v_has_after or l.guardian_name is not distinct from v_after.guardian_name then v_before.guardian_name else l.guardian_name end,
+    guardian_phone = case when not v_has_after or l.guardian_phone is not distinct from v_after.guardian_phone then v_before.guardian_phone else l.guardian_phone end,
+    guardian_relation = case when not v_has_after or l.guardian_relation is not distinct from v_after.guardian_relation then v_before.guardian_relation else l.guardian_relation end,
+    referred_by = case when not v_has_after or l.referred_by is not distinct from v_after.referred_by then v_before.referred_by else l.referred_by end,
+    lead_type_id = case when not v_has_after or l.lead_type_id is not distinct from v_after.lead_type_id then v_before.lead_type_id else l.lead_type_id end,
+    campaign_id = case when not v_has_after or l.campaign_id is not distinct from v_after.campaign_id then v_before.campaign_id else l.campaign_id end,
+    notes = case when not v_has_after or l.notes is not distinct from v_after.notes then v_before.notes else l.notes end,
+    referred_by_alumni_id = case when not v_has_after or l.referred_by_alumni_id is not distinct from v_after.referred_by_alumni_id then v_before.referred_by_alumni_id else l.referred_by_alumni_id end,
+    workplace = case when not v_has_after or l.workplace is not distinct from v_after.workplace then v_before.workplace else l.workplace end,
+    custom_fields = case when not v_has_after or l.custom_fields is not distinct from v_after.custom_fields then coalesce(v_before.custom_fields, '{}'::jsonb) else l.custom_fields end
+  where l.id = m.main_id;
 
   update public.lead_merges set undone_at = now(), undone_by = auth.uid() where id = m.id;
 
@@ -1364,8 +1448,11 @@ begin
   select x, auth.uid(), 'unmerged', jsonb_build_object('merge_id', m.id)
   from unnest(m.main_id || m.other_ids) x;
 
-  -- the last call / note line of each lead again
-  perform public.refresh_lead_last(x) from unnest(m.main_id || m.other_ids) x;
+  -- the cached lines of each lead again (fee, payments, papers, visit, next call, last call/note)
+  perform public.lead_merge_refresh(x) from unnest(m.main_id || m.other_ids) x;
+  perform public.alumni_recount(a) from (
+    select distinct referred_by_alumni_id a from public.leads
+    where id = any (m.main_id || m.other_ids) and referred_by_alumni_id is not null) z;
 
   perform set_config('app.merging', 'off', true);
   perform set_config('app.handover', 'off', true);
@@ -1464,10 +1551,14 @@ create table if not exists public.lead_duplicate_ignores (
 );
 alter table public.lead_duplicate_ignores enable row level security;
 drop policy if exists lead_duplicate_ignores_rw on public.lead_duplicate_ignores;
-create policy lead_duplicate_ignores_rw on public.lead_duplicate_ignores
-  for all to authenticated
-  using (public.has_permission('leads.merge'))
-  with check (public.has_permission('leads.merge'));
+drop policy if exists lead_duplicate_ignores_read on public.lead_duplicate_ignores;
+drop policy if exists lead_duplicate_ignores_write on public.lead_duplicate_ignores;
+create policy lead_duplicate_ignores_read on public.lead_duplicate_ignores
+  for select to authenticated using (true);
+create policy lead_duplicate_ignores_write on public.lead_duplicate_ignores
+  for insert to authenticated with check ((select public.has_permission('leads.merge')));
+grant select, insert on public.lead_duplicate_ignores to authenticated;
+grant select on public.lead_merges to authenticated;
 
 -- the numbers (as hashes) a lead can be reached on
 create or replace function public.lead_number_hashes(l public.leads)
@@ -1520,10 +1611,9 @@ begin
   )
   select coalesce(jsonb_agg(jsonb_build_object(
            'ids', to_jsonb(u.ids),
-           'number', (select coalesce(l.phone, l.alt_phone, l.whatsapp_number)
-                      from public.leads l
-                      where l.id = u.ids[1]
-                        and (l.phone_hash = u.h or l.alt_phone_hash = u.h)
+           'number', (select x from public.leads l
+                      cross join lateral unnest(array[l.phone, l.alt_phone, l.whatsapp_number] || l.extra_phones) x
+                      where l.id = u.ids[1] and x is not null and encode(digest(x, 'sha256'), 'hex') = u.h
                       limit 1),
            'newest', u.newest) order by u.newest desc), '[]'::jsonb)
     into v
@@ -1544,15 +1634,16 @@ set search_path = public, extensions
 as $$
   with me as (select public.lead_number_hashes(l) as hs from public.leads l where l.id = p_lead)
   select o.id, o.name, s.name, p.full_name
-  from public.leads o
-  cross join me
+  from me
+  join public.leads o
+    on o.id <> p_lead
+   and (o.phone_hash = any (me.hs) or o.alt_phone_hash = any (me.hs) or o.extra_phone_hashes && me.hs)
   left join public.pipeline_stages s on s.id = o.stage_id
   left join public.profiles p on p.id = o.assigned_to
-  where o.id <> p_lead and o.deleted_at is null and o.merged_into is null
-    and public.lead_number_hashes(o) && me.hs
-    and cardinality(me.hs) > 0
+  where cardinality(me.hs) > 0
+    and o.deleted_at is null and o.merged_into is null
     and not exists (select 1 from public.lead_duplicate_ignores i
-                    where i.ids = (select array_agg(x order by x) from unnest(array[p_lead, o.id]) x))
+                    where i.ids = case when p_lead < o.id then array[p_lead, o.id] else array[o.id, p_lead] end)
   order by o.created_at desc
   limit 5;
 $$;
@@ -1596,8 +1687,8 @@ as $$
   select jsonb_build_object(
     'calls',     (select count(*) from public.call_logs where lead_id = any (p_others) and deleted_at is null),
     'notes',     (select count(*) from public.lead_activity where lead_id = any (p_others) and action = 'note'),
-    'follow_ups',(select count(*) from public.follow_ups where lead_id = any (p_others) and status = 'pending'),
-    'visits',    (select count(*) from public.lead_visits where lead_id = any (p_others)),
+    'follow_ups',(select count(*) from public.follow_ups where lead_id = any (p_others) and status <> 'pending'),
+    'visits',    (select count(*) from public.lead_visits where lead_id = any (p_others) and status <> 'planned'),
     'files',     (select count(*) from public.lead_files where lead_id = any (p_others)),
     'payments',  (select count(*) from public.fee_payments where lead_id = any (p_others)),
     'sms',       (select count(*) from public.sms_messages where lead_id = any (p_others))
@@ -1605,5 +1696,50 @@ as $$
 $$;
 revoke all on function public.merge_preview(uuid[]) from public, anon;
 grant execute on function public.merge_preview(uuid[]) to authenticated;
+
+-- a merge / undo may put back an assignee even when assigning is off in Settings
+create or replace function public.check_lead_reassign()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg jsonb := public.assignment_setting();
+begin
+  if new.assigned_to is not distinct from old.assigned_to then
+    return new;
+  end if;
+
+  -- Database tools / server jobs
+  if auth.uid() is null then
+    new.assignment_method := 'manual';
+    return new;
+  end if;
+
+  -- 🔗 a merge or its undo (checked in merge_leads / unmerge_lead)
+  if coalesce(current_setting('app.merging', true), '') = 'on' then
+    new.assignment_method := 'manual';
+    return new;
+  end if;
+
+  if not coalesce((v_cfg->>'enabled')::boolean, true) then
+    raise exception 'Lead assignment is turned off in Settings.';
+  end if;
+
+  -- A hand over (checked in hand_over_leads)
+  if coalesce(current_setting('app.handover', true), '') = 'on' then
+    new.assignment_method := 'manual';
+    return new;
+  end if;
+
+  if not public.can_assign_to(new.assigned_to) then
+    raise exception 'You cannot assign leads to this person.';
+  end if;
+
+  new.assignment_method := 'manual';
+  return new;
+end;
+$$;
 
 notify pgrst, 'reload schema';
