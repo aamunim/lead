@@ -116,18 +116,18 @@ export default function MergeScreen() {
   const [preview, setPreview] = useState<MergePreview | null>(null);
   const otherKey = others.map((o) => o.id).join(',');
   useEffect(() => {
-    if (!otherKey) {
+    if (!otherKey || !mainId) {
       setPreview(null);
       return;
     }
     let live = true;
-    mergePreview(otherKey.split(','))
+    mergePreview(mainId, otherKey.split(','))
       .then((p) => live && setPreview(p))
       .catch(() => live && setPreview(null));
     return () => {
       live = false;
     };
-  }, [otherKey]);
+  }, [otherKey, mainId]);
   const moving = preview
     ? (
         [

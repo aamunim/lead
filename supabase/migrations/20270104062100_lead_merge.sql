@@ -1029,8 +1029,11 @@ begin
     visit_at = v_at,
     next_follow_up_at = (select f.due_at from public.follow_ups f
                          where f.lead_id = p_lead and f.status = 'pending' order by f.due_at limit 1),
-    last_contacted_at = coalesce((select max(c.called_at) from public.call_logs c
-                                  where c.lead_id = p_lead and c.deleted_at is null), l.last_contacted_at)
+    -- (as when a call is logged: only calls that reached the person, and never earlier)
+    last_contacted_at = greatest(l.last_contacted_at,
+                                 (select max(c.called_at) from public.call_logs c
+                                  where c.lead_id = p_lead and c.deleted_at is null
+                                    and (c.direction = 'outgoing' or c.outcome = 'connected')))
   where l.id = p_lead;
 end;
 $fn$;
@@ -1375,7 +1378,7 @@ begin
   end if;
   -- the main lead was itself merged (or deleted) since: undo that first
   if exists (select 1 from public.leads where id = m.main_id and (deleted_at is not null or merged_into is not null)) then
-    raise exception 'The main lead was merged into another lead (or deleted) since. Undo that first.';
+    raise exception 'The main lead was merged into another lead, deleted or sent to the Lead Bank since. Bring it back first.';
   end if;
 
   perform set_config('app.merging', 'on', true);
@@ -1439,7 +1442,9 @@ begin
     notes = case when not v_has_after or l.notes is not distinct from v_after.notes then v_before.notes else l.notes end,
     referred_by_alumni_id = case when not v_has_after or l.referred_by_alumni_id is not distinct from v_after.referred_by_alumni_id then v_before.referred_by_alumni_id else l.referred_by_alumni_id end,
     workplace = case when not v_has_after or l.workplace is not distinct from v_after.workplace then v_before.workplace else l.workplace end,
-    custom_fields = case when not v_has_after or l.custom_fields is not distinct from v_after.custom_fields then coalesce(v_before.custom_fields, '{}'::jsonb) else l.custom_fields end
+    custom_fields = case when not v_has_after or l.custom_fields is not distinct from v_after.custom_fields then coalesce(v_before.custom_fields, '{}'::jsonb) else l.custom_fields end,
+    -- from before the merge (its own calls are added back below)
+    last_contacted_at = v_before.last_contacted_at
   where l.id = m.main_id;
 
   update public.lead_merges set undone_at = now(), undone_by = auth.uid() where id = m.id;
@@ -1632,12 +1637,15 @@ stable
 security invoker
 set search_path = public, extensions
 as $$
-  with me as (select public.lead_number_hashes(l) as hs from public.leads l where l.id = p_lead)
+  with me as (select public.lead_number_hashes(l) as hs,
+                     array_remove(array[l.phone, l.alt_phone, l.whatsapp_number] || coalesce(l.extra_phones, '{}'), null) as nums
+              from public.leads l where l.id = p_lead)
   select o.id, o.name, s.name, p.full_name
   from me
   join public.leads o
     on o.id <> p_lead
-   and (o.phone_hash = any (me.hs) or o.alt_phone_hash = any (me.hs) or o.extra_phone_hashes && me.hs)
+   and (o.phone_hash = any (me.hs) or o.alt_phone_hash = any (me.hs) or o.extra_phone_hashes && me.hs
+        or o.whatsapp_number = any (me.nums))
   left join public.pipeline_stages s on s.id = o.stage_id
   left join public.profiles p on p.id = o.assigned_to
   where cardinality(me.hs) > 0
@@ -1677,7 +1685,7 @@ grant execute on function public.lead_duplicates_ignore(uuid[]) to authenticated
 -- ---------------------------------------------------------------------
 -- 👀 Before merging: what will move to the main lead (counts)
 -- ---------------------------------------------------------------------
-create or replace function public.merge_preview(p_others uuid[])
+create or replace function public.merge_preview(p_main uuid, p_others uuid[])
 returns jsonb
 language sql
 stable
@@ -1687,15 +1695,19 @@ as $$
   select jsonb_build_object(
     'calls',     (select count(*) from public.call_logs where lead_id = any (p_others) and deleted_at is null),
     'notes',     (select count(*) from public.lead_activity where lead_id = any (p_others) and action = 'note'),
-    'follow_ups',(select count(*) from public.follow_ups where lead_id = any (p_others) and status <> 'pending'),
-    'visits',    (select count(*) from public.lead_visits where lead_id = any (p_others) and status <> 'planned'),
+    -- a next call moves only when the main lead has none (one next call per lead)
+    'follow_ups',(select count(*) from public.follow_ups f where f.lead_id = any (p_others) and f.status = 'pending'
+                   and not exists (select 1 from public.follow_ups x where x.lead_id = p_main and x.status = 'pending')),
+    'visits',    (select count(*) from public.lead_visits v where v.lead_id = any (p_others)
+                   and (v.status <> 'planned'
+                        or not exists (select 1 from public.lead_visits x where x.lead_id = p_main and x.status = 'planned'))),
     'files',     (select count(*) from public.lead_files where lead_id = any (p_others)),
     'payments',  (select count(*) from public.fee_payments where lead_id = any (p_others)),
     'sms',       (select count(*) from public.sms_messages where lead_id = any (p_others))
   );
 $$;
-revoke all on function public.merge_preview(uuid[]) from public, anon;
-grant execute on function public.merge_preview(uuid[]) to authenticated;
+revoke all on function public.merge_preview(uuid, uuid[]) from public, anon;
+grant execute on function public.merge_preview(uuid, uuid[]) to authenticated;
 
 -- a merge / undo may put back an assignee even when assigning is off in Settings
 create or replace function public.check_lead_reassign()

@@ -100,8 +100,8 @@ export type MergePreview = Partial<
 >;
 
 /** What will move to the main lead */
-export async function mergePreview(otherIds: string[]): Promise<MergePreview> {
-  const { data, error } = await supabase.rpc('merge_preview' as never, { p_others: otherIds } as never);
+export async function mergePreview(mainId: string, otherIds: string[]): Promise<MergePreview> {
+  const { data, error } = await supabase.rpc('merge_preview' as never, { p_main: mainId, p_others: otherIds } as never);
   if (error) throw toError(error);
   return (data as MergePreview | null) ?? {};
 }

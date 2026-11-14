@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { duplicatesOf, ignoreDuplicates, type DuplicateOf } from '@/features/leads/merge';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -57,7 +57,10 @@ export function DuplicateWarning({ leadId }: { leadId: string }) {
             setDups([]);
             Promise.all(shown.map((d) => ignoreDuplicates([leadId, d.id]))).catch((e) => {
               setDups(shown);
-              Alert.alert('Could not save', e instanceof Error ? e.message : 'Please try again.');
+              const msg = e instanceof Error ? e.message : 'Please try again.';
+              // eslint-disable-next-line no-alert
+              if (Platform.OS === 'web') window.alert(`Could not save: ${msg}`);
+              else Alert.alert('Could not save', msg);
             });
           }}
           style={styles.btn}
