@@ -13,17 +13,18 @@ import {
   View,
 } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
-    createPaper,
-    deletePaper,
-    listAdmissionPapers,
-    reorderPapers,
-    updatePaper,
-    type AdmissionPaper,
-    type PaperInput,
+  createPaper,
+  deletePaper,
+  listAdmissionPapers,
+  reorderPapers,
+  updatePaper,
+  type AdmissionPaper,
+  type PaperInput,
 } from '@/features/papers/api';
 import { listActiveCourses, type Named } from '@/features/pipeline/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -305,7 +306,7 @@ function PaperSheet({
         <Pressable style={styles.flex} onPress={saving ? undefined : onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetTitle}>{isNew ? 'Add paper' : 'Edit paper'}</Text>
 
             <View style={styles.field}>
@@ -412,7 +413,7 @@ function PaperSheet({
             <Button title={isNew ? 'Add paper' : 'Save'} onPress={save} loading={saving} fullWidth />
             {!isNew && <Button title="Remove paper" variant="ghost" onPress={remove} disabled={saving} fullWidth />}
             <Button title="Cancel" variant="ghost" onPress={onClose} disabled={saving} fullWidth />
-          </ScrollView>
+          </SheetScroll>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -423,7 +424,13 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.background },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+  },
   pressed: { opacity: 0.7 },
   off: { opacity: 0.5 },
   intro: { fontSize: fontSize.small, lineHeight: 20, color: colors.textMuted },
@@ -453,7 +460,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.background,
   },
-  addRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, marginTop: spacing.xs },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
   addText: { fontSize: fontSize.body, fontWeight: fontWeight.bold, color: colors.primary },
   hint: { fontSize: fontSize.caption, lineHeight: 18, color: colors.textMuted },
   muted: { fontSize: fontSize.small, color: colors.textMuted },

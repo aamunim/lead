@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { OBJECTION_LABEL } from '@/features/aiChance/api';
 import { s as ui } from '@/features/alumni/ui';
@@ -76,7 +77,11 @@ export default function SupervisorPlaybookScreen() {
   return (
     <View style={styles.screen}>
       <Stack.Screen options={{ title: 'Objection answers' }} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={spacing.xl}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={ui.muted}>
           প্রতিটা আপত্তির জন্য আপনাদের নিজের উত্তর লিখুন। টিম এগুলো রিপোর্টে আপত্তির নিচে দেখবে। ভুল তথ্য দেবেন না।
         </Text>
@@ -112,7 +117,7 @@ export default function SupervisorPlaybookScreen() {
           disabled={!dirty || !items}
           fullWidth
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

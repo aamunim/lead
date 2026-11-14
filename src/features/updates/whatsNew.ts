@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-14-keyboard-all',
+    date: '14 Nov 2026',
+    title: '⌨️ সব জায়গায় কিবোর্ড আর লেখার ঘর ঢাকে না',
+    items: [
+      '⚙️ Settings-এর সব পাতা (AI, Alumni, Approval, Credits, Drive, Lead score, Supervisor, Uploads, Roles, Student IDs …), Discounts, Password, Feedback: লেখার ঘরে চাপলে পাতা সরে ঘরটা কিবোর্ডের ওপরে আসে',
+      '📋 লিড পেজের সব শিট (কল ফলাফল, Fee, Payment, Admit, Not Now, Stage, Visit, Papers, Approval), Quick edit, Templates, Leaderboard, নম্বর বাছাই: কিবোর্ড খুললে শিট ওপরে ওঠে আর যে ঘরে লিখছেন সেটা দেখা যায়',
+      '✍️ যেসব শিট খুলেই লিখতে দেয়, সেখানে কিবোর্ড শিট খোলার একটু পরে আসে, তাই আর ঢাকা পড়ে না',
+    ],
+  },
+  {
     key: '2026-11-14-sms-balance',
     date: '14 Nov 2026',
     title: '💰 SMS Center-এ ব্যালেন্স',

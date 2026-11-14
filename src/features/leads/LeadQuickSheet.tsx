@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll, lateFocus } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -455,7 +456,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
               placeholderTextColor={colors.textMuted}
               style={styles.noteInput}
               multiline
-              autoFocus
+              ref={lateFocus}
               maxLength={2000}
               editable={!saving}
               textAlignVertical="top"
@@ -552,7 +553,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
               </Text>
             </View>
 
-            <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            <SheetScroll contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
               {renderBody()}
 
               {error && (
@@ -563,7 +564,7 @@ export function LeadQuickSheet({ visible, field, leads, onClose, onSaved }: Prop
               {saving && field !== 'tags' && field !== 'note' && field !== 'assign' && (
                 <ActivityIndicator color={colors.primary} />
               )}
-            </ScrollView>
+            </SheetScroll>
           </View>
         </KeyboardAvoidingView>
       </Modal>

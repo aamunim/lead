@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
@@ -143,7 +144,8 @@ export default function StudentIdRulesScreen() {
   };
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
       style={styles.screen}
       contentContainerStyle={styles.content}
       refreshControl={
@@ -292,7 +294,7 @@ export default function StudentIdRulesScreen() {
           }}
         />
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -371,7 +373,7 @@ function RuleSheet({
 
   const size = Number(end) - Number(start) + 1;
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal keyboard visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
@@ -494,7 +496,7 @@ function FillSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal keyboard visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>

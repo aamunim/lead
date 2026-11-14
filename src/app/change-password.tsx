@@ -1,4 +1,5 @@
 import { ScrollView, StyleSheet, Text } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { signOut } from '@/features/auth/api';
@@ -15,7 +16,11 @@ export default function MustChangePasswordScreen() {
   const { profile, refreshProfile } = useAuth();
   return (
     <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={spacing.xl}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.icon}>🔐</Text>
         <Text style={styles.title}>Set your own password</Text>
         <Text style={styles.text}>
@@ -24,14 +29,22 @@ export default function MustChangePasswordScreen() {
         </Text>
         <ChangePasswordForm onDone={refreshProfile} />
         <Button title="Sign out" variant="ghost" onPress={() => signOut()} fullWidth />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.md, maxWidth: 480, width: '100%', alignSelf: 'center' },
+  content: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: spacing.xl,
+    gap: spacing.md,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
+  },
   icon: { fontSize: 44, textAlign: 'center' },
   title: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
   text: { fontSize: fontSize.body, color: colors.textMuted, textAlign: 'center', marginBottom: spacing.sm },

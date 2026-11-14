@@ -32,6 +32,7 @@ import {
 import { copyAnswer, pdfAnswer, shareAnswer } from '@/features/supervisor/chatExport';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
+import { lateFocus } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // 💬 Supervisor → Chat with the AI supervisor (super admins only)
@@ -633,7 +634,7 @@ function RenameSheet({ title, onClose, onSave }: { title: string; onClose: () =>
         maxLength={60}
         style={styles.renameInput}
         placeholderTextColor={colors.textMuted}
-        autoFocus
+        ref={lateFocus}
         accessibilityLabel="চ্যাটের নাম"
       />
       <Button title="রাখুন" onPress={() => onSave(t)} disabled={t.trim().length === 0} fullWidth />

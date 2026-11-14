@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -342,7 +335,7 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
 
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             {done ? (
               /* ---------- 🎉 Done ---------- */
               <View style={styles.doneBox}>
@@ -422,11 +415,7 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
 
                     {/* Papers for this course */}
                     {courseId && paperRule !== 'allow' && (
-                      <PapersStatus
-                        loading={missingLoading}
-                        missing={missing}
-                        rule={paperRule}
-                      />
+                      <PapersStatus loading={missingLoading} missing={missing} rule={paperRule} />
                     )}
 
                     {/* Batch */}
@@ -450,7 +439,11 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
                               <BatchRow
                                 key={b.id}
                                 label={batchLabel(b)}
-                                sub={[b.startDate && `Starts ${b.startDate}`, b.classTime, b.status !== 'open' && b.status]
+                                sub={[
+                                  b.startDate && `Starts ${b.startDate}`,
+                                  b.classTime,
+                                  b.status !== 'open' && b.status,
+                                ]
                                   .filter(Boolean)
                                   .join(' · ')}
                                 selected={batchId === b.id}
@@ -579,9 +572,13 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
                             <View style={styles.refPreview}>
                               <Text style={[styles.refPreviewText, refFull && !lead.studentRef && styles.warnText]}>
                                 {lead.studentRef ??
-                                  (refFull ? '⚠️ No free ID: this section’s range is full' : (refPreview ?? 'Given automatically'))}
+                                  (refFull
+                                    ? '⚠️ No free ID: this section’s range is full'
+                                    : (refPreview ?? 'Given automatically'))}
                               </Text>
-                              <Text style={styles.hint}>{lead.studentRef ? 'Kept from before' : 'Given automatically'}</Text>
+                              <Text style={styles.hint}>
+                                {lead.studentRef ? 'Kept from before' : 'Given automatically'}
+                              </Text>
                             </View>
                             <Pressable onPress={() => setOwnRef(true)} hitSlop={8} accessibilityRole="button">
                               <Text style={styles.link}>Type a different ID</Text>
@@ -627,7 +624,7 @@ export function AdmitSheet({ visible, lead, onClose, onSaved }: Props) {
                 <Button title="Cancel" variant="ghost" onPress={onClose} disabled={saving} fullWidth />
               </>
             )}
-          </ScrollView>
+          </SheetScroll>
         </View>
       </KeyboardAvoidingView>
     </Modal>

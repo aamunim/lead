@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import {
   DEFAULT_UPLOAD,
@@ -94,7 +95,7 @@ export default function UploadRulesScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView bottomOffset={spacing.xl} style={styles.screen} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: 'Upload rules' }} />
 
       <Text style={styles.h1}>📎 Upload rules</Text>
@@ -196,7 +197,7 @@ export default function UploadRulesScreen() {
           </Text>
         </Pressable>
       </Section>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

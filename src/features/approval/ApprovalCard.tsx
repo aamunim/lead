@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 
 import {
   DEFAULT_APPROVAL_SETTINGS,
@@ -442,12 +443,12 @@ export function ApprovalActionSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal keyboard visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={saving ? undefined : onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetTitle}>{titles[kind]}</Text>
             {kind === 'submit' && (
               <Text style={styles.hint}>No money is needed for this step: only the NU Admission ID.</Text>
@@ -501,7 +502,7 @@ export function ApprovalActionSheet({
               disabled={kind === 'receive' && paid < need}
               fullWidth
             />
-          </ScrollView>
+          </SheetScroll>
         </View>
       </View>
     </Modal>

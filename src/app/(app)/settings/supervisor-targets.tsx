@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { s as ui } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -115,7 +116,11 @@ export default function SupervisorTargetsScreen() {
   return (
     <View style={styles.screen}>
       <Stack.Screen options={{ title: 'Admission targets' }} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={spacing.xl}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.monthRow}>
           <Tap onPress={() => shift(-1)} label="আগের মাস" style={styles.arrow}>
             <MIcon name="chevron-left" />
@@ -162,7 +167,7 @@ export default function SupervisorTargetsScreen() {
           disabled={!dirty || loading}
           fullWidth
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

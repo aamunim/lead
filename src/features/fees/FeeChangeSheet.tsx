@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 
 import { getStudentFee, money, setFinalFee } from '@/features/fees/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
@@ -53,7 +54,8 @@ export function FeeChangeSheet({
     setError(null);
     if (!reason.trim()) return setError('Please write why the fee changes.');
     if (finalNo > fee.full) return setError(`The final fee can't be more than the full fee (${money(fee.full)}).`);
-    if (finalNo < fee.paid) return setError(`The final fee can't be less than what is paid (${money(fee.paid)}). Refund first.`);
+    if (finalNo < fee.paid)
+      return setError(`The final fee can't be less than what is paid (${money(fee.paid)}). Refund first.`);
     setSaving(true);
     try {
       const r = await setFinalFee(leadId, finalNo, reason);
@@ -72,12 +74,12 @@ export function FeeChangeSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal keyboard visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={saving ? undefined : onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <Text style={styles.title}>💰 Change fee</Text>
             {!!name && <Text style={styles.sub}>{name}</Text>}
 
@@ -128,7 +130,9 @@ export function FeeChangeSheet({
                   </View>
                   <View style={styles.row}>
                     <Text style={styles.label}>Due after this</Text>
-                    <Text style={[styles.value, due > 0 ? styles.bad : styles.good]}>{due > 0 ? money(due) : '✓ Paid'}</Text>
+                    <Text style={[styles.value, due > 0 ? styles.bad : styles.good]}>
+                      {due > 0 ? money(due) : '✓ Paid'}
+                    </Text>
                   </View>
                 </View>
                 <TextField
@@ -142,7 +146,7 @@ export function FeeChangeSheet({
                 <Button title="Save" onPress={save} loading={saving} fullWidth />
               </>
             )}
-          </ScrollView>
+          </SheetScroll>
         </View>
       </View>
     </Modal>
@@ -152,8 +156,20 @@ export function FeeChangeSheet({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
-  sheet: { maxHeight: '90%', backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
-  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: radius.pill, backgroundColor: colors.border, marginTop: spacing.sm },
+  sheet: {
+    maxHeight: '90%',
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.border,
+    marginTop: spacing.sm,
+  },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   title: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
   sub: { fontSize: fontSize.small, color: colors.textMuted, marginTop: -spacing.sm },

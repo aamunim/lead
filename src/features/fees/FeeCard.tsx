@@ -1,7 +1,8 @@
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -782,9 +783,9 @@ function SmallSheet({
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             {children}
-          </ScrollView>
+          </SheetScroll>
         </View>
       </KeyboardAvoidingView>
     </Modal>

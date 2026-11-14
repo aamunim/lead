@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { lateFocus } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -578,7 +579,7 @@ function CollegeReceiptSheet({
         placeholder="e.g. 004512"
         placeholderTextColor={colors.textMuted}
         autoCapitalize="characters"
-        autoFocus
+        ref={lateFocus}
         style={styles.input}
       />
       <Text style={styles.meta}>Leave it empty to remove it.</Text>

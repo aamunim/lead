@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
@@ -94,7 +95,12 @@ export default function LeadScoreSettingsScreen() {
   const best = Math.min(100, s.base + values.filter((v) => v > 0).reduce((a, b) => a + b, 0));
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'Lead score' }} />
 
       <View style={styles.card}>
@@ -147,7 +153,7 @@ export default function LeadScoreSettingsScreen() {
 
       {error && <Text style={styles.error}>{error}</Text>}
       <Button title="Save" onPress={save} loading={saving} disabled={!dirty} fullWidth />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { shareFile } from '@/features/activity/workExport';
 import {
@@ -146,7 +147,8 @@ export default function ContributionScreen() {
   const t = sum?.totals;
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
       style={cs.screen}
       contentContainerStyle={[cs.content, cs.wide]}
       keyboardShouldPersistTaps="handled"
@@ -351,7 +353,7 @@ export default function ContributionScreen() {
             })}
         </>
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

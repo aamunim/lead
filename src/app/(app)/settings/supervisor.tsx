@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { Chip, s as ui } from '@/features/alumni/ui';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -111,7 +112,11 @@ export default function SupervisorSettingsScreen() {
   return (
     <View style={styles.screen}>
       <Stack.Screen options={{ title: 'Supervisor' }} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={spacing.xl}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.card}>
           <Row
             title="🧑‍💼 সুপারভাইজার চালু"
@@ -316,7 +321,7 @@ export default function SupervisorSettingsScreen() {
           disabled={dirty}
           fullWidth
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

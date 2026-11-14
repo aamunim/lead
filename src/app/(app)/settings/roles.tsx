@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
@@ -17,6 +18,7 @@ import { supabase } from '@/shared/lib/supabase';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // 👥 Settings → Roles (the Super Admin only)
@@ -100,7 +102,7 @@ export default function RolesScreen() {
     );
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView bottomOffset={spacing.xl} style={styles.screen} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: 'Roles' }} />
       <Text style={styles.muted}>
         Each person has one role. A role says what they may do and which courses they see. Admins see every course.
@@ -165,7 +167,7 @@ export default function RolesScreen() {
           }}
         />
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -231,11 +233,11 @@ function RoleEditor({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal keyboard visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={saving ? undefined : onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
-          <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          <SheetScroll contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.title}>{d.key ? `✏️ ${draft.name}` : '➕ New role'}</Text>
 
             <Text style={styles.label}>NAME</Text>
@@ -326,7 +328,7 @@ function RoleEditor({
             {error && <Text style={styles.error}>{error}</Text>}
             <Button title="Save" onPress={save} loading={saving} fullWidth />
             {!!d.key && !d.isSystem && <Button title="Remove this role" variant="ghost" onPress={remove} fullWidth />}
-          </ScrollView>
+          </SheetScroll>
         </View>
       </View>
     </Modal>

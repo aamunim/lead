@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -504,7 +505,7 @@ function BatchModal({
               </Pressable>
             </View>
 
-            <ScrollView
+            <SheetScroll
               style={styles.sheetScroll}
               contentContainerStyle={styles.sheetContent}
               keyboardShouldPersistTaps="handled"
@@ -584,7 +585,7 @@ function BatchModal({
               ) : (
                 <Text style={styles.switchHint}>Save the batch first, then add its sections.</Text>
               )}
-            </ScrollView>
+            </SheetScroll>
           </SafeAreaView>
         </KeyboardAvoidingView>
       </View>

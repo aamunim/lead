@@ -1,26 +1,18 @@
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-    deleteHoliday,
-    getSetting,
-    listHolidays,
-    saveHoliday,
-    updateSetting,
-    type Holiday,
+  deleteHoliday,
+  getSetting,
+  listHolidays,
+  saveHoliday,
+  updateSetting,
+  type Holiday,
 } from '@/features/settings/api';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -93,9 +85,7 @@ export default function CalendarSettingsScreen() {
   // --- working week ---------------------------------------------------
   const toggleDay = (day: number) => {
     setWeekMessage(null);
-    setWorkingDays((list) =>
-      list.includes(day) ? list.filter((d) => d !== day) : [...list, day].sort(),
-    );
+    setWorkingDays((list) => (list.includes(day) ? list.filter((d) => d !== day) : [...list, day].sort()));
   };
 
   const saveWeek = async () => {
@@ -115,10 +105,7 @@ export default function CalendarSettingsScreen() {
     setSavingWeek(true);
     setError(null);
     try {
-      await Promise.all([
-        updateSetting('working_days', workingDays),
-        updateSetting('working_hours', hours),
-      ]);
+      await Promise.all([updateSetting('working_days', workingDays), updateSetting('working_hours', hours)]);
       setWeekMessage('Saved ✓');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save.');
@@ -171,9 +158,7 @@ export default function CalendarSettingsScreen() {
         {/* Working week */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Working days</Text>
-          <Text style={styles.muted}>
-            Tap a day to switch it on or off. Follow-ups and reminders skip days off.
-          </Text>
+          <Text style={styles.muted}>Tap a day to switch it on or off. Follow-ups and reminders skip days off.</Text>
 
           <View style={styles.days}>
             {WEEKDAYS.map((d) => {
@@ -192,9 +177,7 @@ export default function CalendarSettingsScreen() {
               );
             })}
           </View>
-          <Text style={styles.muted}>
-            Days off: {offDays.length > 0 ? offDays.join(', ') : 'none'}
-          </Text>
+          <Text style={styles.muted}>Days off: {offDays.length > 0 ? offDays.join(', ') : 'none'}</Text>
 
           <Text style={[styles.sectionTitle, styles.spaced]}>Office hours</Text>
           <View style={styles.hoursRow}>
@@ -280,15 +263,9 @@ export default function CalendarSettingsScreen() {
             })
           )}
 
-          {holidays.length > 0 && (
-            <Text style={styles.muted}>Tap a holiday to edit. Long press to delete.</Text>
-          )}
+          {holidays.length > 0 && <Text style={styles.muted}>Tap a holiday to edit. Long press to delete.</Text>}
 
-          <Button
-            title="+ Add holiday"
-            variant="secondary"
-            onPress={() => setDraft({ is_active: true })}
-          />
+          <Button title="+ Add holiday" variant="secondary" onPress={() => setDraft({ is_active: true })} />
         </View>
       </ScrollView>
 
@@ -353,10 +330,7 @@ function HolidayModal({
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.sheetWrap}
-        >
+        <KeyboardAvoidingView behavior="padding" style={styles.sheetWrap}>
           <SafeAreaView edges={['bottom']} style={styles.sheet}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>{initial.id ? 'Edit holiday' : 'New holiday'}</Text>
@@ -365,7 +339,7 @@ function HolidayModal({
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+            <SheetScroll contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
               <TextField label="Name" required value={name} onChangeText={setName} placeholder="e.g. Eid-ul-Fitr" />
               <TextField
                 label="Start date"
@@ -405,7 +379,7 @@ function HolidayModal({
               )}
 
               <Button title="Save holiday" onPress={handleSave} loading={saving} fullWidth />
-            </ScrollView>
+            </SheetScroll>
           </SafeAreaView>
         </KeyboardAvoidingView>
       </View>

@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { listAssignableUsers, type AssignableUser } from '@/features/leads/api';
 import {
@@ -84,7 +85,7 @@ export default function ApprovalSettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView bottomOffset={spacing.xl} style={styles.screen} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: 'Admission flow' }} />
       <View style={styles.card}>
         <Text style={styles.rowTitle}>🏛 Submitted Online → Received by ITTC</Text>
@@ -155,7 +156,7 @@ export default function ApprovalSettingsScreen() {
 
       {error && <Text style={styles.error}>{error}</Text>}
       <Button title="Save" onPress={save} loading={saving} disabled={!dirty} fullWidth />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import {
   getAiCreditOverview,
@@ -266,7 +267,12 @@ export default function AiSettingsScreen() {
           : 'Saved, not checked yet. Press Test.';
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'AI' }} />
       <Text style={styles.intro}>
         When a lead is marked Admitted, the AI (Claude or Gemini) reads the lead’s whole story — who called, how many
@@ -612,7 +618,7 @@ export default function AiSettingsScreen() {
         Claude (paid from your Claude API credit): Sonnet 5.5 about $0.02–0.05 a lead, Haiku 5.5 about $0.001–0.003.
         Gemini: the free tier, $0 (it has a daily limit; when it is used up Gemini rests a while and the work waits).
       </Text>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
