@@ -145,7 +145,7 @@ import { MIcon, md } from '@/features/home/md';
 import type { PlayableFile } from '@/features/voice/VoicePlayerSheet';
 
 // The floating buttons shown while leads are marked ("lost" opens the Lost sheet)
-type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received' | 'course' | 'ai' | 'bank' | 'sms';
+type FloatAction = QuickField | 'lost' | 'fee' | 'placement' | 'received' | 'course' | 'ai' | 'bank' | 'sms' | 'merge';
 
 const ACTIONS: {
   field: FloatAction;
@@ -164,6 +164,7 @@ const ACTIONS: {
   { field: 'placement', label: 'Move', icon: 'swap-horizontal', color: '#0D9488' },
   { field: 'received', label: 'ITTC', icon: 'business', color: '#7C3AED' },
   { field: 'course', label: 'Course', icon: 'school', color: '#0891B2' },
+  { field: 'merge', label: 'Merge', icon: 'git-merge', color: '#475569' },
 ];
 
 // =====================================================================
@@ -281,7 +282,9 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       (a.field !== 'received' || (students && canMove)) &&
       (a.field !== 'course' || (!students && isAdmin)) &&
       // 🏦 back to the Lead Bank: admins, not on Students
-      (a.field !== 'bank' || (!students && hasPermission('settings.manage'))),
+      (a.field !== 'bank' || (!students && hasPermission('settings.manage'))) &&
+      // 🔗 The same person as two leads
+      (a.field !== 'merge' || (!students && hasPermission('leads.merge'))),
   );
   const showAssignee = assignmentOn && seesOthers;
 
@@ -1135,6 +1138,14 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
   }, [leads, matchingCache, boardPicked]);
 
   const markedLeads = [...selected].map((id) => pool.get(id)).filter(Boolean) as LeadListItem[];
+  // 🔗 Merge the marked leads (2 to 10): the merge screen asks which stays
+  const startMerge = () => {
+    if (selected.size < 2) return showToast('Mark two or more leads of the same person to merge.');
+    if (selected.size > 10) return showToast('Merge at most 10 leads at a time.');
+    const ids = [...selected].join(',');
+    setSelected(new Set());
+    router.push(`/leads/merge?ids=${ids}` as Href);
+  };
 
   const listIsFiltered = filterCount > 0 || quick !== 'all' || !!debouncedSearch || !!addedQ || !!paidQ;
 
@@ -1595,6 +1606,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       { key: 'course', field: 'course', label: 'Course', icon: 'school' },
       { key: 'ai', field: 'ai', label: 'AI', icon: 'auto-awesome' },
       { key: 'sms', field: 'sms', label: 'SMS', icon: 'sms' },
+      { key: 'merge', field: 'merge', label: 'Merge', icon: 'merge' },
     ].filter(
       (a) =>
         a.field === 'rating' ||
@@ -1645,6 +1657,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
       if (field === 'placement') return setMoveOpen(true);
       if (field === 'received') return setReceivedOpen(true);
       if (field === 'course') return setCourseOpen(true);
+      if (field === 'merge') return startMerge();
       if (field === 'fee') {
         const one = markedLeads.length === 1 ? markedLeads[0] : null;
         if (!one) return showToast('Mark just one lead for Fee & discount.');
@@ -2603,6 +2616,7 @@ export function LeadsListScreen({ mode = 'leads' }: { mode?: 'leads' | 'students
                     if (a.field === 'placement') return setMoveOpen(true);
                     if (a.field === 'received') return setReceivedOpen(true);
                     if (a.field === 'course') return setCourseOpen(true);
+                    if (a.field === 'merge') return startMerge();
                     if (a.field === 'fee') {
                       const one = markedLeads.length === 1 ? markedLeads[0] : null;
                       if (!one) return showToast('Mark just one lead for Fee & discount.');

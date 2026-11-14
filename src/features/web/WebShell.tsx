@@ -72,6 +72,8 @@ export const SHORTCUTS: [string, string][] = [
 ];
 
 function pageTitle(path: string): string {
+  if (path.startsWith('/leads/merge')) return 'Leads › Merge leads';
+  if (path.startsWith('/leads/duplicates')) return 'Leads › Possible duplicates';
   if (path.startsWith('/leads/edit/new')) return 'Leads › New lead';
   if (path.startsWith('/leads/edit/')) return 'Leads › Edit';
   if (path.startsWith('/leads/')) return 'Leads › Lead';
@@ -267,6 +269,17 @@ export function WebShell({ children }: { children: React.ReactNode }) {
     // 🏦 Lead Bank: admins
     ...(isAdmin
       ? [{ label: 'Lead Bank', icon: '🏦', href: '/bank', match: (p: string) => p.startsWith('/bank') }]
+      : []),
+    // 🔗 the same person as two leads: people who may merge
+    ...(hasPermission('leads.merge')
+      ? [
+          {
+            label: 'Duplicates',
+            icon: '🔗',
+            href: '/leads/duplicates',
+            match: (p: string) => p.startsWith('/leads/duplicates'),
+          },
+        ]
       : []),
     ...(reportsOk
       ? [{ label: 'Reports', icon: '📊', href: '/reports', match: (p: string) => p.startsWith('/reports') }]

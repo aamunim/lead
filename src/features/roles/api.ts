@@ -43,6 +43,7 @@ export const PERMISSIONS: { group: string; items: { key: string; label: string }
       { key: 'leads.edit_all', label: 'Change all leads' },
       { key: 'leads.assign', label: 'Give leads to people' },
       { key: 'leads.delete', label: 'Delete leads' },
+      { key: 'leads.merge', label: 'Merge leads (same person)' },
       { key: 'leads.export', label: 'Export to Excel' },
       { key: 'import.run', label: 'Import leads' },
     ],

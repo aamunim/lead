@@ -15,6 +15,7 @@ export type NotificationKind =
   | 'auto_assigned'
   | 'speed_to_lead'
   | 'outcome'
+  | 'lead_merged'
   | 'signup'
   | 'sync_nudge'
   | 'missed_call'
@@ -38,6 +39,7 @@ export const KIND_INFO: { kind: NotificationKind; icon: string; title: string; t
     text: 'The person, then their Team Lead, then admins',
   },
   { kind: 'outcome', icon: '🎓', title: 'Admitted / Not Now', text: 'To admins and the lead’s Team Lead' },
+  { kind: 'lead_merged', icon: '🔗', title: 'Leads merged', text: 'Your lead was merged with another one' },
   { kind: 'signup', icon: '🙋', title: 'New sign-up', text: 'To admins who approve users' },
   { kind: 'sync_nudge', icon: '📞', title: 'Turn on call sync', text: 'When an admin sends the reminder' },
   {
@@ -99,6 +101,7 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
     auto_assigned: true,
     speed_to_lead: true,
     outcome: true,
+    lead_merged: true,
     signup: true,
     sync_nudge: true,
     missed_call: true,

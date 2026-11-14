@@ -27,6 +27,7 @@ import { Button } from '@/shared/ui/Button';
 import { TextField } from '@/shared/ui/TextField';
 import { VoiceNoteButton } from '@/features/voice/VoiceNote';
 import { PickNumberButtons } from '@/features/leads/PickNumber';
+import { addLeadPhone } from '@/features/leads/merge';
 
 type Option = { value: string; label: string; color?: string };
 
@@ -40,6 +41,8 @@ type Form = {
   waNumber: string;
   waUsername: string;
   altPhone: string;
+  /** ☎ more numbers, comma separated */
+  extraPhones: string;
   email: string;
   area: string;
   /** 🏫 school / office (alumni who work there show on the lead) */
@@ -66,6 +69,7 @@ const EMPTY: Form = {
   waNumber: '',
   waUsername: '',
   altPhone: '',
+  extraPhones: '',
   email: '',
   area: '',
   workplace: '',
@@ -198,6 +202,7 @@ export default function LeadFormScreen() {
           waNumber: lead.whatsapp_number ?? '',
           waUsername: lead.whatsapp_username ? '@' + lead.whatsapp_username : '',
           altPhone: lead.alt_phone ?? '',
+          extraPhones: ((lead.extra_phones as string[] | null) ?? []).join(', '),
           email: lead.email ?? '',
           area: lead.area ?? '',
           workplace: (lead as { workplace?: string | null }).workplace ?? '',
@@ -287,7 +292,7 @@ export default function LeadFormScreen() {
   const needCourse = courses.length > 0;
 
   const filled = {
-    contact: [form.altPhone, form.email, form.area, form.workplace].filter((v) => v.trim()).length,
+    contact: [form.altPhone, form.extraPhones, form.email, form.area, form.workplace].filter((v) => v.trim()).length,
     guardian: [form.guardianName, form.guardianPhone, form.guardianRelation].filter((v) => v.trim()).length,
     more:
       [form.referredBy, form.notes].filter((v) => v.trim()).length +
@@ -320,13 +325,19 @@ export default function LeadFormScreen() {
     }
     if (needCourse && form.courseIds.length === 0) found.courseIds = 'Choose at least one course.';
     if (form.altPhone.trim() && !isValidBdMobile(form.altPhone)) found.altPhone = 'Not a valid mobile number.';
+    const extra = form.extraPhones
+      .split(/[,;\n]+/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const badExtra = extra.find((x) => !isValidBdMobile(x));
+    if (badExtra) found.extraPhones = `Not a valid mobile number: ${badExtra}`;
     if (form.guardianPhone.trim() && !isValidBdMobile(form.guardianPhone)) {
       found.guardianPhone = 'Not a valid mobile number.';
     }
     setErrors(found);
     setFormError(null);
     if (Object.keys(found).length > 0) {
-      if (found.altPhone) setOpenSec((o) => ({ ...o, contact: true }));
+      if (found.altPhone || found.extraPhones) setOpenSec((o) => ({ ...o, contact: true }));
       if (found.guardianPhone) setOpenSec((o) => ({ ...o, guardian: true }));
       setFormError('Please fix the fields marked in red.');
       return;
@@ -343,6 +354,7 @@ export default function LeadFormScreen() {
       whatsapp_number: hasWaNumber ? normalizeWaNumber(form.waNumber) : null,
       whatsapp_username: hasWaUsername ? normalizeWaUsername(form.waUsername) : null,
       alt_phone: form.altPhone,
+      extra_phones: extra,
       email: form.email,
       area: form.area,
       // sent only when there is one (or it was cleared): a database without it still saves
@@ -472,6 +484,18 @@ export default function LeadFormScreen() {
               </View>
               {d.can_open && (
                 <Button title="Open" variant="ghost" onPress={() => router.push(`/leads/${d.id}` as Href)} />
+              )}
+              {/* ☎ Same person, new number: put it on that lead instead */}
+              {isNew && d.can_open && phoneOk && d.matched !== 'phone' && (
+                <Button
+                  title="➕ Add number"
+                  variant="secondary"
+                  onPress={() =>
+                    addLeadPhone(d.id, form.phone)
+                      .then(() => router.replace(`/leads/${d.id}` as Href))
+                      .catch((e) => setFormError(e instanceof Error ? e.message : 'Could not add the number.'))
+                  }
+                />
               )}
             </View>
           ))}
@@ -630,6 +654,14 @@ export default function LeadFormScreen() {
           onChangeText={(v) => set('altPhone', v)}
           error={errors.altPhone}
           keyboardType="phone-pad"
+        />
+        <TextField
+          label="More numbers"
+          value={form.extraPhones}
+          onChangeText={(v) => set('extraPhones', v)}
+          error={errors.extraPhones}
+          keyboardType="phone-pad"
+          hint="The same person’s other numbers, with commas between them"
         />
         <TextField
           label="Email"

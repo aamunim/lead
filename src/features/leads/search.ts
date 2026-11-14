@@ -31,6 +31,8 @@ export function otherMatch(lead: LeadListItem, search: string): string | null {
   if (!s) return null;
   if (findText(lead.name, s) || findDigits(lead.phone, s) || findText(lead.student_ref, s)) return null;
   if (findDigits(lead.alt_phone, s)) return `Other phone: ${lead.alt_phone}`;
+  const extra = (lead.extra_phones ?? []).find((x) => findDigits(x, s));
+  if (extra) return `Other phone: ${extra}`;
   if (findText(lead.guardian_name, s) || findDigits(lead.guardian_phone, s)) {
     return `Guardian: ${[lead.guardian_name, lead.guardian_phone].filter(Boolean).join(' · ')}`;
   }
