@@ -13,6 +13,7 @@ import { clearNativeCallLock } from '@/features/calls/callLock';
 import { colors, isDark } from '@/shared/theme';
 import { DisclosureHost } from '@/shared/ui/Disclosure';
 import { ThemeFollower } from '@/features/settings/appearance';
+import { loadBrand } from '@/features/brand/brand';
 import { UpdateBanner } from '@/features/updates/UpdateBanner';
 import { OfflineBanner } from '@/shared/ui/OfflineBanner';
 import { WebAlertHost, installWebAlert } from '@/shared/web/WebAlert';
@@ -21,6 +22,9 @@ import { installStaleBuildReload, reloadForNewVersion } from '@/shared/web/stale
 import '@/shared/web/bootUrl';
 
 SplashScreen.preventAutoHideAsync();
+
+// 🎨 The college's logo and words (kept copy at once, a fresh one in the background)
+loadBrand();
 
 // 🌐 Website: Alert.alert shows our own dialog (a browser shows nothing)
 if (Platform.OS === 'web') installWebAlert();
@@ -58,7 +62,9 @@ const NAV_THEME = {
 
 // The visitor opened lead.ittc.edu.bd/apply, /refer/<code> or /update/<token> (website only)
 const OPENED_PUBLIC_FORM =
-  Platform.OS === 'web' && typeof window !== 'undefined' && /^\/(apply|refer\/|update\/)/.test(window.location.pathname);
+  Platform.OS === 'web' &&
+  typeof window !== 'undefined' &&
+  /^\/(apply|refer\/|update\/)/.test(window.location.pathname);
 
 export default function RootLayout() {
   return (

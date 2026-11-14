@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { otpLoginReady, signIn } from '@/features/auth/api';
 import { OtpLogin } from '@/features/auth/OtpLogin';
 import { isWeb } from '@/features/web/api';
-import { APP_COLLEGE, APP_PRODUCT } from '@/features/web/brand';
+import { logoSource, useBrand } from '@/features/brand/brand';
 import { WebLogin } from '@/features/web/WebLogin';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
@@ -47,6 +47,7 @@ export default function LoginScreen() {
 }
 
 function PhoneLogin() {
+  const brand = useBrand();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
@@ -171,18 +172,18 @@ function PhoneLogin() {
         bounces={false}
       >
         {/* ── Blue top ─────────────────────────────── */}
-        <View style={styles.hero}>
+        <View style={[styles.hero, { backgroundColor: brand.hero_color }]}>
           <Animated.View style={[styles.blob, styles.blobA, float(18, 12)]} />
           <Animated.View style={[styles.blob, styles.blobB, float(-14, 16)]} />
           <Animated.View style={[styles.blob, styles.blobC, float(10, -10)]} />
           <SafeAreaView edges={['top']} style={styles.heroInner}>
             <Animated.View style={[styles.brand, rise(-16)]}>
               <View style={styles.logoRing}>
-                <Image source={LOGO} style={styles.logo} accessibilityLabel="ITTC logo" />
+                <Image source={logoSource(brand, LOGO)} style={styles.logo} accessibilityLabel="Logo" />
               </View>
-              <Text style={styles.college}>{APP_COLLEGE}</Text>
+              <Text style={styles.college}>{brand.college}</Text>
               <View style={styles.productPill}>
-                <Text style={styles.product}>🎓 {APP_PRODUCT}</Text>
+                <Text style={styles.product}>🎓 {brand.product}</Text>
               </View>
             </Animated.View>
           </SafeAreaView>
@@ -192,10 +193,11 @@ function PhoneLogin() {
         <Animated.View style={[styles.cardWrap, rise(40)]}>
           <Animated.View style={[styles.card, { transform: [{ translateX: shake }] }]}>
             <View style={styles.cardHead}>
-              <Text style={styles.title}>Welcome back 👋</Text>
+              <Text style={styles.title}>{brand.login_title}</Text>
               <Text style={styles.subtitle}>
                 {mode === 'otp' ? 'Sign in with your mobile number.' : 'Sign in with your work email.'}
               </Text>
+              {!!brand.login_note && <Text style={styles.subtitle}>{brand.login_note}</Text>}
             </View>
 
             {otpOn && (
@@ -288,7 +290,7 @@ function PhoneLogin() {
           </Animated.View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>New to the team?</Text>
+            <Text style={styles.footerText}>{brand.login_footer}</Text>
             <Button title="Create an account" variant="ghost" onPress={() => router.push('/sign-up')} />
           </View>
           <Text style={styles.forgot} onPress={() => router.push('/delete-account' as Href)}>

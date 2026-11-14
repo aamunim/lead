@@ -23,7 +23,7 @@ import { addedRange, getLeadsAdded } from '@/features/leads/added';
 import { StudentsHomeCard } from '@/features/students/StudentsHomeCard';
 import { TodayVisits } from '@/features/visits/TodayVisits';
 import { isWeb } from '@/features/web/api';
-import { APP_COLLEGE, APP_PRODUCT } from '@/features/web/brand';
+import { logoSource, useBrand } from '@/features/brand/brand';
 import { takeBootUrl } from '@/shared/web/bootUrl';
 import { countPendingUsers } from '@/features/users/api';
 import { MIcon, Tap, md, type MIconName } from '@/features/home/md';
@@ -180,6 +180,10 @@ function PhoneHome() {
 
   // The bar gets a tint once the page scrolls (Material top app bar)
   const [scrolled, setScrolled] = useState(false);
+  const brand = useBrand();
+  // 📷 My photo (initials when there is none, or it can't load)
+  const [photoFailed, setPhotoFailed] = useState(false);
+  useEffect(() => setPhotoFailed(false), [profile?.avatar_url]);
   const scrollRef = useRef<{ scrollTo: (o: { y: number; animated?: boolean }) => void } | null>(null);
   const callsY = useRef(0);
 
@@ -198,15 +202,19 @@ function PhoneHome() {
       <SafeAreaView edges={['top']} style={[styles.bar, scrolled && styles.barScrolled]}>
         <View style={styles.barRow}>
           <View style={styles.barLogo}>
-            <Image source={LOGO} style={styles.barLogoImg} accessibilityLabel="ITTC logo" />
+            <Image source={logoSource(brand, LOGO)} style={styles.barLogoImg} accessibilityLabel="Logo" />
           </View>
           <View style={styles.flex}>
-            <Text style={styles.barTitle} numberOfLines={1}>
-              {APP_PRODUCT}
-            </Text>
-            <Text style={styles.barSub} numberOfLines={1}>
-              {APP_COLLEGE}
-            </Text>
+            {brand.home_names && (
+              <>
+                <Text style={styles.barTitle} numberOfLines={1}>
+                  {brand.product}
+                </Text>
+                <Text style={styles.barSub} numberOfLines={1}>
+                  {brand.college}
+                </Text>
+              </>
+            )}
           </View>
           <StreakChip />
           <Tap
@@ -223,7 +231,16 @@ function PhoneHome() {
             )}
           </Tap>
           <Tap onPress={() => router.push('/more' as Href)} style={styles.avatar} borderless label="More">
-            <Text style={styles.avatarText}>{initials || '?'}</Text>
+            {profile?.avatar_url && !photoFailed ? (
+              <Image
+                source={{ uri: profile.avatar_url }}
+                style={styles.avatarImg}
+                accessibilityLabel="My photo"
+                onError={() => setPhotoFailed(true)}
+              />
+            ) : (
+              <Text style={styles.avatarText}>{initials || '?'}</Text>
+            )}
           </Tap>
         </View>
       </SafeAreaView>
@@ -235,13 +252,15 @@ function PhoneHome() {
         scrollEventThrottle={32}
       >
         {/* ── Greeting (one line) ──────────────────── */}
-        <Text style={styles.hello} numberOfLines={1}>
-          {greeting()}, {firstName}
-          <Text style={styles.date}>
-            {'   '}
-            {today} · {profile?.role?.name ?? 'No role'}
+        {brand.home_greeting && (
+          <Text style={styles.hello} numberOfLines={1}>
+            {greeting()}, {firstName}
+            <Text style={styles.date}>
+              {'   '}
+              {today} · {profile?.role?.name ?? 'No role'}
+            </Text>
           </Text>
-        </Text>
+        )}
 
         {/* 📲 Old app (before 2.8.4): no push until it is updated from the Play Store */}
         <StoreUpdateCard />
@@ -421,6 +440,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarText: { fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: md.onPrimaryC },
+  avatarImg: { width: 36, height: 36, borderRadius: 18 },
   // body
   content: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 110, gap: 0 },
   hello: { fontSize: 18, lineHeight: 24, fontWeight: fontWeight.semibold, color: colors.text, marginTop: 2 },

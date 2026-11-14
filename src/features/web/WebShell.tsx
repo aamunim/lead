@@ -14,7 +14,7 @@ import { chatUnread } from '@/features/feedback/chat';
 import { canUseWeb, getWebSettings } from '@/features/web/api';
 import { canOpenActivity, getActivitySettings } from '@/features/activity/api';
 import { canSeeReports, getReportSettings } from '@/features/reports/api';
-import { COLLEGE, SYSTEM } from '@/features/web/brand';
+import { copyrightLine, logoSource, useBrand } from '@/features/brand/brand';
 import { loadPref, onKey, savePref, typingInField } from '@/features/web/prefs';
 import { installWebCss } from '@/shared/web/webCss';
 import {
@@ -107,6 +107,7 @@ function pageTitle(path: string): string {
 
 export function WebShell({ children }: { children: React.ReactNode }) {
   const { profile, hasPermission } = useAuth();
+  const brand = useBrand();
   const isAdmin = hasPermission('settings.manage');
   const path = usePathname();
   const params = useGlobalSearchParams<{ q?: string }>();
@@ -226,8 +227,8 @@ export function WebShell({ children }: { children: React.ReactNode }) {
 
   // The browser tab's name
   useEffect(() => {
-    document.title = `${pageTitle(path).split(' › ').pop()} · ITTC Admission`;
-  }, [path]);
+    document.title = `${pageTitle(path).split(' › ').pop()} · ${brand.short_name} Admission`;
+  }, [path, brand.short_name]);
 
   // The search box filters the list that is open (Leads or Students)
   const onLeads = path === '/leads';
@@ -349,7 +350,8 @@ export function WebShell({ children }: { children: React.ReactNode }) {
         <Text style={styles.bigIcon}>🌐</Text>
         <Text style={styles.title}>The website is not open for you</Text>
         <Text style={styles.muted}>
-          This is the {SYSTEM}. Please use the app on your phone, or ask an admin to allow you (Settings → Website).
+          This is the {brand.system}. Please use the app on your phone, or ask an admin to allow you (Settings →
+          Website).
         </Text>
         <Pressable onPress={() => signOut()} style={styles.signOutBig} accessibilityRole="button">
           <Text style={styles.signOutText}>Sign out</Text>
@@ -371,11 +373,11 @@ export function WebShell({ children }: { children: React.ReactNode }) {
       {/* ── Menu ─────────────────────────────────────────── */}
       <View style={[styles.side, small && styles.sideSmall]}>
         <View style={[styles.brandRow, small && styles.brandRowSmall]}>
-          <Image source={LOGO} style={styles.logo} accessibilityLabel="ITTC" />
+          <Image source={logoSource(brand, LOGO)} style={styles.logo} accessibilityLabel={brand.short_name} />
           {!small && (
             <View style={styles.flex}>
               <Text style={styles.brand} numberOfLines={1}>
-                ITTC
+                {brand.short_name}
               </Text>
               <Text style={styles.brandSub} numberOfLines={1}>
                 Admission Management
@@ -439,7 +441,8 @@ export function WebShell({ children }: { children: React.ReactNode }) {
         </Pressable>
         {!small && (
           <Text style={styles.footer}>
-            {VERSION ? `v${VERSION} · ` : ''}© {COLLEGE}
+            {VERSION ? `v${VERSION} · ` : ''}
+            {copyrightLine(brand)}
           </Text>
         )}
       </View>
@@ -529,7 +532,11 @@ export function WebShell({ children }: { children: React.ReactNode }) {
               accessibilityLabel="My account"
             >
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initials || '?'}</Text>
+                {profile?.avatar_url ? (
+                  <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} accessibilityLabel="My photo" />
+                ) : (
+                  <Text style={styles.avatarText}>{initials || '?'}</Text>
+                )}
               </View>
               <Text style={styles.meName} numberOfLines={1}>
                 {name}
@@ -804,7 +811,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  avatarImg: { width: '100%', height: '100%' },
   avatarText: { fontSize: fontSize.caption, fontWeight: fontWeight.bold, color: colors.primary },
   meName: { maxWidth: 160, fontSize: fontSize.small, fontWeight: fontWeight.semibold, color: colors.text },
   caret: { fontSize: fontSize.caption, color: colors.textMuted },
