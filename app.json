@@ -82,7 +82,7 @@
           "android": {
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": false,
-            "extraProguardRules": "-keep class expo.modules.calllog.** { *; }\n-keep class expo.modules.smscode.** { *; }\n-keepattributes SourceFile,LineNumberTable"
+            "extraProguardRules": "-keep class expo.modules.calllog.** { *; }\n-keep class expo.modules.smscode.** { *; }\n-keepattributes SourceFile,LineNumberTable\n-keepclassmembers class com.facebook.react.uimanager.JSPointerDispatcher { public *; }"
           }
         }
       ]
