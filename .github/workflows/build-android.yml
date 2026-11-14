@@ -111,6 +111,9 @@ jobs:
           CODE=$(node -p "require('./app.json').expo.android.versionCode")
           OUT="lead-management-${VERSION}-${CODE}-${{ inputs.profile }}.${EXT}"
           echo "OUT=$OUT" >> "$GITHUB_ENV"
+          # keep the build folder, so R8's mapping file can be saved below
+          export EAS_LOCAL_BUILD_SKIP_CLEANUP=1
+          export EAS_LOCAL_BUILD_WORKINGDIR="$RUNNER_TEMP/eas-build"
           npx eas-cli@latest build --local --non-interactive \
             --platform android --profile "${{ inputs.profile }}" --output "$OUT"
 
@@ -139,3 +142,30 @@ jobs:
           path: ${{ env.OUT }}
           retention-days: 14
           if-no-files-found: error
+
+      # 🔎 R8 renames the code in release builds; this file turns a crash report's
+      #   short names back into the real ones (Play reads it from the .aab by itself,
+      #   an APK given to staff phones has none). Kept 90 days.
+      - name: Find R8's mapping file
+        run: |
+          MAP=$(find "$RUNNER_TEMP/eas-build" -path '*outputs/mapping/release/mapping.txt' 2>/dev/null | head -1)
+          if [ -z "$MAP" ] && [ "${OUT##*.}" = "aab" ]; then
+            unzip -p "$OUT" BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map > mapping.txt 2>/dev/null || true
+            [ -s mapping.txt ] && MAP=mapping.txt
+          fi
+          if [ -n "$MAP" ]; then
+            cp "$MAP" "${OUT%.*}-mapping.txt"
+            echo "MAPPING=${OUT%.*}-mapping.txt" >> "$GITHUB_ENV"
+            echo "✅ mapping file: $(wc -c < "${OUT%.*}-mapping.txt") bytes"
+          else
+            echo "::warning::No R8 mapping file found (crash reports from this build stay short-named)"
+          fi
+
+      - name: Keep the mapping file
+        if: env.MAPPING != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MAPPING }}
+          path: ${{ env.MAPPING }}
+          retention-days: 90
+          if-no-files-found: warn
