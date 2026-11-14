@@ -1,6 +1,7 @@
 import { Stack, router, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { AdmissionCreditCard } from '@/features/aiCredit/AdmissionCreditCard';
 import { getLeadCredit, type LeadCredit } from '@/features/aiCredit/api';
@@ -71,7 +72,12 @@ export default function ContributionStudentScreen() {
   const shown = timeline ? (showAll ? timeline : timeline.slice(-30)) : [];
 
   return (
-    <ScrollView style={cs.screen} contentContainerStyle={[cs.content, cs.wide]}>
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      keyboardShouldPersistTaps="handled"
+      style={cs.screen}
+      contentContainerStyle={[cs.content, cs.wide]}
+    >
       <Stack.Screen options={{ title: head?.name ?? 'Admission Contribution' }} />
       {!head ? (
         <ActivityIndicator color={colors.primary} />
@@ -129,7 +135,7 @@ export default function ContributionStudentScreen() {
           ))}
         </View>
       )}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

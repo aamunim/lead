@@ -1,5 +1,5 @@
 import { Stack, router } from 'expo-router';
-import { Alert, ScrollView, StyleSheet, Text } from 'react-native';
+import { Alert, StyleSheet, Text } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { ChangePasswordForm } from '@/features/auth/ChangePasswordForm';

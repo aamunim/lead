@@ -38,7 +38,7 @@ export default function ContactDeveloperScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={90}>
+    <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
       <Stack.Screen options={{ title: 'Contact developer' }} />
       <ChatView
         chatUser={profile.id}

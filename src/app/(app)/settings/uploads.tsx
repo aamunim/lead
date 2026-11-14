@@ -1,16 +1,6 @@
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import {
@@ -95,7 +85,12 @@ export default function UploadRulesScreen() {
   }
 
   return (
-    <KeyboardAwareScrollView bottomOffset={spacing.xl} style={styles.screen} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView
+      bottomOffset={spacing.xl}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Stack.Screen options={{ title: 'Upload rules' }} />
 
       <Text style={styles.h1}>📎 Upload rules</Text>

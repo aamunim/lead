@@ -555,6 +555,8 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(11,19,40,0.45)', justifyContent: 'flex-end' },
   sheetWrap: { maxHeight: '90%' },
   sheet: {
+    // shrink inside the 90% box (and above the keyboard) so the form can scroll
+    flexShrink: 1,
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,

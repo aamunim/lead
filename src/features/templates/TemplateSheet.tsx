@@ -213,7 +213,7 @@ export function TemplateSheet({ visible, lead, channel, settings, onClose, onPla
                     <View style={styles.flex}>
                       <Text style={styles.rowTitle} numberOfLines={1}>
                         {t.name}
-                        {!t.is_shared && <Text style={styles.mine}> · mine</Text>}
+                        {!t.is_shared && <Text style={styles.mine}>{'  · mine'}</Text>}
                       </Text>
                       <Text style={styles.rowText} numberOfLines={2}>
                         {fillTemplate(t.body, ctx).text}

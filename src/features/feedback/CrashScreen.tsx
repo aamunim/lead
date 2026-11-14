@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View, KeyboardAvoidingView } from 'react-native';
 
 import { sendFeedback } from '@/features/feedback/api';
 import { reportCrash } from '@/features/feedback/crash';
@@ -42,59 +42,62 @@ export function CrashScreen({ error, retry }: { error: Error; retry: () => Promi
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.icon}>😵</Text>
-      <Text style={styles.title}>Something went wrong</Text>
-      <Text style={styles.text}>
-        The developer has been told about it. Try again; if it happens again, write what you were doing.
-      </Text>
-      <Text style={styles.error} numberOfLines={3} selectable>
-        {error.name}: {error.message}
-      </Text>
+    // (shown outside the keyboard provider, so react-native's own keyboard avoiding)
+    <KeyboardAvoidingView style={styles.screen} behavior="padding">
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Text style={styles.icon}>😵</Text>
+        <Text style={styles.title}>Something went wrong</Text>
+        <Text style={styles.text}>
+          The developer has been told about it. Try again; if it happens again, write what you were doing.
+        </Text>
+        <Text style={styles.error} numberOfLines={3} selectable>
+          {error.name}: {error.message}
+        </Text>
 
-      <View style={styles.buttons}>
-        <Button title="Try again" onPress={() => retry()} fullWidth />
-        <Button
-          title="Go to Home"
-          variant="secondary"
-          onPress={() => {
-            retry().catch(() => undefined);
-            try {
-              router.replace('/');
-            } catch {
-              // the navigator itself is broken: Try again is the way
-            }
-          }}
-          fullWidth
-        />
-      </View>
-
-      {sent ? (
-        <Text style={styles.ok}>✅ Sent to the developer. Thank you!</Text>
-      ) : writing ? (
-        <View style={styles.card}>
-          <TextInput
-            value={note}
-            onChangeText={setNote}
-            placeholder="What were you doing when it happened?"
-            placeholderTextColor={colors.textMuted}
-            multiline
-            style={styles.input}
-            textAlignVertical="top"
-            autoFocus
+        <View style={styles.buttons}>
+          <Button title="Try again" onPress={() => retry()} fullWidth />
+          <Button
+            title="Go to Home"
+            variant="secondary"
+            onPress={() => {
+              retry().catch(() => undefined);
+              try {
+                router.replace('/');
+              } catch {
+                // the navigator itself is broken: Try again is the way
+              }
+            }}
+            fullWidth
           />
-          {failed && <Text style={styles.failed}>{failed}</Text>}
-          <Button title="Send to developer" onPress={send} loading={sending} fullWidth />
         </View>
-      ) : (
-        <Button
-          title="✍️ Tell the developer what happened"
-          variant="ghost"
-          onPress={() => setWriting(true)}
-          fullWidth
-        />
-      )}
-    </ScrollView>
+
+        {sent ? (
+          <Text style={styles.ok}>✅ Sent to the developer. Thank you!</Text>
+        ) : writing ? (
+          <View style={styles.card}>
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              placeholder="What were you doing when it happened?"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              style={styles.input}
+              textAlignVertical="top"
+              autoFocus
+            />
+            {failed && <Text style={styles.failed}>{failed}</Text>}
+            <Button title="Send to developer" onPress={send} loading={sending} fullWidth />
+          </View>
+        ) : (
+          <Button
+            title="✍️ Tell the developer what happened"
+            variant="ghost"
+            onPress={() => setWriting(true)}
+            fullWidth
+          />
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

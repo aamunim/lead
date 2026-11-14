@@ -1,9 +1,9 @@
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 import { SheetScroll } from '@/shared/ui/SheetScroll';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -148,7 +148,11 @@ export default function CalendarSettingsScreen() {
     <View style={styles.screen}>
       <Stack.Screen options={{ title: 'Working days & holidays' }} />
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        bottomOffset={spacing.xl}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         {error && (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
@@ -267,7 +271,7 @@ export default function CalendarSettingsScreen() {
 
           <Button title="+ Add holiday" variant="secondary" onPress={() => setDraft({ is_active: true })} />
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {draft && (
         <HolidayModal
@@ -452,6 +456,8 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(11,19,40,0.45)', justifyContent: 'flex-end' },
   sheetWrap: { maxHeight: '90%' },
   sheet: {
+    // shrink inside the 90% box (and above the keyboard) so the form can scroll
+    flexShrink: 1,
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,

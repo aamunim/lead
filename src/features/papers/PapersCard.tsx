@@ -339,7 +339,7 @@ function PaperRow({
         <View style={styles.flex}>
           <Text style={[styles.paperName, notNeeded && styles.paperSkipped]}>
             {p.name}
-            {p.isRequired && !p.status ? <Text style={styles.reqMark}> required</Text> : null}
+            {p.isRequired && !p.status ? <Text style={styles.reqMark}>{'  required'}</Text> : null}
           </Text>
           <Text style={[styles.paperSub, p.returnedAt && styles.returned]} numberOfLines={2}>
             {sub}

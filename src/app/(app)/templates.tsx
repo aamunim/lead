@@ -1,17 +1,7 @@
 import { Stack, useFocusEffect } from 'expo-router';
 import { roleLabelOf, useRoleChoices } from '@/features/roles/api';
 import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Modal } from '@/shared/ui/Modal';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
@@ -140,7 +130,12 @@ export default function TemplatesScreen() {
 
   return (
     <>
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <KeyboardAwareScrollView
+        bottomOffset={spacing.xl}
+        keyboardShouldPersistTaps="handled"
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+      >
         <Stack.Screen options={{ title: 'Message templates' }} />
 
         {!isAdmin && !allowed && (
@@ -290,7 +285,7 @@ export default function TemplatesScreen() {
         ) : (
           mine.map((t) => <TemplateRow key={t.id} t={t} editable={canEdit(t)} onPress={() => setEditing(t)} />)
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {editing && (
         <TemplateEditor
@@ -324,7 +319,7 @@ function TemplateRow({ t, editable, onPress }: { t: MessageTemplate; editable: b
       <View style={styles.flex}>
         <Text style={styles.tName} numberOfLines={1}>
           {t.name}
-          {!t.is_active && <Text style={styles.tMeta}> · off</Text>}
+          {!t.is_active && <Text style={styles.tMeta}>{'  · off'}</Text>}
         </Text>
         <Text style={styles.tBody} numberOfLines={2}>
           {t.body}

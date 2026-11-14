@@ -1,16 +1,6 @@
 import { Stack, router, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -28,6 +18,7 @@ import {
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 import { Modal } from '@/shared/ui/Modal';
+import { SheetScroll } from '@/shared/ui/SheetScroll';
 
 // =====================================================================
 // ⚙️ Settings → Student ID rules
@@ -376,7 +367,7 @@ function RuleSheet({
     <Modal keyboard visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
-        <View style={styles.sheet}>
+        <SheetScroll style={styles.sheetBox} contentContainerStyle={styles.sheet}>
           <Text style={styles.sheetTitle}>Student ID rule</Text>
           <Text style={styles.small}>{target.title}</Text>
           <View style={styles.chips}>
@@ -449,7 +440,7 @@ function RuleSheet({
           {error && <Text style={styles.error}>{error}</Text>}
           <Button title="Save" onPress={save} loading={saving} fullWidth />
           <Button title="Cancel" variant="ghost" onPress={onClose} fullWidth />
-        </View>
+        </SheetScroll>
       </View>
     </Modal>
   );
@@ -499,7 +490,7 @@ function FillSheet({
     <Modal keyboard visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={styles.flex} onPress={onClose} accessibilityLabel="Close" />
-        <View style={styles.sheet}>
+        <SheetScroll style={styles.sheetBox} contentContainerStyle={styles.sheet}>
           <Text style={styles.sheetTitle}>🔢 Ranges for the sections</Text>
           <Text style={styles.small}>
             {name} · {sections} sections{seats ? ` · ${seats} seats` : ''}
@@ -529,7 +520,7 @@ function FillSheet({
           {error && <Text style={styles.error}>{error}</Text>}
           <Button title="Save the ranges" onPress={save} loading={saving} disabled={!(s > 0 && n > 0)} fullWidth />
           <Button title="Cancel" variant="ghost" onPress={onClose} fullWidth />
-        </View>
+        </SheetScroll>
       </View>
     </Modal>
   );
@@ -574,13 +565,16 @@ const styles = StyleSheet.create({
   warnTitle: { fontSize: fontSize.small, fontWeight: fontWeight.bold, color: colors.warning },
   warnText: { fontSize: fontSize.caption, color: colors.warning, lineHeight: 18 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
-  sheet: {
-    gap: spacing.md,
-    padding: spacing.lg,
+  // the sheet scrolls when the keyboard leaves it little room
+  sheetBox: {
+    maxHeight: '90%',
+    flexGrow: 0,
+    flexShrink: 1,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     backgroundColor: colors.surface,
   },
+  sheet: { gap: spacing.md, padding: spacing.lg },
   sheetTitle: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {

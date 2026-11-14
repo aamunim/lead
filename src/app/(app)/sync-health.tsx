@@ -296,7 +296,7 @@ function HealthCard({
       <View style={styles.cardTop}>
         <Text style={styles.name} numberOfLines={1}>
           {row.userName}
-          {required ? <Text style={styles.required}> 🔒 Required</Text> : null}
+          {required ? <Text style={styles.required}>{'  🔒 Required'}</Text> : null}
         </Text>
         <View style={[styles.statusPill, { backgroundColor: info.color + '1A' }]}>
           <Text style={[styles.statusText, { color: info.color }]}>
