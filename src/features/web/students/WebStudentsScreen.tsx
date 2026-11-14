@@ -1040,6 +1040,19 @@ export function WebStudentsScreen({ mode = 'students' }: { mode?: Mode }) {
                   <Text style={styles.bulkBtnText}>📚 Course</Text>
                 </Pressable>
               )}
+              {leadsMode && hasPermission('leads.merge') && ticked.size >= 2 && ticked.size <= 10 && (
+                <Pressable
+                  onPress={() => {
+                    const ids = [...ticked].join(',');
+                    setTicked(new Set());
+                    router.push(`/leads/merge?ids=${ids}` as Href);
+                  }}
+                  style={styles.bulkBtn}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.bulkBtnText}>🔗 Merge</Text>
+                </Pressable>
+              )}
               {!leadsMode && officer && (
                 <Pressable onPress={() => setMoveOpen(true)} style={styles.bulkBtn} accessibilityRole="button">
                   <Text style={styles.bulkBtnText}>🔀 Course · Batch · Section</Text>

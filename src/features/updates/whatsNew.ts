@@ -8,6 +8,19 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-14-merge-leads',
+    date: '14 Nov 2026',
+    title: '🔗 একই মানুষের দুটো লিড এক করুন',
+    items: [
+      '🔗 লিড পেজ → “Merge with another lead”, বা লিস্টে ২–১০টা মার্ক করে Merge: কোন লিড থাকবে আর কোন নাম/স্টেজ/মালিক রাখবেন বেছে নিন',
+      '📞 কল, নোট, পরের কল, ভিজিট, ফাইল, কাগজ, ফি, SMS — সব মূল লিডে চলে যায়; সব নম্বর আর কোর্স থাকে',
+      '🔍 More → Possible duplicates: একই নম্বরের লিডগুলো একসাথে দেখায়; এক চাপে Merge, বা “Not the same”',
+      '⚠️ লিড পেজে সতর্কবার্তা: অন্য কোনো লিডে একই নম্বর থাকলে দেখায়',
+      '☎ একটা লিডে আরো নম্বর (Edit → More numbers); এক ঘরে তিনটা নম্বর লিখলে তৃতীয়টা নোটে না গিয়ে More numbers-এ যায়',
+      '↩ ভুল হলে Admin ৩০ দিনের মধ্যে Change log থেকে Undo করতে পারেন',
+    ],
+  },
+  {
     key: '2026-11-14-keyboard-all',
     date: '14 Nov 2026',
     title: '⌨️ সব জায়গায় কিবোর্ড আর লেখার ঘর ঢাকে না',

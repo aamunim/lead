@@ -306,6 +306,19 @@ function PhoneMore() {
           </Section>
         )}
 
+        {/* 🔗 The same person as two leads (people who may merge) */}
+        {hasPermission('leads.merge') && (
+          <Section title="DUPLICATES">
+            <Row
+              icon="call-merge"
+              tone="orange"
+              title="Possible duplicates"
+              subtitle="Leads with the same number: merge them, or mark “not the same”"
+              onPress={go('/leads/duplicates')}
+            />
+          </Section>
+        )}
+
         {/* 🎓 Alumni (Settings → Alumni decides who) */}
         {alumni.view && (
           <Section title="ALUMNI">

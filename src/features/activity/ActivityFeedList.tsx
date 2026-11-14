@@ -12,6 +12,7 @@ import {
 } from '@/features/activity/api';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { restoreDeleted } from '@/features/calls/api';
+import { canUndoMerge, unmergeLead } from '@/features/leads/merge';
 import { colors, fontSize, fontWeight, radius, spacing } from '@/shared/theme';
 
 // =====================================================================
@@ -179,6 +180,34 @@ function GroupRow({
           </Text>
         </Pressable>
       )}
+
+      {/* 🔗 Admins can undo a merge for 30 days */}
+      {!many &&
+        first.action === 'merged' &&
+        hasPermission('settings.manage') &&
+        typeof (first.details as { merge_id?: string } | null)?.merge_id === 'string' &&
+        (restored || canUndoMerge(first.created_at)) && (
+          <Pressable
+            onPress={() => {
+              if (restored) return;
+              const mergeId = (first.details as { merge_id: string }).merge_id;
+              Alert.alert('Undo this merge?', 'The leads become separate again, each with its own calls and notes.', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Undo merge',
+                  onPress: () =>
+                    unmergeLead(mergeId)
+                      .then(() => setRestored(true))
+                      .catch((e) => Alert.alert('Could not undo', e instanceof Error ? e.message : '')),
+                },
+              ]);
+            }}
+            style={({ pressed }) => [styles.restore, pressed && styles.pressed]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.restoreText}>{restored ? '✓ Undone' : '↩ Undo merge'}</Text>
+          </Pressable>
+        )}
 
       {many && open && (
         <View style={styles.sub}>

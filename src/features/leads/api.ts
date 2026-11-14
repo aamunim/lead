@@ -59,6 +59,7 @@ export type LeadListItem = Pick<
   | 'student_ref'
   // 🔍 Also searched: shown on the card when the match is here
   | 'alt_phone'
+  | 'extra_phones'
   | 'guardian_name'
   | 'guardian_phone'
   | 'email'
@@ -129,6 +130,8 @@ export type LeadInput = {
   whatsapp_number?: string | null;
   whatsapp_username?: string | null;
   alt_phone?: string | null;
+  /** ☎ the same person's other numbers */
+  extra_phones?: string[];
   email?: string | null;
   area?: string | null;
   /** 🏫 school / office */
@@ -348,7 +351,7 @@ function toError(error: { message: string }): Error {
 
 const LIST_SELECT = `
   id, name, phone, whatsapp_number, whatsapp_username, rating, score, next_follow_up_at, last_contacted_at, created_at, created_by, assigned_to, stage_id, closed_at, student_ref,
-  alt_phone, guardian_name, guardian_phone, email, area,
+  alt_phone, extra_phones, guardian_name, guardian_phone, email, area,
   nu_admission_id, admitted_section_id, submitted_at, received_at, admission_fee_need, admission_fee_ok, fee_last_paid_at, pipeline_course_id,
   papers_required, papers_received, papers_missing, papers_originals_held, papers_kept_at,
   visit_status, visit_at,
@@ -463,6 +466,8 @@ function buildLeadQuery(options: LeadQuery, withCount: boolean | 'only' | 'ids' 
       parts.push(
         `phone.ilike.%${digits}%`,
         `alt_phone.ilike.%${digits}%`,
+        // ☎ more numbers (after a merge)
+        `extra_phones_text.ilike.%${digits}%`,
         `guardian_phone.ilike.%${digits}%`,
         `whatsapp_number.ilike.%${text.replace(/\D/g, '')}%`,
       );
