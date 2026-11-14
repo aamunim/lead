@@ -201,6 +201,18 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
   },
 
   {
+    title: 'LOOK',
+    tiles: [
+      {
+        title: 'Branding',
+        description: 'Logo, names, sign-in page words and colours, Home top bar (Super Admin)',
+        icon: '🎨',
+        href: '/settings/branding' as Href,
+      },
+    ],
+  },
+
+  {
     title: 'TEAM',
     tiles: [
       {

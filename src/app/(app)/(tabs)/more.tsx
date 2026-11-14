@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { signOut } from '@/features/auth/api';
 import { canSeeContribution } from '@/features/contribution/api';
 import { isWeb } from '@/features/web/api';
-import { APP_PRODUCT } from '@/features/web/brand';
+import { useBrand } from '@/features/brand/brand';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { canSyncCalls, isCallLogAvailable, isCallSyncEnabled } from '@/features/call-sync/api';
 import { listSyncHealth } from '@/features/call-sync/health';
@@ -55,6 +55,7 @@ type Tone = keyof typeof TONE;
 
 function PhoneMore() {
   const { profile, session, hasPermission, refreshProfile } = useAuth();
+  const brand = useBrand();
   const alumni = useAlumniAccess();
   const [signingOut, setSigningOut] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
@@ -645,7 +646,7 @@ function PhoneMore() {
           <Text style={styles.privacyLink}>Privacy policy</Text>
         </Pressable>
         <Text style={styles.footer}>
-          ITTC {APP_PRODUCT} · v{version}
+          {brand.short_name} {brand.product} · v{version}
         </Text>
       </ScrollView>
       {whatsNew && <WhatsNewSheet onClose={() => setWhatsNew(false)} />}

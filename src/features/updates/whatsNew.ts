@@ -8,6 +8,16 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-14-branding',
+    date: '14 Nov 2026',
+    title: '🎨 নিজের ছবি Home-এ, আর লোগো-লেখা Settings থেকে',
+    items: [
+      '📷 Home-এর ওপরে ডান কোণে এখন আপনার প্রোফাইল ছবি (ছবি না থাকলে নামের আদ্যক্ষর); ওয়েবসাইটের ওপরেও',
+      '🎨 Settings → Branding (Super Admin): লোগো, কলেজ আর অ্যাপের নাম, সাইন-ইন পাতার লেখা, ওয়েবসাইটের পয়েন্ট আর রং বদলানো যায়',
+      '🏠 Home-এর ওপরের নাম আর “Good morning” লাইন চালু/বন্ধ করা যায়',
+    ],
+  },
+  {
     key: '2026-11-14-merge-leads',
     date: '14 Nov 2026',
     title: '🔗 একই মানুষের দুটো লিড এক করুন',

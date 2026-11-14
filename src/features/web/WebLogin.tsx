@@ -1,9 +1,10 @@
 import { router, type Href } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { signIn } from '@/features/auth/api';
-import { COLLEGE } from '@/features/web/brand';
+import { copyrightLine, useBrand } from '@/features/brand/brand';
+import { BrandLogo } from '@/features/brand/BrandLogo';
 import { loadPref, savePref } from '@/features/web/prefs';
 import { colors, fontSize, fontWeight, isDark, radius, spacing } from '@/shared/theme';
 import { installWebCss } from '@/shared/web/webCss';
@@ -20,6 +21,7 @@ const LOGO = require('../../../assets/web/ittc-logo-512.png');
 const EMAIL_KEY = 'web_login_email';
 
 export function WebLogin() {
+  const brand = useBrand();
   const [email, setEmail] = useState(() => loadPref<string>(EMAIL_KEY, ''));
   const [remember, setRemember] = useState(() => !!loadPref<string>(EMAIL_KEY, ''));
   const [password, setPassword] = useState('');
@@ -31,7 +33,10 @@ export function WebLogin() {
   const emailRef = useRef<{ focus: () => void } | null>(null);
 
   useEffect(() => {
-    document.title = 'Sign in · ITTC Admission Management System';
+    document.title = `Sign in · ${brand.system}`;
+  }, [brand.system]);
+
+  useEffect(() => {
     // Start where there is something to type
     setTimeout(() => (email ? passwordRef.current?.focus() : emailRef.current?.focus()), 50);
     // ⚠ Caps Lock (the browser tells it on every key)
@@ -65,37 +70,31 @@ export function WebLogin() {
   return (
     <View style={styles.page}>
       {/* ── The college ─────────────────────────────── */}
-      <View style={styles.brand}>
+      <View style={[styles.brand, { backgroundColor: brand.web_color }]}>
         <View style={styles.glowA} />
         <View style={styles.glowB} />
         <View style={styles.brandInner}>
-          <Image source={LOGO} style={styles.bigLogo} accessibilityLabel="ITTC logo" />
-          <Text style={styles.college}>{COLLEGE}</Text>
-          <View style={styles.rule} />
-          <Text style={styles.system}>Admission Management System</Text>
+          <BrandLogo own={LOGO} style={styles.bigLogo} />
+          <Text style={styles.college}>{brand.college}</Text>
+          <View style={[styles.rule, { backgroundColor: brand.accent_color }]} />
+          <Text style={styles.system}>{brand.web_title || brand.system}</Text>
           <View style={styles.points}>
-            {[
-              ['🎓', 'Students and admissions in one place'],
-              ['🏛', 'Submitted Online, Received by ITTC, NU ID'],
-              ['💰', 'Fees, discounts, payments and papers'],
-            ].map(([icon, text]) => (
-              <View key={text} style={styles.point}>
+            {brand.web_points.map(({ icon, text }, i) => (
+              <View key={i} style={styles.point}>
                 <Text style={styles.pointIcon}>{icon}</Text>
                 <Text style={styles.pointText}>{text}</Text>
               </View>
             ))}
           </View>
         </View>
-        <Text style={styles.copy}>
-          © {new Date().getFullYear()} {COLLEGE}
-        </Text>
+        <Text style={styles.copy}>{copyrightLine(brand)}</Text>
       </View>
 
       {/* ── Sign in ─────────────────────────────────── */}
       <View style={styles.side}>
         <View style={styles.card}>
-          <Text style={styles.hello}>Welcome back 👋</Text>
-          <Text style={styles.sub}>Sign in to the ITTC Admission Management System.</Text>
+          <Text style={styles.hello}>{brand.login_title}</Text>
+          <Text style={styles.sub}>{brand.login_note || `Sign in to the ${brand.system}.`}</Text>
 
           <Text style={styles.label}>Email</Text>
           <TextInput
