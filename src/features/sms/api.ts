@@ -149,6 +149,28 @@ export async function checkBalance(): Promise<{ status: number | null; body: str
   return { status: null, body: null, error: 'No answer yet. Try again in a minute.' };
 }
 
+/**
+ * 💰 SMS Center: the balance (only the number, e.g. "5,054.40").
+ * Gives the last known number at once (onLast), then asks the company and
+ * gives the fresh one. force: ask even if someone asked a moment ago.
+ */
+export async function smsBalance(force: boolean, onLast?: (balance: string | null) => void): Promise<string | null> {
+  const a = await rpc<{ balance: string | null; req: number | null }>('sms_balance_ask', { p_force: force });
+  onLast?.(a.balance);
+  if (a.req == null) return a.balance;
+  for (let i = 0; i < 8; i++) {
+    await wait(i === 0 ? 700 : 1200);
+    const r = await rpc<{ done: boolean; balance?: string | null; error?: string }>('sms_balance_get', {
+      p_req: a.req,
+    });
+    if (r.done) {
+      if (r.error && !r.balance) throw new Error(r.error);
+      return r.balance ?? a.balance;
+    }
+  }
+  return a.balance;
+}
+
 /** 🧪 A test SMS; then waits for the company's answer (up to ~15 s) */
 export async function sendTest(phone: string, message: string, senderId: string): Promise<SmsBatchDetail> {
   const batch = await rpc<string>('sms_send_test', { p_phone: phone, p_message: message, p_sender: senderId });

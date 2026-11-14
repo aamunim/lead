@@ -8,6 +8,15 @@ export type WhatsNew = { key: string; date: string; title: string; items: string
 
 export const WHATS_NEW: WhatsNew[] = [
   {
+    key: '2026-11-14-sms-balance',
+    date: '14 Nov 2026',
+    title: '💰 SMS Center-এ ব্যালেন্স',
+    items: [
+      '💰 SMS Center-এর ওপরে History-র পাশে SMS ব্যালেন্স (শুধু টাকার অংক)',
+      '🔄 SMS Center-এ ঢুকলেই, SMS পাঠানোর পরে, আর অংকে চাপ দিলে নতুন করে আসে',
+    ],
+  },
+  {
     key: '2026-11-13-otp-login',
     date: '13 Nov 2026',
     title: '🔐 মোবাইল নম্বর + SMS কোড দিয়ে লগইন',
