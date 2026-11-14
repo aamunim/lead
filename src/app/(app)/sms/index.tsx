@@ -31,6 +31,7 @@ import {
   mySenders,
   previewLeadSms,
   sendLeadSms,
+  smsBalance,
   smsDraft,
   smsLength,
   type BadNumber,
@@ -143,6 +144,30 @@ export default function SmsCenterScreen() {
       .then((t) => setTemplates(t.filter((x) => x.is_active && x.channels !== 'whatsapp')))
       .catch(() => undefined);
   }, []);
+
+  // 💰 the balance beside History: on every visit, after a send, and on a tap
+  const [balance, setBalance] = useState<string | null>(null);
+  const [balanceBusy, setBalanceBusy] = useState(false);
+  const balanceRun = useRef(0);
+  const refreshBalance = useCallback((force: boolean) => {
+    const mine = ++balanceRun.current;
+    setBalanceBusy(true);
+    smsBalance(force, (last) => {
+      if (balanceRun.current === mine && last != null) setBalance((now) => now ?? last);
+    })
+      .then((b) => {
+        if (balanceRun.current === mine && b != null) setBalance(b);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (balanceRun.current === mine) setBalanceBusy(false);
+      });
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (allowed) refreshBalance(false);
+    }, [allowed, refreshBalance]),
+  );
 
   // marked on the lead list → here
   useFocusEffect(
@@ -320,6 +345,7 @@ export default function SmsCenterScreen() {
       );
       setText('');
       setName('');
+      refreshBalance(true);
       router.push(`/alumni/sms?id=${r.batch_id}` as Href);
     } catch (e) {
       setError(errText(e));
@@ -349,14 +375,40 @@ export default function SmsCenterScreen() {
     }
   };
 
+  const headerInk = Platform.OS === 'web' ? colors.primary : colors.textOnPrimary;
   const header = (
     <Stack.Screen
       options={{
         title: 'SMS Center',
         headerRight: () => (
-          <Tap onPress={() => router.push('/alumni/sms' as Href)} style={styles.headerBtn} label="SMS sent" borderless>
-            <MIcon name="history" color={Platform.OS === 'web' ? colors.primary : colors.textOnPrimary} />
-          </Tap>
+          <View style={styles.headerRow}>
+            {allowed && (
+              <Pressable
+                onPress={() => refreshBalance(true)}
+                disabled={balanceBusy}
+                hitSlop={6}
+                style={styles.balance}
+                accessibilityRole="button"
+                accessibilityLabel={`SMS balance ${balance ?? ''}. Tap to refresh`}
+              >
+                {balanceBusy && balance == null ? (
+                  <ActivityIndicator size="small" color={headerInk} />
+                ) : (
+                  <Text style={[styles.balanceText, { color: headerInk }, balanceBusy && styles.balanceOld]}>
+                    {balance ?? '—'}
+                  </Text>
+                )}
+              </Pressable>
+            )}
+            <Tap
+              onPress={() => router.push('/alumni/sms' as Href)}
+              style={styles.headerBtn}
+              label="SMS sent"
+              borderless
+            >
+              <MIcon name="history" color={headerInk} />
+            </Tap>
+          </View>
         ),
       }}
     />
@@ -881,6 +933,10 @@ const styles = StyleSheet.create({
   pad: { paddingHorizontal: spacing.xl, textAlign: 'center' },
   flex: { flex: 1 },
   left: { alignSelf: 'flex-start' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  balance: { minWidth: 44, paddingHorizontal: spacing.sm, height: 40, alignItems: 'center', justifyContent: 'center' },
+  balanceText: { fontSize: fontSize.body, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
+  balanceOld: { opacity: 0.6 },
   headerBtn: { padding: spacing.sm, marginRight: spacing.xs },
 
   // segmented bar
